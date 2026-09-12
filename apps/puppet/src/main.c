@@ -4,8 +4,8 @@
 int main(void) {
     printf("Hello, World!\n");
 
-    // Initialize MMKV with root path and log level (1 = Info)
-    mmkv_initialize("/tmp/mmkv", 1);
+    // Initialize MMKV with root path and log level (4 = MMKVLogNone)
+    mmkv_initialize("/tmp/mmkv", 4);
 
     // Create a default MMKV instance
     MMKVConfig_t config = {0};
