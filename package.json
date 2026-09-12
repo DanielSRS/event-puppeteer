@@ -3,6 +3,7 @@
   "version": "0.0.1",
   "type": "module",
   "packageManager": "nub@0.9.0",
+  "workspaces": ["apps/**"],
   "devEngines": {
     "packageManager": {
       "name": "nub",
