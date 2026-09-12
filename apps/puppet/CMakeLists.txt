@@ -3,6 +3,9 @@ cmake_minimum_required(VERSION 3.19)
 # Define the project name and set the languages to C and CXX
 project(puppet VERSION 0.0.1 LANGUAGES C CXX)
 
+# Export compile commands for language servers (clangd/Zed)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 include(FetchContent)
 
 # Fetch MMKV from GitHub

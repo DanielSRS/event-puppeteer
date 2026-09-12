@@ -9,4 +9,7 @@ build/
 build-arm32/
 
 # build dependencies
-sysroot/
+sysroot
+
+# Language Server tools
+compile_commands.json
