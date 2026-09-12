@@ -6,3 +6,7 @@ node_modules
 
 # build dir
 build/
+build-arm32/
+
+# build dependencies
+sysroot/
