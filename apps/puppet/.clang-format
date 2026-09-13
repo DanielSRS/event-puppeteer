@@ -1,0 +1,69 @@
+---
+BasedOnStyle: LLVM
+IndentWidth: 2
+AlignAfterOpenBracket: BlockIndent
+AlignArrayOfStructures: Right
+AlignConsecutiveAssignments:
+  Enabled: true
+  AcrossComments: true
+  AcrossEmptyLines: true
+  AlignCompound: true
+  PadOperators: true
+AlignConsecutiveDeclarations: true
+# AlignConsecutiveDeclarations:
+#   Enabled: false
+#   AcrossEmptyLines: false
+#   AcrossComments: false
+#   # AlignFunctionDeclarations: true
+AlignConsecutiveMacros:
+  Enabled: true
+  AcrossEmptyLines: true
+  AcrossComments: true
+AlignEscapedNewlines: Left
+AlignOperands: AlignAfterOperator
+AlignTrailingComments:
+  Kind: Always
+  OverEmptyLines: 2
+AllowAllArgumentsOnNextLine: true
+AllowAllParametersOfDeclarationOnNextLine: true
+AllowShortBlocksOnASingleLine: Never
+AllowShortEnumsOnASingleLine: false
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AlwaysBreakBeforeMultilineStrings: false
+BinPackArguments: false
+BinPackParameters: false
+BreakBeforeBinaryOperators: NonAssignment
+BreakBeforeBraces: Attach
+BreakBeforeTernaryOperators: true
+# BreakBinaryOperations: OnePerLine # breaks
+BreakStringLiterals: true
+ColumnLimit: 80
+ContinuationIndentWidth: 2
+ExperimentalAutoDetectBinPacking: true
+IndentCaseLabels: true
+IndentGotoLabels: true
+IndentPPDirectives: BeforeHash
+IndentWrappedFunctionNames: false
+InsertNewlineAtEOF: true
+# IntegerLiteralSeparator: # Does this work for C?
+#   Binary: 0
+#   Decimal: 3
+#   Hex: -1
+#   DecimalMinDigits: 5
+LineEnding: LF
+MaxEmptyLinesToKeep: 1
+PointerAlignment: Right
+ReferenceAlignment: Right
+# SortIncludes: # Breaks
+#   Enabled: false
+#   SortPriority: CaseSensitive
+SpaceAfterCStyleCast: true
+SpaceAfterLogicalNot: false
+SpaceBeforeAssignmentOperators: true
+SpaceBeforeCaseColon: false
+SpaceBeforeSquareBrackets: false
+SpaceInEmptyParentheses: false
+TabWidth: 2
+UseTab: Never
+---
