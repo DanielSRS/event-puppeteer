@@ -110,28 +110,47 @@ static StatsSnapshot getSnapshot(void) {
   // 9. CPU Usage
   static uint64_t prevIdle = 0;
   static uint64_t prevTotal = 0;
-  FILE *stat = fopen("/proc/stat", "r");
-  if (stat) {
-    char cpu[16];
-    unsigned long long user = 0, nice = 0, system = 0, idle = 0, iowait = 0,
-                       irq = 0, softirq = 0, steal = 0;
-    if (fscanf(stat, "%15s %llu %llu %llu %llu %llu %llu %llu %llu", cpu, &user,
-               &nice, &system, &idle, &iowait, &irq, &softirq, &steal) == 9) {
-      uint64_t currentIdle = idle + iowait;
-      uint64_t currentNonIdle = user + nice + system + irq + softirq + steal;
-      uint64_t currentTotal = currentIdle + currentNonIdle;
+  
+  uint64_t currentIdle = 0, currentTotal = 0;
+  
+  // Helper lambda-style block to read CPU ticks
+  #define READ_CPU_TICKS(idleOut, totalOut, successOut) do { \
+    FILE *stat = fopen("/proc/stat", "r"); \
+    successOut = 0; \
+    if (stat) { \
+      char cpu[16]; \
+      unsigned long long user = 0, nice = 0, system = 0, idle = 0, iowait = 0, irq = 0, softirq = 0, steal = 0; \
+      if (fscanf(stat, "%15s %llu %llu %llu %llu %llu %llu %llu %llu", cpu, &user, &nice, &system, &idle, &iowait, &irq, &softirq, &steal) == 9) { \
+        idleOut = idle + iowait; \
+        totalOut = idleOut + user + nice + system + irq + softirq + steal; \
+        successOut = 1; \
+      } \
+      fclose(stat); \
+    } \
+  } while(0)
 
-      if (prevTotal != 0) {
-        uint64_t totalDiff = currentTotal - prevTotal;
-        uint64_t idleDiff = currentIdle - prevIdle;
-        if (totalDiff > 0) {
-          s.cpuUsage = (float)(totalDiff - idleDiff) / (float)totalDiff * 100.0f;
-        }
-      }
+  int readSuccess = 0;
+  READ_CPU_TICKS(currentIdle, currentTotal, readSuccess);
+
+  if (readSuccess) {
+    if (prevTotal == 0) {
+      // Very first call. Average since boot is useless for real-time monitoring.
+      // We block for 100ms to get a genuine instantaneous CPU usage window.
+      usleep(100000);
       prevIdle = currentIdle;
       prevTotal = currentTotal;
+      READ_CPU_TICKS(currentIdle, currentTotal, readSuccess);
     }
-    fclose(stat);
+
+    if (readSuccess && prevTotal != 0) {
+      uint64_t totalDiff = currentTotal - prevTotal;
+      uint64_t idleDiff = currentIdle - prevIdle;
+      if (totalDiff > 0) {
+        s.cpuUsage = (float)(totalDiff - idleDiff) / (float)totalDiff * 100.0f;
+      }
+    }
+    prevIdle = currentIdle;
+    prevTotal = currentTotal;
   }
 
   return s;
