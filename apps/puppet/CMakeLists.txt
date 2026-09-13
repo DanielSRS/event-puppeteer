@@ -28,6 +28,24 @@ find_package(Threads REQUIRED)
 # Add an executable with the source file
 add_executable(puppet src/main.c)
 
+# Enable ultra-strict compilation, warnings as errors, and extra validations for our code
+target_compile_options(puppet PRIVATE
+    -Wall
+    -Wextra
+    -Wpedantic
+    -Werror
+    -Wshadow
+    -Wformat=2
+    -Wcast-align
+    -Wconversion
+    -Wunused
+    -Wnull-dereference
+    # C-specific strict validations
+    $<$<COMPILE_LANGUAGE:C>:-Wmissing-prototypes>
+    $<$<COMPILE_LANGUAGE:C>:-Wstrict-prototypes>
+    $<$<COMPILE_LANGUAGE:C>:-Wold-style-definition>
+)
+
 # Link MMKV Core and Threads to the puppet executable
 target_link_libraries(puppet PRIVATE core Threads::Threads gcc_s stdc++)
 
