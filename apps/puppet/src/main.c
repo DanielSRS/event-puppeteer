@@ -7,7 +7,7 @@ int main(void) {
   printf("Hello, World!\n");
 
   // Initialize MMKV with root path and log level (4 = MMKVLogNone)
-  MmkvI.initialize("/tmp/mmkv", 4);
+  MmkvI.initialize();
 
   // Create a default MMKV instance
   MMKVHandle_t mmkv = MmkvI.createDefault();
