@@ -40,7 +40,7 @@ target_compile_options(puppet PRIVATE
     -Wconversion
     -Wunused
     -Wnull-dereference
-    
+
     # Extra Correctness and Undefined Behavior Protections
     -Wvla                       # No Variable Length Arrays (memory safety)
     -Wundef                     # Undefined macros in #if evaluate to an error
@@ -65,8 +65,12 @@ target_compile_options(puppet PRIVATE
 # Link MMKV Core and Threads to the puppet executable
 target_link_libraries(puppet PRIVATE core Threads::Threads gcc_s stdc++)
 
-# Add src/storage to the include path so we can do #include "mmkv/mmkv.h"
-target_include_directories(puppet PRIVATE src/storage)
+# Add include paths for our internal modules
+target_include_directories(puppet PRIVATE
+    src/storage
+    src/stats
+    src
+)
 
 # Force the linker to use CXX (g++) so C++ standard libraries are automatically linked
 set_target_properties(puppet PROPERTIES LINKER_LANGUAGE CXX)
