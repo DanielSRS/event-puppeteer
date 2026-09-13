@@ -35,8 +35,8 @@ if(EXISTS "${SYSROOT_DIR}")
 
     # Add sysroot specific flags
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -B ${SYSROOT_DIR}/usr/lib/arm-linux-gnueabihf -isystem ${SYSROOT_DIR}/usr/include/arm-linux-gnueabihf")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -B ${SYSROOT_DIR}/usr/lib/arm-linux-gnueabihf -isystem ${SYSROOT_DIR}/usr/include/arm-linux-gnueabihf")
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -B ${SYSROOT_DIR}/usr/lib/arm-linux-gnueabihf -isystem ${SYSROOT_DIR}/usr/include/arm-linux-gnueabihf -L${SYSROOT_DIR}/usr/lib/arm-linux-gnueabihf")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -B ${SYSROOT_DIR}/usr/lib/arm-linux-gnueabihf -isystem ${SYSROOT_DIR}/usr/include/arm-linux-gnueabihf -isystem ${SYSROOT_DIR}/usr/include/c++/10 -isystem ${SYSROOT_DIR}/usr/include/arm-linux-gnueabihf/c++/10")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -B ${SYSROOT_DIR}/usr/lib/arm-linux-gnueabihf -isystem ${SYSROOT_DIR}/usr/include/arm-linux-gnueabihf -L${SYSROOT_DIR}/usr/lib/arm-linux-gnueabihf -L${SYSROOT_DIR}/usr/lib/gcc/arm-linux-gnueabihf/10 -L${SYSROOT_DIR}/lib/arm-linux-gnueabihf -Wl,-rpath-link=${SYSROOT_DIR}/lib/arm-linux-gnueabihf")
 endif()
 
 # Search for programs in the build host directories

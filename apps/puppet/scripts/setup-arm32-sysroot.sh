@@ -6,8 +6,12 @@ DEBIAN_RELEASE="bullseye"
 ARCH="armhf"
 MIRROR="http://deb.debian.org/debian"
 
-# Minimal list of packages for X11 + EGL + C Standard Library
+# Minimal list of packages for X11 + EGL + C Standard Library + C++ Standard Library
 PACKAGES=(
+    "libstdc++-10-dev"
+    "libstdc++6"
+    "libgcc-10-dev"
+    "libgcc-s1"
     "libc6-dev"
     "libc6"
     "linux-libc-dev"

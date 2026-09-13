@@ -3,6 +3,10 @@ cmake_minimum_required(VERSION 3.19)
 # Define the project name and set the languages to C and CXX
 project(puppet VERSION 0.0.1 LANGUAGES C CXX)
 
+# Enforce C++17 for MMKV compilation compatibility
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 # Export compile commands for language servers (clangd/Zed)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -12,8 +16,9 @@ include(FetchContent)
 FetchContent_Declare(
   mmkv
   GIT_REPOSITORY https://github.com/Tencent/MMKV.git
-  GIT_TAG        master
+  GIT_TAG        v2.4.2
   SOURCE_SUBDIR  Core
+  PATCH_COMMAND  sh -c "sed -i 's/CXX_STANDARD 20/CXX_STANDARD 17/g' Core/CMakeLists.txt && sed -i 's/find(key)/find(std::string(key))/g' Core/*.cpp && sed -i 's/realRoot.ends_with(MMKV_PATH_SLASH)/(realRoot.length() > 0 ? (realRoot.back() == MMKV_PATH_SLASH[0]) : false)/g' Core/MMKV.cpp"
 )
 FetchContent_MakeAvailable(mmkv)
 
@@ -24,7 +29,10 @@ find_package(Threads REQUIRED)
 add_executable(puppet src/main.c)
 
 # Link MMKV Core and Threads to the puppet executable
-target_link_libraries(puppet PRIVATE core Threads::Threads)
+target_link_libraries(puppet PRIVATE core Threads::Threads gcc_s stdc++)
+
+# Force the linker to use CXX (g++) so C++ standard libraries are automatically linked
+set_target_properties(puppet PROPERTIES LINKER_LANGUAGE CXX)
 
 # Android requires linking the log library for MMKV
 if(ANDROID)
