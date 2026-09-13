@@ -40,6 +40,22 @@ target_compile_options(puppet PRIVATE
     -Wconversion
     -Wunused
     -Wnull-dereference
+    
+    # Extra Correctness and Undefined Behavior Protections
+    -Wvla                       # No Variable Length Arrays (memory safety)
+    -Wundef                     # Undefined macros in #if evaluate to an error
+    -Wpointer-arith             # Strict pointer arithmetic
+    -Wstrict-overflow=5         # Catch bugs relying on signed integer overflow
+    -Wwrite-strings             # Enforce const correctness on string literals
+    -Wfloat-equal               # Prevent direct == comparisons with floats
+    -Wunreachable-code          # Dead code elimination warnings
+    -Wimplicit-fallthrough      # Prevent accidental switch-case fallthrough
+    -Wlogical-op                # Catch typos like || instead of |
+    -Wduplicated-cond           # Catch copy-paste bugs in if-else chains
+    -Wduplicated-branches       # Catch if-else chains executing identical code
+    -Wshift-overflow=2          # Strict bitwise shift boundary checks
+    -Walloc-zero                # Warn on malloc(0)
+
     # C-specific strict validations
     $<$<COMPILE_LANGUAGE:C>:-Wmissing-prototypes>
     $<$<COMPILE_LANGUAGE:C>:-Wstrict-prototypes>
