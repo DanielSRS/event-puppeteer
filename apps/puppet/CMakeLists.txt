@@ -65,6 +65,7 @@ set(PUPPET_STRICT_COMPILE_OPTIONS
 # Add an executable with the source file
 add_executable(puppet src/main.c)
 target_compile_options(puppet PRIVATE ${PUPPET_STRICT_COMPILE_OPTIONS})
+target_compile_definitions(puppet PRIVATE PUPPET_VERSION="${PROJECT_VERSION}")
 
 # Link MMKV Core, Threads, and libcurl to the puppet executable
 target_link_libraries(puppet PRIVATE core Threads::Threads gcc_s stdc++ CURL::libcurl)
