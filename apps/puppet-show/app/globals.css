@@ -1,0 +1,182 @@
+/* app/globals.css */
+
+@import "tailwindcss";
+
+@theme {
+  --color-background: #0b0b0f;
+  --color-surface: #15151d;
+  --color-foreground: #f4f4f5;
+  --color-main: #f59e0b;
+  --color-muted: #2a2a35;
+  --color-success: #34d399;
+  --color-danger: #f87171;
+}
+
+@layer base {
+  body {
+    @apply
+      bg-background
+      text-foreground
+      antialiased;
+  }
+
+  label {
+    @apply
+      text-sm
+      opacity-70
+      mb-1;
+  }
+}
+
+@layer utilities {
+  .column {
+    @apply
+      flex
+      flex-col;
+  }
+
+  .row {
+    @apply
+      flex
+      flex-row
+      items-center;
+  }
+
+  .center {
+    @apply
+      flex
+      items-center
+      justify-center;
+  }
+
+  .between {
+    @apply
+      flex
+      items-center
+      justify-between;
+  }
+}
+
+@layer components {
+  .title {
+    @apply
+      text-2xl
+      md:text-3xl
+      font-semibold;
+  }
+
+  .subtitle {
+    @apply
+      text-lg
+      md:text-xl
+      font-medium;
+  }
+
+  .card {
+    @apply
+      bg-surface
+      border
+      border-muted
+      rounded-xl
+      p-4;
+  }
+
+  .input {
+    @apply
+      w-full
+      bg-surface
+      border
+      border-muted
+      rounded-lg
+      px-3
+      py-2
+      outline-none
+      transition-colors
+      focus:border-main
+      disabled:opacity-60
+      disabled:cursor-not-allowed;
+  }
+
+  .input-error {
+    @apply
+      border-danger;
+  }
+
+  .button {
+    @apply
+      inline-flex
+      items-center
+      justify-center
+      gap-2
+      rounded-lg
+      px-4
+      py-2
+      text-sm
+      font-medium
+      cursor-pointer
+      transition-colors
+      disabled:opacity-60
+      disabled:cursor-not-allowed;
+  }
+
+  .button.main {
+    @apply
+      bg-main
+      text-background
+      hover:opacity-90;
+  }
+
+  .button.clean {
+    @apply
+      border
+      border-muted
+      hover:border-main;
+  }
+
+  .error-message {
+    @apply
+      text-sm
+      text-danger;
+  }
+
+  .icon {
+    @apply
+      w-5
+      h-5;
+  }
+}
+
+/* AUTO SCROLLING LIST OF THE BIG SCREEN: THE CONTENT IS RENDERED TWICE AND SLIDES */
+/* UP BY HALF ITS HEIGHT, SO THE LOOP HAS NO VISIBLE JUMP */
+@keyframes marquee-up {
+  from {
+    transform: translateY(0);
+  }
+
+  to {
+    transform: translateY(-50%);
+  }
+}
+
+.marquee {
+  @apply
+    relative
+    overflow-hidden;
+
+  /* FADES THE TOP AND THE BOTTOM OF THE LIST */
+  mask-image: linear-gradient(to bottom, transparent, black 6%, black 94%, transparent);
+}
+
+.marquee-track {
+  animation: marquee-up var(--marquee-duration, 40s) linear infinite;
+}
+
+.marquee:hover .marquee-track {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .marquee-track {
+    animation: none;
+  }
+}
