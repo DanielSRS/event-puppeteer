@@ -8,6 +8,9 @@
 #define PUPPET_JSON_IMPLEMENTATION
 #include "json/json.h"
 
+#define PUPPET_SHA256_IMPLEMENTATION
+#include "crypto/sha256.h"
+
 #define PUPPET_PROTOCOL_IMPLEMENTATION
 #include "protocol/protocol.h"
 
@@ -23,6 +26,7 @@
 #include "protocol/protocol.test.c"
 #include "config/config.test.c"
 #include "agent/agent-schedule.test.c"
+#include "crypto/sha256.test.c"
 
 #include <stdio.h>
 
@@ -34,6 +38,7 @@ static const TestSuite *const TEST_SUITES[] = {
   &ProtocolTestSuite,
   &ConfigTestSuite,
   &AgentScheduleTestSuite,
+  &Sha256TestSuite,
 };
 
 int main(void) {
