@@ -168,7 +168,8 @@ import { createAuth } from '../auth.ts';
 import { BrevoEmailSender } from './email/brevo.ts';
 import { ConsoleEmailSender } from './email/console.ts';
 
-export function createRealIO(): AppIO {
+// close() ends the database pool: an open pool keeps the process alive after the server stops
+export function createRealIO(): AppIO & { close(): Promise<void> } {
   // prepare: false — Supabase's transaction pooler (what serverless should use) rejects prepared statements
   const queryClient = postgres(env.DATABASE_URL, { prepare: false });
   const db = drizzle(queryClient, { schema });
@@ -204,6 +205,7 @@ export function createRealIO(): AppIO {
     telemetryRepo: new DrizzleTelemetryRepository(db),
     commandRepo: new DrizzleCommandRepository(db),
     auth: new BetterAuthProvider(authInstance),
-    emailSender
+    emailSender,
+    close: () => queryClient.end({ timeout: 5 })
   };
 }
