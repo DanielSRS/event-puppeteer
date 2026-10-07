@@ -28,11 +28,8 @@ find_package(Threads REQUIRED)
 # Require libcurl (provides HTTPS transport to Puppeteer)
 find_package(CURL REQUIRED)
 
-# Add an executable with the source file
-add_executable(puppet src/main.c)
-
 # Enable ultra-strict compilation, warnings as errors, and extra validations for our code
-target_compile_options(puppet PRIVATE
+set(PUPPET_STRICT_COMPILE_OPTIONS
     -Wall
     -Wextra
     -Wpedantic
@@ -65,6 +62,10 @@ target_compile_options(puppet PRIVATE
     $<$<COMPILE_LANGUAGE:C>:-Wold-style-definition>
 )
 
+# Add an executable with the source file
+add_executable(puppet src/main.c)
+target_compile_options(puppet PRIVATE ${PUPPET_STRICT_COMPILE_OPTIONS})
+
 # Link MMKV Core, Threads, and libcurl to the puppet executable
 target_link_libraries(puppet PRIVATE core Threads::Threads gcc_s stdc++ CURL::libcurl)
 
@@ -83,4 +84,19 @@ set_target_properties(puppet PROPERTIES LINKER_LANGUAGE CXX)
 if(ANDROID)
     find_library(log-lib log)
     target_link_libraries(puppet PRIVATE ${log-lib})
+endif()
+
+# Unit tests: pure modules only, so they need neither MMKV nor libcurl
+option(PUPPET_BUILD_TESTS "Build the puppet unit test runner" ON)
+if(PUPPET_BUILD_TESTS)
+    enable_testing()
+    add_executable(puppet-tests src/test-runner.c)
+    target_compile_options(puppet-tests PRIVATE ${PUPPET_STRICT_COMPILE_OPTIONS})
+    target_include_directories(puppet-tests PRIVATE src)
+    target_link_libraries(puppet-tests PRIVATE m)
+
+    # Cross-compiled test binaries cannot execute on the build host
+    if(NOT CMAKE_CROSSCOMPILING)
+        add_test(NAME puppet-tests COMMAND puppet-tests)
+    endif()
 endif()
