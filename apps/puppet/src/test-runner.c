@@ -11,10 +11,14 @@
 #define PUPPET_PROTOCOL_IMPLEMENTATION
 #include "protocol/protocol.h"
 
+#define PUPPET_CONFIG_IMPLEMENTATION
+#include "config/config.h"
+
 #include "testing/testing.h"
 
 #include "json/json.test.c"
 #include "protocol/protocol.test.c"
+#include "config/config.test.c"
 
 #include <stdio.h>
 
@@ -24,6 +28,7 @@
 static const TestSuite *const TEST_SUITES[] = {
   &JsonTestSuite,
   &ProtocolTestSuite,
+  &ConfigTestSuite,
 };
 
 int main(void) {
