@@ -69,6 +69,9 @@
 /** Maximum length of a single header string (key: value\0). */
 #define HTTP_MAX_HEADER_LENGTH ((uint32_t)256)
 
+/** Largest file `download` accepts (64 MiB), protecting the Device's disk. */
+#define HTTP_DOWNLOAD_MAX_BYTES ((int64_t)64 * 1024 * 1024)
+
 /**
  * Result codes returned by all HttpClient operations.
  */
@@ -81,6 +84,9 @@ typedef enum {
 
   /** The response body was truncated because it exceeded the buffer capacity. */
   HTTP_RESULT_BODY_TRUNCATED = 2,
+
+  /** `download` could not open its destination file for writing. */
+  HTTP_RESULT_FILE_ERROR = 3,
 } HttpResultCode;
 
 /**
@@ -209,6 +215,32 @@ struct HttpClientType {
     const char *path,
     const char *jsonBody,
     const HttpExtraHeaders *extraHeaders
+  );
+
+  /**
+   * Stream a GET response straight into a file, for payloads too large for
+   * the response buffer (e.g. update binaries).
+   *
+   * Redirects are followed (libcurl drops custom `Authorization` headers
+   * when a redirect leaves the original host). Instead of the usual total
+   * timeout, a transfer is aborted when it stalls below 1 byte/s for 30 s,
+   * so slow but progressing networks still finish. Files larger than
+   * `HTTP_DOWNLOAD_MAX_BYTES` are refused.
+   *
+   * On return `body` is empty; `httpStatus` must still be checked, since an
+   * error page is also written to the file.
+   *
+   * @param location         Absolute http(s) URL, or a path starting with
+   *                         '/' that is appended to the base URL.
+   * @param extraHeaders     Optional extra headers. Pass NULL if not needed.
+   * @param destinationPath  File to create or truncate.
+   * @return `HTTP_RESULT_FILE_ERROR` when the file cannot be opened.
+   */
+  HttpResult (*const download)(
+    HttpClient *client,
+    const char *location,
+    const HttpExtraHeaders *extraHeaders,
+    const char *destinationPath
   );
 };
 

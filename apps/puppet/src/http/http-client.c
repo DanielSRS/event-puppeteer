@@ -1,6 +1,7 @@
 #include "http-client.h"
 
 #include <curl/curl.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -15,6 +16,17 @@
  */
 #define HTTP_CONNECT_TIMEOUT_SECONDS ((long)10)
 #define HTTP_TOTAL_TIMEOUT_SECONDS   ((long)30)
+
+/** Downloads have no total timeout; they abort when slower than this many
+ *  bytes per second for `HTTP_DOWNLOAD_STALL_SECONDS`. */
+#define HTTP_DOWNLOAD_MINIMUM_BYTES_PER_SECOND ((long)1)
+#define HTTP_DOWNLOAD_STALL_SECONDS            ((long)30)
+
+/** Redirect hops allowed for downloads (e.g. release CDNs). */
+#define HTTP_DOWNLOAD_MAX_REDIRECTS ((long)5)
+
+/** CURLOPT value disabling a timeout or size limit. */
+#define HTTP_UNLIMITED ((long)0)
 
 /**
  * Internal structure backing the opaque HttpClient handle.
@@ -219,6 +231,77 @@ static HttpResult httpClientPost(
   return httpClientBuildResult(client, status);
 }
 
+/** libcurl write callback for downloads: appends to the destination file.
+ *  A short write makes libcurl abort with CURLE_WRITE_ERROR (e.g. disk full). */
+static size_t httpClientFileWriteCallback(
+  const char *data, size_t itemSize, size_t itemCount, void *userPointer
+) {
+  return fwrite(data, itemSize, itemCount, (FILE *)userPointer) * itemSize;
+}
+
+/** Restore the defaults that every non-download request relies on. */
+static void httpClientRestoreRequestLimits(HttpClient *client) {
+  curl_easy_setopt(client->curl, CURLOPT_FOLLOWLOCATION, 0L);
+  curl_easy_setopt(client->curl, CURLOPT_TIMEOUT, HTTP_TOTAL_TIMEOUT_SECONDS);
+  curl_easy_setopt(client->curl, CURLOPT_LOW_SPEED_LIMIT, HTTP_UNLIMITED);
+  curl_easy_setopt(client->curl, CURLOPT_LOW_SPEED_TIME, HTTP_UNLIMITED);
+  curl_easy_setopt(
+    client->curl, CURLOPT_MAXFILESIZE_LARGE, (curl_off_t)HTTP_UNLIMITED
+  );
+}
+
+static HttpResult httpClientDownload(
+  HttpClient *client,
+  const char *location,
+  const HttpExtraHeaders *extraHeaders,
+  const char *destinationPath
+) {
+  httpClientResetResponseBuffer(client);
+
+  FILE *destination = fopen(destinationPath, "wb");
+  if (destination == NULL) {
+    return (HttpResult){.code = HTTP_RESULT_FILE_ERROR};
+  }
+
+  char fullUrl[FULL_URL_CAPACITY];
+  if (location[0] == '/') {
+    snprintf(fullUrl, FULL_URL_CAPACITY, "%s%s", client->baseUrl, location);
+  } else {
+    snprintf(fullUrl, FULL_URL_CAPACITY, "%s", location);
+  }
+
+  struct curl_slist *headers = httpClientBuildHeaderList(NULL, extraHeaders);
+
+  curl_easy_setopt(client->curl, CURLOPT_URL, fullUrl);
+  curl_easy_setopt(client->curl, CURLOPT_HTTPGET, 1L);
+  curl_easy_setopt(client->curl, CURLOPT_WRITEFUNCTION, httpClientFileWriteCallback);
+  curl_easy_setopt(client->curl, CURLOPT_WRITEDATA, destination);
+  curl_easy_setopt(client->curl, CURLOPT_HTTPHEADER, headers);
+  curl_easy_setopt(client->curl, CURLOPT_FOLLOWLOCATION, 1L);
+  curl_easy_setopt(client->curl, CURLOPT_MAXREDIRS, HTTP_DOWNLOAD_MAX_REDIRECTS);
+  curl_easy_setopt(client->curl, CURLOPT_TIMEOUT, HTTP_UNLIMITED);
+  curl_easy_setopt(
+    client->curl, CURLOPT_LOW_SPEED_LIMIT, HTTP_DOWNLOAD_MINIMUM_BYTES_PER_SECOND
+  );
+  curl_easy_setopt(client->curl, CURLOPT_LOW_SPEED_TIME, HTTP_DOWNLOAD_STALL_SECONDS);
+  curl_easy_setopt(
+    client->curl, CURLOPT_MAXFILESIZE_LARGE, (curl_off_t)HTTP_DOWNLOAD_MAX_BYTES
+  );
+
+  const CURLcode status = curl_easy_perform(client->curl);
+
+  httpClientRestoreRequestLimits(client);
+  if (headers) {
+    curl_slist_free_all(headers);
+  }
+  /** A failed close loses buffered bytes: report it like a write error. */
+  const bool closed = fclose(destination) == 0;
+  if (status == CURLE_OK && !closed) {
+    return httpClientBuildResult(client, CURLE_WRITE_ERROR);
+  }
+  return httpClientBuildResult(client, status);
+}
+
 const struct HttpClientType HttpClientI = {
   .initialize = httpClientInitialize,
   .cleanup    = httpClientCleanup,
@@ -226,4 +309,5 @@ const struct HttpClientType HttpClientI = {
   .destroy    = httpClientDestroy,
   .get        = httpClientGet,
   .post       = httpClientPost,
+  .download   = httpClientDownload,
 };
