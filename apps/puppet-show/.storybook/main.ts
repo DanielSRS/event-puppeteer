@@ -15,6 +15,9 @@ const config: StorybookConfig = {
     "@storybook/addon-mcp"
   ],
   "framework": "@storybook/nextjs-vite",
+  "features": {
+    "componentsManifest": true
+  },
   "staticDirs": [
     "../public"
   ]
