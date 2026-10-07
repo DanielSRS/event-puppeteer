@@ -1,9 +1,16 @@
-import { pgTable, text, timestamp, boolean, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, boolean, integer, doublePrecision, jsonb, primaryKey } from "drizzle-orm/pg-core";
 
 export const organization = pgTable("organization", {
 	id: text("id").primaryKey(),
 	name: text("name").notNull(),
 	slug: text("slug").notNull().unique(),
+	description: text("description"),
+	logo: text("logo"),
+	url: text("url"),
+	colorScheme: text("colorScheme"),
+	location: text("location"),
+	latitude: doublePrecision("latitude"),
+	longitude: doublePrecision("longitude"),
 	shadowBanThreshold: integer("shadowBanThreshold").notNull().default(5),
 	createdAt: timestamp("createdAt").notNull(),
 	updatedAt: timestamp("updatedAt").notNull()
@@ -63,7 +70,7 @@ export const verification = pgTable("verification", {
 	createdAt: timestamp("createdAt"),
 	updatedAt: timestamp("updatedAt")
 });
-import { jsonb, doublePrecision, primaryKey } from "drizzle-orm/pg-core";
+
 
 export const tag = pgTable("tag", {
 	id: text("id").primaryKey(),

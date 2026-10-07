@@ -8,6 +8,13 @@
       "when": 1791378534018,
       "tag": "0000_pretty_pestilence",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1791379037484,
+      "tag": "0001_daily_marvex",
+      "breakpoints": true
     }
   ]
 }

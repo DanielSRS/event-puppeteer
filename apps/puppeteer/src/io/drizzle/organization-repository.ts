@@ -47,9 +47,16 @@ export class DrizzleOrganizationRepository implements OrganizationRepository {
       id: row.id,
       name: row.name,
       slug: row.slug,
+      ...(row.description != null && { description: row.description }),
+      ...(row.logo != null && { logo: row.logo }),
+      ...(row.url != null && { url: row.url }),
+      ...(row.colorScheme != null && { colorScheme: row.colorScheme }),
+      ...(row.location != null && { location: row.location }),
+      ...(row.latitude != null && { latitude: row.latitude }),
+      ...(row.longitude != null && { longitude: row.longitude }),
       shadowBanThreshold: row.shadowBanThreshold,
-      createdAt: row.createdAt.toISOString(),
-      updatedAt: row.updatedAt.toISOString()
+      createdAt: row.createdAt instanceof Date ? row.createdAt.toISOString() : row.createdAt,
+      updatedAt: row.updatedAt instanceof Date ? row.updatedAt.toISOString() : row.updatedAt
     };
   }
 }
