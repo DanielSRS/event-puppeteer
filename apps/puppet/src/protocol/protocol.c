@@ -392,6 +392,64 @@ static ProtocolResultCode protocolCountFeedEvents(
   return PROTOCOL_RESULT_OK;
 }
 
+static bool protocolIsValidUpdateLocation(const char *location) {
+  return location[0] == '/' || strncmp(location, "https://", 8) == 0
+      || strncmp(location, "http://", 7) == 0;
+}
+
+static ProtocolResultCode protocolReadUpdateInstruction(
+  const char *payload, UpdateInstruction *instruction
+) {
+  JsonToken             tokens[PROTOCOL_OBJECT_TOKEN_CAPACITY];
+  const JsonParseResult parsed = JsonI.parse(
+    payload, strlen(payload), tokens, PROTOCOL_OBJECT_TOKEN_CAPACITY
+  );
+  if (parsed.code != JSON_RESULT_OK
+      || tokens[PROTOCOL_ROOT_TOKEN].kind != JSON_TOKEN_OBJECT) {
+    return PROTOCOL_ERROR_UPDATE_PAYLOAD_MALFORMED;
+  }
+
+  if (!protocolCopyOptionalMember(
+        payload,
+        tokens,
+        parsed.tokenCount,
+        PROTOCOL_ROOT_TOKEN,
+        "url",
+        instruction->location,
+        sizeof(instruction->location)
+      )) {
+    return PROTOCOL_ERROR_UPDATE_LOCATION_MISSING;
+  }
+  if (!protocolIsValidUpdateLocation(instruction->location)) {
+    return PROTOCOL_ERROR_UPDATE_LOCATION_INVALID;
+  }
+
+  char       digestText[SHA256_HEX_DIGEST_CAPACITY];
+  const bool hasDigest = protocolCopyOptionalMember(
+    payload,
+    tokens,
+    parsed.tokenCount,
+    PROTOCOL_ROOT_TOKEN,
+    "sha256",
+    digestText,
+    sizeof(digestText)
+  );
+  if (!hasDigest || !Sha256I.parseHexDigest(digestText, instruction->sha256)) {
+    return PROTOCOL_ERROR_UPDATE_DIGEST_INVALID;
+  }
+
+  instruction->hasVersion = protocolCopyOptionalMember(
+    payload,
+    tokens,
+    parsed.tokenCount,
+    PROTOCOL_ROOT_TOKEN,
+    "version",
+    instruction->version,
+    sizeof(instruction->version)
+  );
+  return PROTOCOL_RESULT_OK;
+}
+
 const struct ProtocolType ProtocolI = {
   .writeConnectRequest    = protocolWriteConnectRequest,
   .readConnectResponse    = protocolReadConnectResponse,
@@ -402,4 +460,5 @@ const struct ProtocolType ProtocolI = {
   .readCommandBatch       = protocolReadCommandBatch,
   .writeCommandCompletion = protocolWriteCommandCompletion,
   .countFeedEvents        = protocolCountFeedEvents,
+  .readUpdateInstruction  = protocolReadUpdateInstruction,
 };

@@ -264,6 +264,75 @@ static void protocolCountsFeedEvents(TestContext *context) {
   );
 }
 
+/** SHA-256 of "abc", a convenient well-known digest. */
+#define PROTOCOL_TEST_DIGEST                                                   \
+  "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+
+static void protocolReadsUpdateInstruction(TestContext *context) {
+  const char *payload = "{\"url\":\"https://cdn.example/puppet-armhf\","
+                        "\"sha256\":\"" PROTOCOL_TEST_DIGEST "\","
+                        "\"version\":\"0.0.2\"}";
+  UpdateInstruction instruction;
+
+  EXPECT(
+    context,
+    ProtocolI.readUpdateInstruction(payload, &instruction) == PROTOCOL_RESULT_OK
+  );
+  EXPECT(
+    context, strcmp(instruction.location, "https://cdn.example/puppet-armhf") == 0
+  );
+  EXPECT(context, instruction.sha256[0] == 0xba);
+  EXPECT(context, instruction.hasVersion);
+  EXPECT(context, strcmp(instruction.version, "0.0.2") == 0);
+}
+
+static void protocolAcceptsUpdatePathOnPuppeteer(TestContext *context) {
+  const char *payload =
+    "{\"url\":\"/files/puppet\",\"sha256\":\"" PROTOCOL_TEST_DIGEST "\"}";
+  UpdateInstruction instruction;
+
+  EXPECT(
+    context,
+    ProtocolI.readUpdateInstruction(payload, &instruction) == PROTOCOL_RESULT_OK
+  );
+  EXPECT(context, !instruction.hasVersion);
+}
+
+static void protocolRejectsInvalidUpdatePayloads(TestContext *context) {
+  UpdateInstruction instruction;
+
+  EXPECT(
+    context,
+    ProtocolI.readUpdateInstruction("", &instruction)
+      == PROTOCOL_ERROR_UPDATE_PAYLOAD_MALFORMED
+  );
+  EXPECT(
+    context,
+    ProtocolI.readUpdateInstruction(
+      "{\"sha256\":\"" PROTOCOL_TEST_DIGEST "\"}", &instruction
+    ) == PROTOCOL_ERROR_UPDATE_LOCATION_MISSING
+  );
+  EXPECT(
+    context,
+    ProtocolI.readUpdateInstruction(
+      "{\"url\":\"ftp://x/p\",\"sha256\":\"" PROTOCOL_TEST_DIGEST "\"}",
+      &instruction
+    ) == PROTOCOL_ERROR_UPDATE_LOCATION_INVALID
+  );
+  /** Installing an unverified binary is never acceptable. */
+  EXPECT(
+    context,
+    ProtocolI.readUpdateInstruction("{\"url\":\"/files/puppet\"}", &instruction)
+      == PROTOCOL_ERROR_UPDATE_DIGEST_INVALID
+  );
+  EXPECT(
+    context,
+    ProtocolI.readUpdateInstruction(
+      "{\"url\":\"/files/puppet\",\"sha256\":\"abc\"}", &instruction
+    ) == PROTOCOL_ERROR_UPDATE_DIGEST_INVALID
+  );
+}
+
 static const TestCase PROTOCOL_TEST_CASES[] = {
   {"writes connect requests with and without organization",
    protocolWritesConnectRequest},
@@ -281,6 +350,9 @@ static const TestCase PROTOCOL_TEST_CASES[] = {
   {"caps the command batch size", protocolCapsCommandBatch},
   {"writes command completion", protocolWritesCommandCompletion},
   {"counts feed events and rejects truncated feeds", protocolCountsFeedEvents},
+  {"reads an update instruction", protocolReadsUpdateInstruction},
+  {"accepts update paths on Puppeteer", protocolAcceptsUpdatePathOnPuppeteer},
+  {"rejects invalid update payloads", protocolRejectsInvalidUpdatePayloads},
 };
 
 static const TestSuite ProtocolTestSuite = {

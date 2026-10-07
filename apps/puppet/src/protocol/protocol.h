@@ -19,6 +19,7 @@
  * | response  | GET  /devices/:id/commands/pending          | `readCommandBatch`        |
  * | request   | POST /devices/:id/commands/:cid/complete    | `writeCommandCompletion`  |
  * | response  | GET  /organizations/:id/feed                | `countFeedEvents`         |
+ * | payload   | `update` Command                            | `readUpdateInstruction`   |
  *
  * ## Errors
  *
@@ -28,6 +29,7 @@
 #ifndef PUPPET_PROTOCOL_H_
 #define PUPPET_PROTOCOL_H_
 
+#include "crypto/sha256.h"
 #include "stats/stats.h"
 
 #include <stdbool.h>
@@ -46,6 +48,11 @@
 
 /** Raw JSON of a command's payload, e.g. an update's download location. */
 #define PROTOCOL_COMMAND_PAYLOAD_CAPACITY ((size_t)1024)
+
+/** Location of an update binary: a URL or a path on Puppeteer. */
+#define PROTOCOL_UPDATE_LOCATION_CAPACITY ((size_t)512)
+
+#define PROTOCOL_UPDATE_VERSION_CAPACITY ((size_t)32)
 
 /**
  * Commands read per poll. Any excess stays pending on Puppeteer and is
@@ -81,6 +88,15 @@ typedef enum {
   PROTOCOL_ERROR_LOG_REQUEST_OVERFLOW = 2012,
   PROTOCOL_ERROR_TELEMETRY_REQUEST_OVERFLOW = 2013,
   PROTOCOL_ERROR_COMPLETION_REQUEST_OVERFLOW = 2014,
+
+  /** The `update` payload is absent or not a JSON object. */
+  PROTOCOL_ERROR_UPDATE_PAYLOAD_MALFORMED = 2015,
+  /** The `update` payload lacks a `url` string (or it is too long). */
+  PROTOCOL_ERROR_UPDATE_LOCATION_MISSING = 2016,
+  /** The `url` is neither absolute http(s) nor a path starting with '/'. */
+  PROTOCOL_ERROR_UPDATE_LOCATION_INVALID = 2017,
+  /** The `sha256` is missing or not 64 hexadecimal characters. */
+  PROTOCOL_ERROR_UPDATE_DIGEST_INVALID = 2018,
 } ProtocolResultCode;
 
 /** What a Puppet needs to authenticate as its Device. Persisted locally. */
@@ -137,6 +153,26 @@ typedef struct {
   Command  commands[PROTOCOL_MAX_COMMANDS_PER_BATCH];
   uint32_t count;
 } CommandBatch;
+
+/**
+ * What an `update` Command asks for. Payload contract:
+ *
+ * ```json
+ * { "url": "https://…/puppet-0.0.2-armhf", "sha256": "<64 hex>", "version": "0.0.2" }
+ * ```
+ *
+ * `url` is either absolute (http/https) or a path on Puppeteer starting with
+ * '/'. `sha256` is mandatory: nothing is installed without verification.
+ * `version` is optional and informational.
+ */
+typedef struct {
+  char    location[PROTOCOL_UPDATE_LOCATION_CAPACITY];
+  uint8_t sha256[SHA256_DIGEST_LENGTH];
+
+  /** Whether `version` holds a value. */
+  bool hasVersion;
+  char version[PROTOCOL_UPDATE_VERSION_CAPACITY];
+} UpdateInstruction;
 
 /** Everything sent in a detailed Telemetry report. */
 typedef struct {
@@ -220,6 +256,11 @@ struct ProtocolType {
    */
   ProtocolResultCode (*const countFeedEvents)(
     const char *body, size_t bodyLength, uint32_t *eventCount
+  );
+
+  /** Read and validate an `update` Command's payload (`Command.payload`). */
+  ProtocolResultCode (*const readUpdateInstruction)(
+    const char *payload, UpdateInstruction *instruction
   );
 };
 
