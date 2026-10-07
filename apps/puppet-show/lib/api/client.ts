@@ -38,13 +38,19 @@ export const api = {
 
   auth: {
     register: (body: { firstName: string; lastName: string; email: string; password: string }, orgId?: string) =>
-      apiFetch<{ user: User; token: string }>(`/auth/register${orgId ? `?orgId=${orgId}` : ''}`, {
+      apiFetch<{ user: User }>(`/auth/register${orgId ? `?orgId=${orgId}` : ''}`, {
         method: 'POST', body: JSON.stringify(body),
       }),
 
     login: (body: { email: string; password: string }) =>
       apiFetch<{ userId: string; token: string }>('/auth/login', {
         method: 'POST', body: JSON.stringify(body),
+      }),
+
+    // Always 200, whether or not the email exists
+    resendVerification: (email: string) =>
+      apiFetch<{ success: true }>('/auth/resend-verification', {
+        method: 'POST', body: JSON.stringify({ email }),
       }),
 
     me: () => apiFetch<User>('/auth/me'),

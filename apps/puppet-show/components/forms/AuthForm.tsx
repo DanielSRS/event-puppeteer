@@ -14,7 +14,12 @@ type AuthFormProps = {
   mode: "login" | "register";
   loading?: boolean;
   generalError?: string;
+  /* GOOD NEWS SHOWN ABOVE THE FIELDS, E.G. "E-MAIL CONFIRMADO" */
+  notice?: string;
   redirectPath?: string;
+  /* OFFERED NEXT TO THE ERROR WHEN THE ACCOUNT IS WAITING FOR EMAIL CONFIRMATION */
+  onResendVerification?: () => void;
+  resending?: boolean;
   onSubmit: (data: AuthFormData) => Promise<void> | void;
 };
 
@@ -25,7 +30,16 @@ type FormErrors = {
 };
 
 /* ONE FORM FOR THE TWO SCREENS: THE ONLY DIFFERENCE IS THE NAME FIELD */
-export function AuthForm({ mode, loading = false, generalError = "", redirectPath = "/", onSubmit }: AuthFormProps) {
+export function AuthForm({
+  mode,
+  loading = false,
+  generalError = "",
+  notice = "",
+  redirectPath = "/",
+  onResendVerification,
+  resending = false,
+  onSubmit,
+}: AuthFormProps) {
   const isRegister = mode === "register";
 
   const [name, setName] = useState("");
@@ -76,6 +90,8 @@ export function AuthForm({ mode, loading = false, generalError = "", redirectPat
         </Link>
       </p>
 
+      {notice && <p role="status" className="text-sm text-center text-success">{notice}</p>}
+
       {isRegister && (
         <div className="column">
           <label htmlFor="name">Nome</label>
@@ -122,7 +138,13 @@ export function AuthForm({ mode, loading = false, generalError = "", redirectPat
         {errors.password && <span className="error-message">{errors.password}</span>}
       </div>
 
-      {generalError && <p className="error-message">{generalError}</p>}
+      {generalError && <p role="alert" className="error-message">{generalError}</p>}
+
+      {onResendVerification && (
+        <button type="button" onClick={onResendVerification} disabled={resending} className="button clean">
+          {resending ? "Enviando..." : "Reenviar e-mail de confirmação"}
+        </button>
+      )}
 
       <button type="submit" disabled={loading} className="button main">
         {loading ? "Aguarde..." : isRegister ? "Criar conta" : "Entrar"}
