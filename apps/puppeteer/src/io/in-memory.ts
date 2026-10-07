@@ -1,9 +1,5 @@
-import { IO } from './index.ts';
+import { AppIO } from './index.ts';
 
-export function createInMemoryIO(): IO {
-  return {
-    async ping() {
-      return true;
-    }
-  };
+export function createInMemoryIO(): AppIO {
+  return {};
 }

@@ -5,6 +5,9 @@ import { createInMemoryIO } from '../io/in-memory.ts';
 
 test('healthCheck returns status ok', async () => {
   const io = createInMemoryIO();
-  const response = await healthCheck(null, io);
+  const request = new Request('http://localhost/health');
+  
+  const response = await healthCheck(request, io);
+  
   assert.deepEqual(response, { status: 'ok' });
 });
