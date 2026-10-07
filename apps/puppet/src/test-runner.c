@@ -8,9 +8,13 @@
 #define PUPPET_JSON_IMPLEMENTATION
 #include "json/json.h"
 
+#define PUPPET_PROTOCOL_IMPLEMENTATION
+#include "protocol/protocol.h"
+
 #include "testing/testing.h"
 
 #include "json/json.test.c"
+#include "protocol/protocol.test.c"
 
 #include <stdio.h>
 
@@ -19,6 +23,7 @@
 
 static const TestSuite *const TEST_SUITES[] = {
   &JsonTestSuite,
+  &ProtocolTestSuite,
 };
 
 int main(void) {
