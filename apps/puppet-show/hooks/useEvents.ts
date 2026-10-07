@@ -2,7 +2,11 @@
 
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { api } from "@/lib/api/client";
+import { DEFAULT_ORG_ID } from "@/lib/api/session";
+import { ToEventItem } from "@/lib/api/mappers";
+import { useAuth } from "@/hooks/useAuth";
 
 export type EventItem = {
   id: string;
@@ -24,91 +28,85 @@ type UseEventsOptions = {
 };
 
 export function useEvents({ refreshInterval }: UseEventsOptions = {}) {
+  const { user, loading: authLoading } = useAuth();
+  const orgId = user?.organizationId ?? DEFAULT_ORG_ID;
+
   const [events, setEvents] = useState<EventItem[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState("");
   const [pendingId, setPendingId] = useState<string | null>(null);
 
-  const loadEvents = useCallback(async (signal?: AbortSignal) => {
+  /* THE FEED DOESN'T SAY WHAT THE VIEWER LIKED, SO WE KEEP IT ACROSS REFRESHES */
+  const likedRef = useRef(new Set<string>());
+
+  const loadEvents = useCallback(async () => {
     try {
-      const response = await fetch("/api/events", { credentials: "include", signal });
-      const data = await response.json();
+      const feed = await api.organizations.feed(orgId);
 
-      if (!response.ok) {
-        setError(data.error || "Erro ao carregar eventos.");
-        return;
-      };
-
-      setEvents(data.events ?? []);
+      setEvents(feed.map((event) => ({ ...ToEventItem(event), liked: likedRef.current.has(event.id) })));
       setError("");
     }
 
     catch {
-      if (!signal?.aborted)
-        setError("Erro ao carregar eventos.");
+      setError("Erro ao carregar eventos.");
     }
 
     finally {
-      if (!signal?.aborted)
-        setLoaded(true);
+      setLoaded(true);
     };
-  }, []);
+  }, [orgId]);
 
   useEffect(() => {
-    const controller = new AbortController();
-    loadEvents(controller.signal);
+    /* WAITS FOR THE SESSION SO WE ASK FOR THE RIGHT ORGANIZATION'S FEED */
+    if (authLoading)
+      return;
+
+    loadEvents();
 
     if (!refreshInterval)
-      return () => controller.abort();
+      return;
 
-    const timer = setInterval(() => loadEvents(), refreshInterval);
+    const timer = setInterval(loadEvents, refreshInterval);
+    return () => clearInterval(timer);
+  }, [authLoading, loadEvents, refreshInterval]);
 
-    return () => {
-      controller.abort();
-      clearInterval(timer);
+  const toggleLike = useCallback(async (eventId: string) => {
+    if (!user) {
+      setError("Entre na sua conta para curtir eventos.");
+      return;
     };
-  }, [loadEvents, refreshInterval]);
 
-  /* LIKE AND SUBSCRIBE SHARE THE SAME FLOW: THE SERVER ANSWERS WITH THE NEW TOTALS */
-  const toggle = useCallback(async (eventId: string, action: "like" | "subscribe") => {
     setPendingId(eventId);
     setError("");
 
     try {
-      const response = await fetch(`/api/events/${eventId}/${action}`, {
-        method: "POST",
-        credentials: "include",
-      });
+      const { status } = await api.events.vote(orgId, eventId);
+      const liked = status === "voted";
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        setError(data.error || "Não foi possível concluir a ação.");
-        return;
-      };
+      if (liked) likedRef.current.add(eventId);
+      else likedRef.current.delete(eventId);
 
       setEvents((current) =>
         current.map((event) =>
           event.id === eventId
-            ? {
-                ...event,
-                likes: data.likes,
-                subscriptions: data.subscriptions,
-                liked: action === "like" ? data.liked : event.liked,
-                subscribed: action === "subscribe" ? data.subscribed : event.subscribed,
-              }
+            ? { ...event, liked, likes: Math.max(0, event.likes + (liked ? 1 : -1)) }
             : event
         )
       );
     }
 
     catch {
-      setError("Erro de conexão com o servidor.");
+      setError("Não foi possível concluir a ação.");
     }
 
     finally {
       setPendingId(null);
     };
+  }, [user, orgId]);
+
+  /* THE API HAS NO SUBSCRIPTIONS YET */
+  const toggleSubscription = useCallback(() => {
+    setError("Inscrições ainda não estão disponíveis.");
   }, []);
 
   return {
@@ -116,8 +114,8 @@ export function useEvents({ refreshInterval }: UseEventsOptions = {}) {
     loaded,
     error,
     pendingId,
-    toggleLike: (id: string) => toggle(id, "like"),
-    toggleSubscription: (id: string) => toggle(id, "subscribe"),
-    reload: () => loadEvents(),
+    toggleLike,
+    toggleSubscription,
+    reload: loadEvents,
   };
 };

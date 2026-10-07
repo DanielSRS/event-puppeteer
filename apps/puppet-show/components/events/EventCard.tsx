@@ -29,7 +29,7 @@ export function EventCard({
       <div className="between gap-3">
         <div className="column min-w-0">
           <span className="text-xs opacity-60">
-            #{position} • {event.authorName}
+            #{position}{event.authorName && ` • ${event.authorName}`}
           </span>
 
           <h3 className={`${showcase ? "text-xl" : "subtitle"} truncate`} title={event.title}>

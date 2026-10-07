@@ -1,14 +1,16 @@
 /* components/navbar/Navbar.tsx */
 
-"use client";
-
 import Link from "next/link";
-import { MdAdd, MdLogout } from "react-icons/md";
-import { useAuth } from "@/hooks/useAuth";
+import { MdAdd, MdDashboard, MdLogout } from "react-icons/md";
+import type { SessionUser } from "@/hooks/useAuth";
 
-export function Navbar() {
-  const { user, loading, logout } = useAuth();
+export type NavbarProps = {
+  user: SessionUser | null;
+  loading: boolean;
+  onLogout: () => void;
+};
 
+export function Navbar({ user, loading, onLogout }: NavbarProps) {
   return (
     <header className="sticky top-0 z-50 w-full border-b border-muted bg-background/90 backdrop-blur">
       <nav className="between gap-3 max-w-6xl mx-auto px-4 h-14">
@@ -18,12 +20,17 @@ export function Navbar() {
 
         {loading ? null : user ? (
           <div className="row gap-2">
+            <Link href="/dashboard/events" className="button clean" title="Painel">
+              <MdDashboard className="icon" />
+              <span className="hidden sm:inline">Painel</span>
+            </Link>
+
             <Link href="/eventos/novo" className="button main">
               <MdAdd className="icon" />
               <span className="hidden sm:inline">Publicar</span>
             </Link>
 
-            <button type="button" onClick={logout} className="button clean" title="Sair">
+            <button type="button" onClick={onLogout} className="button clean" title="Sair">
               <MdLogout className="icon" />
               <span className="hidden sm:inline">Sair</span>
             </button>

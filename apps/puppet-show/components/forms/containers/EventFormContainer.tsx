@@ -6,36 +6,34 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { EventForm } from "../EventForm";
 import type { EventFormData } from "@/utils/validation/EventValidation";
+import { useAuth } from "@/hooks/useAuth";
+import { api } from "@/lib/api/client";
+import { ToCreateEventInput } from "@/lib/api/mappers";
 
 export function EventFormContainer() {
   const router = useRouter();
+  const { user } = useAuth();
 
   const [loading, setLoading] = useState(false);
   const [generalError, setGeneralError] = useState("");
 
   async function handleSubmit(data: EventFormData) {
     setGeneralError("");
+
+    if (!user) {
+      router.push("/entrar?redirect=/eventos/novo");
+      return;
+    };
+
     setLoading(true);
 
     try {
-      const response = await fetch("/api/events", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify(data),
-      });
-
-      const responseData = await response.json();
-
-      if (!response.ok) {
-        setGeneralError(responseData.error || "Não foi possível publicar o evento.");
-        return;
-      };
+      await api.events.create(user.organizationId, ToCreateEventInput(data));
 
       router.push("/");
       router.refresh();
     } catch {
-      setGeneralError("Erro de conexão com o servidor.");
+      setGeneralError("Não foi possível publicar o evento.");
     } finally {
       setLoading(false);
     };

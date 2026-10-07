@@ -4,11 +4,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { api } from "@/lib/api/client";
+import { GetToken, SetToken } from "@/lib/api/session";
+import type { User } from "@/lib/api/types";
 
-export type SessionUser = {
-  id: string;
-  name: string;
-};
+export type SessionUser = User;
 
 /* TELLS EVERY COMPONENT USING THIS HOOK THAT THE SESSION CHANGED */
 const AUTH_EVENT = "auth-change";
@@ -17,46 +17,53 @@ export function NotifyAuthChange() {
   window.dispatchEvent(new Event(AUTH_EVENT));
 };
 
+/* STORES THE TOKEN RETURNED BY LOGIN/REGISTER AND WAKES UP EVERY useAuth */
+export function StartSession(token: string) {
+  SetToken(token);
+  NotifyAuthChange();
+};
+
 export function useAuth() {
   const router = useRouter();
   const [user, setUser] = useState<SessionUser | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const loadSession = useCallback(async (signal?: AbortSignal) => {
-    try {
-      const response = await fetch("/api/users/me", { credentials: "include", signal });
-      const data = await response.json();
+  const loadSession = useCallback(async () => {
+    /* NO TOKEN MEANS NO SESSION, SO WE DON'T EVEN ASK THE SERVER */
+    if (!GetToken()) {
+      setUser(null);
+      setLoading(false);
+      return;
+    };
 
-      setUser(response.ok ? data.user : null);
+    try {
+      setUser(await api.auth.me());
     }
 
     catch {
-      if (!signal?.aborted)
-        setUser(null);
+      setUser(null);
     }
 
     finally {
-      if (!signal?.aborted)
-        setLoading(false);
+      setLoading(false);
     };
   }, []);
 
   useEffect(() => {
-    const controller = new AbortController();
-    loadSession(controller.signal);
+    let active = true;
+    const load = () => { if (active) loadSession(); };
 
-    const onAuthChange = () => loadSession();
-    window.addEventListener(AUTH_EVENT, onAuthChange);
+    load();
+    window.addEventListener(AUTH_EVENT, load);
 
     return () => {
-      controller.abort();
-      window.removeEventListener(AUTH_EVENT, onAuthChange);
+      active = false;
+      window.removeEventListener(AUTH_EVENT, load);
     };
   }, [loadSession]);
 
-  const logout = useCallback(async () => {
-    await fetch("/api/users/logout", { method: "POST", credentials: "include" });
-
+  const logout = useCallback(() => {
+    SetToken(null);
     setUser(null);
     NotifyAuthChange();
 
