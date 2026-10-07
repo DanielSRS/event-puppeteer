@@ -1,16 +1,16 @@
 import React from 'react';
-import { MdMonitor, MdPersonalVideo, MdSettings, MdCheckCircle, MdAccessTime } from 'react-icons/md';
+import { MdMonitor, MdPersonalVideo, MdSettings, MdAccessTime } from 'react-icons/md';
 import Link from 'next/link';
 
 export type DeviceStatus = 'pending' | 'active' | 'offline';
 
 export interface Device {
   id: string;
-  macAddress: string;
+  identifier: string;
   name?: string;
   location?: string;
   status: DeviceStatus;
-  lastSeen: string;
+  connectedAt: string;
 }
 
 interface DeviceListProps {
@@ -46,8 +46,8 @@ export function DeviceList({ devices, onApproveDevice }: DeviceListProps) {
             {pendingDevices.map(device => (
               <div key={device.id} className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg flex justify-between items-center">
                 <div>
-                  <div className="font-mono text-sm text-gray-800">{device.macAddress}</div>
-                  <div className="text-xs text-gray-500 mt-1">Visto: {new Date(device.lastSeen).toLocaleString()}</div>
+                  <div className="font-mono text-sm text-gray-800">{device.identifier}</div>
+                  <div className="text-xs text-gray-500 mt-1">Conectado em: {new Date(device.connectedAt).toLocaleString()}</div>
                 </div>
                 <button
                   onClick={() => handleApprove(device.id)}
@@ -71,9 +71,9 @@ export function DeviceList({ devices, onApproveDevice }: DeviceListProps) {
             <thead className="bg-gray-50">
               <tr>
                 <th className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900">Nome / Local</th>
-                <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">MAC Address</th>
+                <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Identificador</th>
                 <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Status</th>
-                <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Última Sincronização</th>
+                <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Conectado em</th>
                 <th className="relative py-3.5 pl-3 pr-4 sm:pr-6"><span className="sr-only">Ações</span></th>
               </tr>
             </thead>
@@ -88,7 +88,7 @@ export function DeviceList({ devices, onApproveDevice }: DeviceListProps) {
                     <div className="text-gray-500 text-xs ml-6 mt-0.5">{device.location}</div>
                   </td>
                   <td className="whitespace-nowrap px-3 py-4 text-sm font-mono text-gray-500">
-                    {device.macAddress}
+                    {device.identifier}
                   </td>
                   <td className="whitespace-nowrap px-3 py-4 text-sm">
                     {device.status === 'active' ? (
@@ -102,7 +102,7 @@ export function DeviceList({ devices, onApproveDevice }: DeviceListProps) {
                     )}
                   </td>
                   <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
-                    {new Date(device.lastSeen).toLocaleString()}
+                    {new Date(device.connectedAt).toLocaleString()}
                   </td>
                   <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
                     <Link

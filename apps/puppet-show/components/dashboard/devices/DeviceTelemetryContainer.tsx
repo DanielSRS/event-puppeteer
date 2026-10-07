@@ -1,50 +1,89 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { DeviceTelemetry, DeviceInfo } from './DeviceTelemetry';
+import { DeviceTelemetry, DeviceInfo, DeviceAction } from './DeviceTelemetry';
+import { api, ApiError } from '@/lib/api/client';
+import { useDashboard, SelectOrgNotice } from '../DashboardContext';
 
 interface Props {
   deviceId: string;
 }
 
-export function DeviceTelemetryContainer({ deviceId }: Props) {
-  const [device, setDevice] = useState<DeviceInfo | null>(null);
+const REFRESH_INTERVAL = 10000;
 
-  const fetchTelemetry = () => {
-    // Simulate API fetch based on deviceId
-    setDevice({
-      id: deviceId,
-      name: 'Kiosk ' + deviceId.slice(0, 4),
-      location: 'Prédio Anexo',
-      macAddress: 'DC:A6:32:00:11:22',
-      telemetry: {
-        cpuUsage: Math.floor(Math.random() * 100),
-        memoryUsage: Math.floor(Math.random() * 2000),
-        temperature: Math.floor(Math.random() * 30) + 40,
-        lastPing: new Date().toISOString(),
-      }
-    });
-  };
+export function DeviceTelemetryContainer({ deviceId }: Props) {
+  const { orgId } = useDashboard();
+  const [device, setDevice] = useState<DeviceInfo | null>(null);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [sendingCommand, setSendingCommand] = useState<DeviceAction | null>(null);
+  // Bumping this asks the effect below to fetch everything again
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
-    fetchTelemetry();
-    const interval = setInterval(fetchTelemetry, 10000); // refresh every 10s
-    return () => clearInterval(interval);
-  }, [deviceId]);
+    if (!orgId) return;
 
-  const handleReboot = () => {
-    if (confirm('Tem certeza que deseja reiniciar o dispositivo?')) {
-      alert('Comando de reinicialização enviado.');
+    const load = () => {
+      Promise.all([
+        api.devices.get(orgId, deviceId),
+        api.devices.status(orgId, deviceId),
+        api.devices.telemetry(orgId, deviceId),
+        api.devices.commands(orgId, deviceId),
+        api.devices.logs(orgId, deviceId),
+      ])
+        .then(([info, status, telemetry, commands, logs]) => {
+          setDevice({
+            id: info.id,
+            name: info.name,
+            location: info.location,
+            isOnline: status.isOnline,
+            lastHeartbeat: status.latestHeartbeat?.timestamp,
+            heartbeatErrors: status.latestHeartbeat?.errors,
+            telemetry,
+            commands: [...commands].sort((a, b) => b.issuedAt.localeCompare(a.issuedAt)),
+            logs: [...logs].sort((a, b) => b.timestamp.localeCompare(a.timestamp)),
+          });
+          setError('');
+        })
+        .catch(err => setError(err instanceof ApiError && err.status === 404
+          ? 'Dispositivo não encontrado nesta organização.'
+          : 'Erro ao carregar o dispositivo.'));
+    };
+
+    load();
+    const interval = setInterval(load, REFRESH_INTERVAL);
+    return () => clearInterval(interval);
+  }, [orgId, deviceId, reloadKey]);
+
+  const handleCommand = async (type: DeviceAction) => {
+    if (!orgId) return;
+    setSendingCommand(type);
+    setNotice('');
+    try {
+      await api.devices.sendCommand(orgId, deviceId, { type });
+      setNotice('Comando enviado. O dispositivo vai executá-lo na próxima sincronização.');
+      setReloadKey(k => k + 1);
+    } catch {
+      setError('Não foi possível enviar o comando.');
+    } finally {
+      setSendingCommand(null);
     }
   };
 
-  if (!device) return <div className="p-8 text-center text-gray-500 animate-pulse">Conectando ao dispositivo...</div>;
+  if (!orgId) return <SelectOrgNotice />;
+  if (!device && error) return <div className="p-8 text-center text-gray-500">{error}</div>;
+  if (!device) return <div className="p-8 text-center text-gray-500 animate-pulse">Carregando dispositivo...</div>;
 
   return (
-    <DeviceTelemetry 
-      device={device}
-      onReboot={handleReboot}
-      onRefresh={fetchTelemetry}
-    />
+    <>
+      {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
+      {notice && <p role="status" className="mb-4 text-sm text-green-700">{notice}</p>}
+      <DeviceTelemetry
+        device={device}
+        sendingCommand={sendingCommand}
+        onCommand={handleCommand}
+        onRefresh={() => setReloadKey(k => k + 1)}
+      />
+    </>
   );
 }

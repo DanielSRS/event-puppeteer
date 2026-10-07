@@ -5,6 +5,7 @@
 import type {
   User, UserRole, Event, CreateEventInput, FeedEvent,
   Tag, LinkLabel, Report, AuditEntry, Organization, OrganizationInput, Device,
+  DeviceStatus, DeviceTelemetry, DeviceLog, Command, CreateCommandInput,
 } from './types';
 import { GetToken } from './session';
 
@@ -132,10 +133,29 @@ export const api = {
   // ── Devices ──────────────────────────────────────────────────────────────────
 
   devices: {
+    // Superadmin: devices that connected without an organization
     listPending: () => apiFetch<Device[]>('/devices/pending'),
     approve: (deviceId: string, body: { name: string; location: string; organizationId?: string }) =>
       apiFetch<Device>(`/devices/${deviceId}/approve`, { method: 'POST', body: JSON.stringify(body) }),
     reject: (deviceId: string) =>
       apiFetch<Device>(`/devices/${deviceId}/reject`, { method: 'POST' }),
+
+    // Org Admin
+    listActive: (orgId: string) => apiFetch<Device[]>(`/organizations/${orgId}/devices`),
+    listOrgPending: (orgId: string) => apiFetch<Device[]>(`/organizations/${orgId}/devices/pending`),
+    get: (orgId: string, deviceId: string) =>
+      apiFetch<Device>(`/organizations/${orgId}/devices/${deviceId}`),
+    status: (orgId: string, deviceId: string) =>
+      apiFetch<DeviceStatus>(`/organizations/${orgId}/devices/${deviceId}/status`),
+    telemetry: (orgId: string, deviceId: string) =>
+      apiFetch<DeviceTelemetry | null>(`/organizations/${orgId}/devices/${deviceId}/telemetry`),
+    logs: (orgId: string, deviceId: string) =>
+      apiFetch<DeviceLog[]>(`/organizations/${orgId}/devices/${deviceId}/logs`),
+    commands: (orgId: string, deviceId: string) =>
+      apiFetch<Command[]>(`/organizations/${orgId}/devices/${deviceId}/commands`),
+    sendCommand: (orgId: string, deviceId: string, body: CreateCommandInput) =>
+      apiFetch<Command>(`/organizations/${orgId}/devices/${deviceId}/commands`, {
+        method: 'POST', body: JSON.stringify(body),
+      }),
   },
 };

@@ -146,3 +146,58 @@ export interface Device {
   approvedAt?: string;
   approvedBy?: string;
 }
+
+export interface Heartbeat {
+  deviceId: string;
+  timestamp: string;
+  status: string;
+  errors?: string[];
+}
+
+export interface DeviceStatus {
+  isOnline: boolean;
+  latestHeartbeat: Heartbeat | null;
+}
+
+// Sent by the Puppet client; memory/disk in bytes, uptime in seconds
+export interface DeviceTelemetry {
+  cpuTemp?: number;
+  memoryUsage?: number;
+  diskTotal?: number;
+  diskUsage?: number;
+  osVersion?: string;
+  kernelVersion?: string;
+  puppetVersion?: string;
+  puppetMemoryUsage?: number;
+  uptime?: number;
+  networkInfo?: string;
+  screenResolution?: string;
+  hdmiConnected?: boolean;
+  screenOn?: boolean;
+}
+
+export interface DeviceLog {
+  id: string;
+  deviceId: string;
+  level: string;
+  message: string;
+  timestamp: string;
+}
+
+export type CommandType = 'restart' | 'shutdown' | 'update' | 'open_ssh' | 'custom' | 'request_telemetry';
+export type CommandStatus = 'pending' | 'sent' | 'acknowledged' | 'completed' | 'failed';
+
+export interface Command {
+  id: string;
+  deviceId: string;
+  type: CommandType;
+  payload?: Record<string, unknown>;
+  status: CommandStatus;
+  issuedBy: string;
+  issuedAt: string;
+  completedAt?: string;
+}
+
+export type CreateCommandInput =
+  | { type: 'update'; payload: { url: string; sha256: string; version?: string } }
+  | { type: Exclude<CommandType, 'update'>; payload?: Record<string, unknown> };
