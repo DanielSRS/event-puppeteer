@@ -8,6 +8,7 @@ import { Drawer } from '@/components/ui/Drawer';
 import { useAuth } from '@/hooks/useAuth';
 import { api, ApiError } from '@/lib/api/client';
 import { DEFAULT_ORG_ID } from '@/lib/api/session';
+import { UserOrgId } from '@/lib/api/types';
 
 interface Props {
   eventId: string;
@@ -16,7 +17,7 @@ interface Props {
 export function EventDetailsContainer({ eventId }: Props) {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
-  const orgId = user?.organizationId ?? DEFAULT_ORG_ID;
+  const orgId = UserOrgId(user) ?? DEFAULT_ORG_ID;
 
   const [event, setEvent] = useState<EventDetailData | null>(null);
   const [error, setError] = useState('');

@@ -3,15 +3,23 @@
 
 export type UserRole = 'Superadmin' | 'Admin' | 'Moderator' | 'Member';
 
-export interface User {
+interface BaseUser {
   id: string;
   firstName: string;
   lastName: string;
   normalizedName: string;
   email: string;
-  organizationId: string;
-  role: UserRole;
   isShadowBanned: boolean;
+}
+
+// A Superadmin lives above organizations and has no organizationId;
+// everyone else always belongs to exactly one.
+export type SuperadminUser = BaseUser & { role: 'Superadmin' };
+export type OrgUser = BaseUser & { role: Exclude<UserRole, 'Superadmin'>; organizationId: string };
+export type User = SuperadminUser | OrgUser;
+
+export function UserOrgId(user: User | null | undefined): string | null {
+  return user && user.role !== 'Superadmin' ? user.organizationId : null;
 }
 
 export interface DayEntry {
@@ -120,9 +128,11 @@ export interface Organization {
   latitude?: number;
   longitude?: number;
   shadowBanThreshold: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
-export type OrganizationInput = Omit<Organization, 'id' | 'shadowBanThreshold'> & {
+export type OrganizationInput = Omit<Organization, 'id' | 'shadowBanThreshold' | 'createdAt' | 'updatedAt'> & {
   shadowBanThreshold?: number;
 };
 

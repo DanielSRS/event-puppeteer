@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { api } from "@/lib/api/client";
-import type { Organization as ApiOrganization, UserRole } from "@/lib/api/types";
+import { UserOrgId, type Organization as ApiOrganization, type UserRole } from "@/lib/api/types";
 import { DashboardLayout } from "./DashboardLayout";
 import { DashboardProvider } from "./DashboardContext";
 import type { Organization } from "./ContextSwitcher";
@@ -31,7 +31,7 @@ export function DashboardContainer({ children }: { children: React.ReactNode }) 
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   /* undefined = NOTHING PICKED YET, SO THE USER'S OWN ORGANIZATION; null = GLOBAL CONTEXT */
   const [selectedOrgId, setSelectedOrgId] = useState<string | null | undefined>(undefined);
-  const currentOrgId = selectedOrgId === undefined ? user?.organizationId ?? null : selectedOrgId;
+  const currentOrgId = selectedOrgId === undefined ? UserOrgId(user) : selectedOrgId;
 
   /* THE DASHBOARD IS PRIVATE: NO SESSION GOES TO LOGIN AND COMES BACK HERE */
   useEffect(() => {
@@ -47,6 +47,7 @@ export function DashboardContainer({ children }: { children: React.ReactNode }) 
     const load = user.role === "Superadmin"
       ? api.organizations.list()
       : api.organizations.get(user.organizationId).then((org) => [org]);
+
 
     load
       .then((orgs) => setOrganizations(orgs.map(ToSwitcherOrg)))

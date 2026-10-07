@@ -9,6 +9,7 @@ import type { EventFormData } from "@/utils/validation/EventValidation";
 import { useAuth } from "@/hooks/useAuth";
 import { api } from "@/lib/api/client";
 import { ToCreateEventInput } from "@/lib/api/mappers";
+import { UserOrgId } from "@/lib/api/types";
 
 export function EventFormContainer() {
   const router = useRouter();
@@ -25,10 +26,18 @@ export function EventFormContainer() {
       return;
     };
 
+    /* EVENTS BELONG TO AN ORGANIZATION; A SUPERADMIN HAS NONE OF THEIR OWN */
+    const orgId = UserOrgId(user);
+
+    if (!orgId) {
+      setGeneralError("Superadmins publicam eventos pelo painel, escolhendo a organização.");
+      return;
+    };
+
     setLoading(true);
 
     try {
-      await api.events.create(user.organizationId, ToCreateEventInput(data));
+      await api.events.create(orgId, ToCreateEventInput(data));
 
       router.push("/");
       router.refresh();

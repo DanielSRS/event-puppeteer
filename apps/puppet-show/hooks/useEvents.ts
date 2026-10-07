@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api/client";
 import { DEFAULT_ORG_ID } from "@/lib/api/session";
 import { ToEventItem } from "@/lib/api/mappers";
+import { UserOrgId } from "@/lib/api/types";
 import { useAuth } from "@/hooks/useAuth";
 
 export type EventItem = {
@@ -29,7 +30,7 @@ type UseEventsOptions = {
 
 export function useEvents({ refreshInterval }: UseEventsOptions = {}) {
   const { user, loading: authLoading } = useAuth();
-  const orgId = user?.organizationId ?? DEFAULT_ORG_ID;
+  const orgId = UserOrgId(user) ?? DEFAULT_ORG_ID;
 
   const [events, setEvents] = useState<EventItem[]>([]);
   const [loaded, setLoaded] = useState(false);

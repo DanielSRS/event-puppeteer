@@ -32,7 +32,7 @@ export const LoggedIn: Story = {
       normalizedName: "maria souza",
       email: "maria@uefs.br",
       organizationId: "org-1",
-      role: "Member",
+      role: "Member" as const,
       isShadowBanned: false,
     },
     onLogout: fn(),

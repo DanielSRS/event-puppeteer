@@ -7,11 +7,11 @@ import { EventWizard } from './EventWizard';
 import { api } from '@/lib/api/client';
 import { ToCreateEventInput, ToEventItem } from '@/lib/api/mappers';
 import type { EventFormData } from '@/utils/validation/EventValidation';
-import { useDashboard } from '../DashboardContext';
+import { useDashboard, SelectOrgNotice } from '../DashboardContext';
 
 export function DashboardEventsContainer() {
-  const { user } = useDashboard();
-  const orgId = user.organizationId;
+  // The selected organization: a member's own, or the one a Superadmin picked
+  const { user, orgId } = useDashboard();
   const authorName = `${user.firstName} ${user.lastName}`.trim();
 
   const [events, setEvents] = useState<UserEventItem[]>([]);
@@ -26,6 +26,7 @@ export function DashboardEventsContainer() {
   const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
+    if (!orgId) return;
     const today = new Date().toISOString().slice(0, 10);
     api.events.list(orgId)
       .then(data => {
@@ -46,6 +47,7 @@ export function DashboardEventsContainer() {
   }, [orgId, user.id, authorName, reloadKey]);
 
   const handleDelete = (id: string) => {
+    if (!orgId) return;
     if (!confirm('Tem certeza que deseja excluir este evento?')) return;
     startTransition(async () => {
       try {
@@ -58,6 +60,7 @@ export function DashboardEventsContainer() {
   };
 
   const handleSaveEvent = async (data: EventFormData) => {
+    if (!orgId) return;
     setSaving(true);
     setSaveError('');
     try {
@@ -70,6 +73,8 @@ export function DashboardEventsContainer() {
       setSaving(false);
     }
   };
+
+  if (!orgId) return <SelectOrgNotice />;
 
   return (
     <div className="column gap-6">
