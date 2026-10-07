@@ -3,6 +3,7 @@
 import { z } from 'zod';
 import { createRealIO } from '../io/index.ts';
 import { seedSuperadminHandler } from '../handlers/seed.ts';
+import { ipv6UnreachableHint } from './connection-hint.ts';
 
 const parsed = z.object({
   SUPERADMIN_EMAIL: z.string().email('SUPERADMIN_EMAIL precisa ser um email válido'),
@@ -17,13 +18,20 @@ if (!parsed.success) {
 }
 
 const { SUPERADMIN_EMAIL, SUPERADMIN_PASSWORD, SUPERADMIN_FIRST_NAME, SUPERADMIN_LAST_NAME } = parsed.data;
-const { status, user } = await seedSuperadminHandler({
-  email: SUPERADMIN_EMAIL,
-  password: SUPERADMIN_PASSWORD,
-  firstName: SUPERADMIN_FIRST_NAME,
-  lastName: SUPERADMIN_LAST_NAME
-}, createRealIO());
+try {
+  const { status, user } = await seedSuperadminHandler({
+    email: SUPERADMIN_EMAIL,
+    password: SUPERADMIN_PASSWORD,
+    firstName: SUPERADMIN_FIRST_NAME,
+    lastName: SUPERADMIN_LAST_NAME
+  }, createRealIO());
 
-const messages = { created: 'criado', promoted: 'promovido a Superadmin', unchanged: 'já era Superadmin' };
-console.log(`✅ ${user.email}: ${messages[status]}`);
-process.exit(0);
+  const messages = { created: 'criado', promoted: 'promovido a Superadmin', unchanged: 'já era Superadmin' };
+  console.log(`✅ ${user.email}: ${messages[status]}`);
+  process.exit(0);
+} catch (error) {
+  const hint = ipv6UnreachableHint(error, 'DATABASE_URL', 'Transaction');
+  if (hint) console.error(hint);
+  else console.error('❌ Falha no seed:', error);
+  process.exit(1);
+}
