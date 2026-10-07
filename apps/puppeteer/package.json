@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@elysiajs/node": "^1.4.5",
+    "better-auth": "^1.7.7",
     "elysia": "^1.4.30"
   }
 }
