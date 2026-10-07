@@ -2,8 +2,9 @@
  * @file command-executor.h
  * @brief Executes Commands that act on the Device's operating system.
  *
- * Only Commands that touch the host live here; `request_telemetry` is
- * answered by the agent itself because it is a network exchange.
+ * Only Commands that touch the host live here; `request_telemetry` and
+ * `update` are handled by the agent itself because they need the network
+ * (see `self-update.h` for the latter).
  *
  * | Command    | Action                                   |
  * |------------|------------------------------------------|

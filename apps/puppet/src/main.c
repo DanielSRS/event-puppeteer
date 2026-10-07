@@ -10,6 +10,9 @@
 #define PUPPET_JSON_IMPLEMENTATION
 #include "json/json.h"
 
+#define PUPPET_SHA256_IMPLEMENTATION
+#include "crypto/sha256.h"
+
 #define PUPPET_PROTOCOL_IMPLEMENTATION
 #include "protocol/protocol.h"
 
@@ -24,6 +27,9 @@
 
 #define PUPPET_COMMAND_EXECUTOR_IMPLEMENTATION
 #include "commands/command-executor.h"
+
+#define PUPPET_SELF_UPDATE_IMPLEMENTATION
+#include "update/self-update.h"
 
 #define PUPPET_AGENT_SCHEDULE_IMPLEMENTATION
 #include "agent/agent-schedule.h"
@@ -40,6 +46,7 @@ typedef enum {
   PUPPET_EXIT_HTTP_INITIALIZATION     = 2,
   PUPPET_EXIT_HTTP_CLIENT_ALLOCATION  = 3,
   PUPPET_EXIT_STORAGE_INITIALIZATION  = 4,
+  PUPPET_EXIT_RESTART_FAILED          = 5,
 } PuppetExitStatus;
 
 static const char *configErrorDescription(const ConfigResultCode code) {
@@ -66,7 +73,9 @@ static const char *configErrorDescription(const ConfigResultCode code) {
   return "unknown configuration error";
 }
 
-int main(void) {
+int main(const int argumentCount, char *argumentValues[]) {
+  (void)argumentCount; // argv is NULL-terminated; only re-exec needs it
+
   /** Block termination signals before anything else (see lifecycle.h). */
   const Lifecycle lifecycle = LifecycleI.create();
 
@@ -116,6 +125,18 @@ int main(void) {
     return PUPPET_EXIT_HTTP_CLIENT_ALLOCATION;
   }
 
+  /** Resolved now: once an update replaces the binary, the kernel no
+   *  longer reports its original path. */
+  SelfUpdatePaths            updatePaths;
+  const SelfUpdateResultCode pathsCode = SelfUpdateI.resolvePaths(&updatePaths);
+  if (pathsCode != SELF_UPDATE_RESULT_OK) {
+    fprintf(
+      stderr,
+      "[warning] updates disabled: executable path unknown (%d)\n",
+      pathsCode
+    );
+  }
+
   const AgentEnvironment environment = {
     .config          = &config,
     .httpClient      = httpClient,
@@ -123,11 +144,19 @@ int main(void) {
     .lifecycle       = &lifecycle,
     .puppetVersion   = PUPPET_VERSION,
     .puppetStartTime = puppetStartTime,
+    .updatePaths =
+      pathsCode == SELF_UPDATE_RESULT_OK ? &updatePaths : NULL,
   };
-  AgentI.run(&environment);
+  const AgentExitReason exitReason = AgentI.run(&environment);
 
   HttpClientI.destroy(httpClient);
   HttpClientI.cleanup();
   MmkvI.shutdown();
+
+  if (exitReason == AGENT_EXIT_RESTART_REQUESTED) {
+    SelfUpdateI.restart(&updatePaths, argumentValues);
+    fprintf(stderr, "[error] restart into the updated binary failed\n");
+    return PUPPET_EXIT_RESTART_FAILED;
+  }
   return PUPPET_EXIT_SUCCESS;
 }

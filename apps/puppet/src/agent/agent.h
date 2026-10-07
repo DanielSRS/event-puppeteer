@@ -17,6 +17,7 @@
  * - `GET  /devices/:id/commands/pending` — fetch Commands to run.
  * - `POST /devices/:id/commands/:cid/ack` then `.../complete`.
  * - `POST /devices/:id/telemetry` — answer `request_telemetry`.
+ * - the `update` payload's URL — download a new binary (see `self-update.h`).
  * - `GET  /organizations/:orgId/feed` — Events to display.
  *
  * Authenticated calls send `Authorization: Bearer <token>`. A 401 means the
@@ -35,6 +36,7 @@
 #include "http/http-client.h"
 #include "lifecycle/lifecycle.h"
 #include "mmkv/mmkv.h"
+#include "update/self-update.h"
 
 /** Everything the agent needs from the outside world. Borrowed, not owned. */
 typedef struct {
@@ -48,14 +50,25 @@ typedef struct {
 
   /** ISO-8601 UTC time at which the process started. */
   const char *puppetStartTime;
+
+  /** Where updates are installed, or NULL when unknown (updates then fail). */
+  const SelfUpdatePaths *updatePaths;
 } AgentEnvironment;
+
+typedef enum {
+  /** A termination signal was received. */
+  AGENT_EXIT_TERMINATION_REQUESTED = 1,
+  /** An update was installed: the caller must restart into it. */
+  AGENT_EXIT_RESTART_REQUESTED,
+} AgentExitReason;
 
 struct AgentType {
   /**
-   * Run until a termination signal is received. Never returns early on
-   * network or server errors: those are retried according to the schedule.
+   * Run until a termination signal is received or an update is installed.
+   * Never returns early on network or server errors: those are retried
+   * according to the schedule.
    */
-  void (*const run)(const AgentEnvironment *environment);
+  AgentExitReason (*const run)(const AgentEnvironment *environment);
 };
 
 extern const struct AgentType AgentI;

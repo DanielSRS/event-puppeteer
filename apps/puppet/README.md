@@ -19,9 +19,24 @@ Connection failures back off exponentially (5 s up to 5 min, with jitter). `SIGT
 | `request_telemetry` | Sends a detailed Telemetry report                |
 | `restart`           | `systemctl reboot --no-block`                    |
 | `shutdown`          | `systemctl poweroff --no-block`                  |
-| `update`, `open_ssh`, `custom` | Not supported yet: reported as failed |
+| `update`            | Downloads, verifies and installs a new binary, then restarts into it |
+| `open_ssh`, `custom` | Not supported yet: reported as failed           |
 
 `restart` and `shutdown` require the Puppet's user to be allowed to reboot and power off (run as root, or grant it through polkit).
+
+#### `update` payload
+
+```json
+{ "url": "https://example.org/puppet-0.0.2-armhf", "sha256": "<64 hex characters>", "version": "0.0.2" }
+```
+
+- `url`: an absolute `http(s)` URL, or a path on Puppeteer starting with `/`. The Device token is sent only with paths on Puppeteer, never to other hosts. Redirects are followed, and downloads are capped at 64 MiB.
+- `sha256`: required. Nothing is installed without it.
+- `version`: optional, used only in logs.
+
+The binary is downloaded next to the executable (`<executable>.update`). It is installed only if its SHA-256 matches **and** it is an ELF binary for the same architecture as the running one, so an x86 build can never brick an ARM kiosk. Installation is an atomic `rename` with both the file and the directory flushed to disk, so a power cut leaves either the old binary or the new one. The Puppet then reports success and replaces itself with `execv` (same PID and arguments, no service manager needed). Commands left in the same batch are redelivered to the new binary.
+
+The Puppet's user must be able to write the executable's directory.
 
 Displaying events on screen is not implemented yet. The feed is stored under the `feed.events` key for a future display.
 
@@ -75,7 +90,7 @@ Depending on your generator (e.g., MSVC), the executable might be nested inside 
 
 ## Running the Tests
 
-Unit tests cover the pure modules: JSON, the device protocol, configuration and the agent schedule. They need neither a network nor Puppeteer.
+Unit tests cover the pure modules: JSON, the device protocol, configuration, the agent schedule, SHA-256 and update compatibility checks. They need neither a network nor Puppeteer.
 
 ```bash
 cmake --build build --target puppet-tests

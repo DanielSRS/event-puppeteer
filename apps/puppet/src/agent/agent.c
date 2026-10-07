@@ -81,6 +81,9 @@ typedef struct {
 
   /** Events in the last stored feed, to log only when it changes. */
   uint32_t lastFeedEventCount;
+
+  /** Set once an update is installed; the loop then stops. */
+  bool restartRequested;
 } AgentRuntime;
 
 static const char *agentLogLevelName(const AgentLogLevel level) {
@@ -428,9 +431,85 @@ static const char *agentCommandTypeName(const CommandType type) {
   return "unknown";
 }
 
+static bool agentUpdate(AgentRuntime *runtime, const Command *command) {
+  UpdateInstruction        instruction;
+  const ProtocolResultCode payloadCode =
+    ProtocolI.readUpdateInstruction(command->payload, &instruction);
+  if (payloadCode != PROTOCOL_RESULT_OK) {
+    agentLog(
+      runtime, AGENT_LOG_LEVEL_ERROR, "invalid update payload (%d)", payloadCode
+    );
+    return false;
+  }
+  const SelfUpdatePaths *paths = runtime->environment->updatePaths;
+  if (paths == NULL) {
+    agentLog(
+      runtime,
+      AGENT_LOG_LEVEL_ERROR,
+      "cannot update: the executable's location is unknown"
+    );
+    return false;
+  }
+
+  agentLog(
+    runtime,
+    AGENT_LOG_LEVEL_INFO,
+    "downloading update %s from %s",
+    instruction.hasVersion ? instruction.version : "(unversioned)",
+    instruction.location
+  );
+  /** The Device token only ever goes to Puppeteer itself, never to the
+   *  third-party hosts an absolute URL may point to. */
+  const HttpExtraHeaders *headers =
+    instruction.location[0] == '/' ? &runtime->authorization : NULL;
+  const HttpResult result = HttpClientI.download(
+    runtime->environment->httpClient,
+    instruction.location,
+    headers,
+    paths->stagingPath
+  );
+  if (result.code == HTTP_RESULT_FILE_ERROR) {
+    agentLog(
+      runtime,
+      AGENT_LOG_LEVEL_ERROR,
+      "cannot write the update to %s",
+      paths->stagingPath
+    );
+    return false;
+  }
+  if (agentClassify(&result) != AGENT_EXCHANGE_SUCCEEDED) {
+    agentLogFailure(runtime, "downloading the update", &result);
+    SelfUpdateI.discardStaged(paths);
+    return false;
+  }
+
+  const SelfUpdateResultCode installCode =
+    SelfUpdateI.install(paths, instruction.sha256);
+  if (installCode != SELF_UPDATE_RESULT_OK) {
+    agentLog(
+      runtime,
+      AGENT_LOG_LEVEL_ERROR,
+      "update rejected or not installed (%d)",
+      installCode
+    );
+    return false;
+  }
+  agentLog(
+    runtime,
+    AGENT_LOG_LEVEL_INFO,
+    "update installed at %s; restarting",
+    paths->executablePath
+  );
+  runtime->restartRequested = true;
+  return true;
+}
+
 static bool agentExecute(AgentRuntime *runtime, const Command *command) {
   if (command->type == COMMAND_TYPE_REQUEST_TELEMETRY) {
     return agentSendTelemetry(runtime);
+  }
+  if (command->type == COMMAND_TYPE_UPDATE) {
+    return agentUpdate(runtime, command);
   }
   const CommandExecutionResult result = CommandExecutorI.execute(command);
   if (result == COMMAND_EXECUTION_UNSUPPORTED) {
@@ -508,7 +587,10 @@ static void agentPollCommands(AgentRuntime *runtime, const uint64_t now) {
   if (!succeeded) {
     agentLogFailure(runtime, "polling commands", &result);
   } else {
-    for (uint32_t index = 0; index < batch.count; index++) {
+    /** After an update the rest of the batch is left unacknowledged, so
+     *  Puppeteer redelivers it to the new binary. */
+    for (uint32_t index = 0; index < batch.count && !runtime->restartRequested;
+         index++) {
       agentRunCommand(runtime, &batch.commands[index]);
     }
   }
@@ -571,7 +653,7 @@ static AgentTask agentFirstTask(const AgentTaskSet dueTasks) {
   return (AgentTask)(dueTasks & (0U - dueTasks));
 }
 
-static void agentRun(const AgentEnvironment *environment) {
+static AgentExitReason agentRun(const AgentEnvironment *environment) {
   AgentRuntime runtime = {
     .environment         = environment,
     .hasCredentials      = false,
@@ -580,6 +662,7 @@ static void agentRun(const AgentEnvironment *environment) {
     .authorization       = {.count = 0},
     .logs                = {.first = 0, .count = 0},
     .lastFeedEventCount  = 0,
+    .restartRequested    = false,
   };
 
   DeviceCredentials stored;
@@ -605,6 +688,11 @@ static void agentRun(const AgentEnvironment *environment) {
     const AgentTaskSet dueTasks = AgentScheduleI.dueTasks(&runtime.schedule, now);
     if (dueTasks != 0) {
       agentPerform(&runtime, agentFirstTask(dueTasks), now);
+      if (runtime.restartRequested) {
+        /** Best effort: lines that do not make it are lost with the process. */
+        agentFlushLogs(&runtime);
+        return AGENT_EXIT_RESTART_REQUESTED;
+      }
       if (LifecycleI.waitFor(environment->lifecycle, AGENT_NO_WAIT_SECONDS)) {
         break;
       }
@@ -621,6 +709,7 @@ static void agentRun(const AgentEnvironment *environment) {
     }
   }
   fprintf(stderr, "[info] termination requested; shutting down\n");
+  return AGENT_EXIT_TERMINATION_REQUESTED;
 }
 
 const struct AgentType AgentI = {
