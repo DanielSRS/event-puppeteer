@@ -1,9 +1,11 @@
 import type { Tag, LinkLabel } from '../types/tag.ts';
 import type { Event } from '../types/event.ts';
 import type { Vote } from '../types/vote.ts';
+import type { Heartbeat, DeviceLog, DeviceTelemetry } from '../types/telemetry.ts';
+import type { Command } from '../types/command.ts';
 import type { Device } from '../types/device.ts';
 import type { Report, AuditEntry } from '../types/moderation.ts';
-import type { AppIO, OrganizationRepository, UserRepository, AuthProvider, AuthSession, TagRepository, LinkLabelRepository, EventRepository, VoteRepository, ReportRepository, AuditRepository, DeviceRepository } from './index.ts';
+import type { AppIO, OrganizationRepository, UserRepository, AuthProvider, AuthSession, TagRepository, LinkLabelRepository, EventRepository, VoteRepository, ReportRepository, AuditRepository, DeviceRepository, TelemetryRepository, CommandRepository } from './index.ts';
 import type { Organization } from '../types/organization.ts';
 import type { User } from '../types/user.ts';
 import { randomUUID } from 'node:crypto';
@@ -238,6 +240,10 @@ export class InMemoryDeviceRepository implements DeviceRepository {
     return newDevice;
   }
 
+  async getByTokenHash(hash: string): Promise<Device | null> {
+    return Array.from(this.devices.values()).find(d => d.tokenHash === hash) || null;
+  }
+
   async getById(id: string): Promise<Device | null> {
     return this.devices.get(id) || null;
   }
@@ -264,6 +270,67 @@ export class InMemoryDeviceRepository implements DeviceRepository {
     const updated = { ...device, ...updates };
     this.devices.set(id, updated);
     return updated;
+  }
+}
+
+
+export class InMemoryTelemetryRepository implements TelemetryRepository {
+  private heartbeats: Heartbeat[] = [];
+  private logs: DeviceLog[] = [];
+  private telemetry: Map<string, DeviceTelemetry> = new Map();
+
+  async recordHeartbeat(heartbeat: Heartbeat): Promise<void> {
+    this.heartbeats.push(heartbeat);
+  }
+
+  async recordLog(log: DeviceLog): Promise<void> {
+    this.logs.push(log);
+  }
+
+  async getLatestHeartbeat(deviceId: string): Promise<Heartbeat | null> {
+    const deviceHeartbeats = this.heartbeats.filter(h => h.deviceId === deviceId);
+    if (deviceHeartbeats.length === 0) return null;
+    return deviceHeartbeats[deviceHeartbeats.length - 1] || null;
+  }
+
+  async getHeartbeatHistory(deviceId: string): Promise<Heartbeat[]> {
+    return this.heartbeats.filter(h => h.deviceId === deviceId);
+  }
+
+  async getDeviceLogs(deviceId: string): Promise<DeviceLog[]> {
+    return this.logs.filter(l => l.deviceId === deviceId);
+  }
+
+  async saveDetailedTelemetry(deviceId: string, telemetry: DeviceTelemetry): Promise<void> {
+    this.telemetry.set(deviceId, telemetry);
+  }
+
+  async getLatestTelemetry(deviceId: string): Promise<DeviceTelemetry | null> {
+    return this.telemetry.get(deviceId) || null;
+  }
+}
+
+export class InMemoryCommandRepository implements CommandRepository {
+  private commands: Map<string, Command> = new Map();
+
+  async create(command: Command): Promise<Command> {
+    this.commands.set(command.id, command);
+    return command;
+  }
+
+  async getById(id: string): Promise<Command | null> {
+    return this.commands.get(id) || null;
+  }
+
+  async listByDevice(deviceId: string): Promise<Command[]> {
+    return Array.from(this.commands.values()).filter(c => c.deviceId === deviceId);
+  }
+
+  async updateStatus(id: string, status: Command['status']): Promise<Command | null> {
+    const command = this.commands.get(id);
+    if (!command) return null;
+    command.status = status;
+    return command;
   }
 }
 
@@ -313,6 +380,8 @@ export function createInMemoryIO(): AppIO {
     reportRepo: new InMemoryReportRepository(),
     auditRepo: new InMemoryAuditRepository(),
     deviceRepo: new InMemoryDeviceRepository(),
+    telemetryRepo: new InMemoryTelemetryRepository(),
+    commandRepo: new InMemoryCommandRepository(),
     auth: new InMemoryAuthProvider()
   };
 }

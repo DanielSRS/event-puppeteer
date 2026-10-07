@@ -1,14 +1,35 @@
+import { randomBytes, createHash } from 'node:crypto';
 import type { AppIO } from '../io/index.ts';
 import type { ConnectDeviceInput, ApproveDeviceInput } from '../types/device.ts';
 import { requireAuth, assertCanManageOrg } from './users.ts';
 
 export async function connectDeviceHandler(body: ConnectDeviceInput, io: AppIO) {
-  return await io.deviceRepo.create({
+  const token = randomBytes(32).toString('hex');
+  const tokenHash = createHash('sha256').update(token).digest('hex');
+
+  const device = await io.deviceRepo.create({
     ...(body.organizationId ? { organizationId: body.organizationId } : {}),
     status: 'pending',
-    connectedAt: new Date().toISOString()
+    connectedAt: new Date().toISOString(),
+    tokenHash
   });
+
+  return { device, token };
 }
+
+export async function requireDeviceAuth(request: Request, io: AppIO) {
+  const authHeader = request.headers.get('authorization');
+  if (!authHeader?.startsWith('Bearer ')) {
+    throw new Error('UNAUTHORIZED');
+  }
+  const token = authHeader.substring(7);
+  const tokenHash = createHash('sha256').update(token).digest('hex');
+
+  const device = await io.deviceRepo.getByTokenHash(tokenHash);
+  if (!device) throw new Error('UNAUTHORIZED');
+  return device;
+}
+
 
 export async function listPendingDevicesGlobalHandler(request: Request, io: AppIO) {
   const actor = await requireAuth(request, io);

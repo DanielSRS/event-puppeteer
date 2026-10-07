@@ -21,6 +21,9 @@ import { TagSchema, CreateTagBody, LinkLabelSchema, CreateLinkLabelBody } from '
 import { EventSchema, CreateEventBody, FeedEventSchema } from './types/event.ts';
 import { connectDeviceHandler, listPendingDevicesGlobalHandler, listPendingDevicesOrgHandler, listActiveDevicesOrgHandler, getDeviceHandler, approveDeviceHandler, rejectDeviceHandler } from './handlers/devices.ts';
 import { DeviceSchema, ConnectDeviceBody, ApproveDeviceBody } from './types/device.ts';
+import { heartbeatHandler, postLogHandler, postTelemetryHandler, ackCommandHandler, completeCommandHandler, getDeviceStatusHandler, getDeviceLogsHandler, getDetailedTelemetryHandler, sendCommandHandler, requestTelemetryHandler, listCommandsHandler } from './handlers/telemetry.ts';
+import { PostLogBody, DeviceTelemetrySchema, DeviceLogSchema, HeartbeatSchema } from './types/telemetry.ts';
+import { CreateCommandBody, CommandSchema } from './types/command.ts';
 import { createTagHandler, listTagsHandler, createLinkLabelHandler, listLinkLabelsHandler } from './handlers/system.ts';
 import { createEventHandler, listEventsHandler, getEventHandler, deleteEventHandler } from './handlers/events.ts';
 import { voteHandler, getVoteStatusHandler } from './handlers/votes.ts';
@@ -71,7 +74,7 @@ export function createServer(io: AppIO) {
           return await connectDeviceHandler(body, io);
         }, {
           body: ConnectDeviceBody,
-          response: DeviceSchema
+          response: t.Object({ device: DeviceSchema, token: t.String() })
         })
         .get('/pending', async ({ request, io }) => {
           return await listPendingDevicesGlobalHandler(request, io);
@@ -84,6 +87,41 @@ export function createServer(io: AppIO) {
           params: t.Object({ deviceId: t.String() }),
           body: ApproveDeviceBody,
           response: DeviceSchema
+        })
+        
+        .post('/:deviceId/heartbeat', async ({ request, params: { deviceId }, body, io }) => {
+          return await heartbeatHandler(request, deviceId, (body as any).status, (body as any).errors, io);
+        }, {
+          params: t.Object({ deviceId: t.String() }),
+          body: t.Object({ status: t.String(), errors: t.Optional(t.Array(t.String())) }),
+          response: t.Object({ success: t.Boolean() })
+        })
+        .post('/:deviceId/logs', async ({ request, params: { deviceId }, body, io }) => {
+          return await postLogHandler(request, deviceId, body, io);
+        }, {
+          params: t.Object({ deviceId: t.String() }),
+          body: PostLogBody,
+          response: t.Object({ success: t.Boolean() })
+        })
+        .post('/:deviceId/telemetry', async ({ request, params: { deviceId }, body, io }) => {
+          return await postTelemetryHandler(request, deviceId, body, io);
+        }, {
+          params: t.Object({ deviceId: t.String() }),
+          body: DeviceTelemetrySchema,
+          response: t.Object({ success: t.Boolean() })
+        })
+        .post('/:deviceId/commands/:commandId/ack', async ({ request, params: { deviceId, commandId }, io }) => {
+          return await ackCommandHandler(request, deviceId, commandId, io);
+        }, {
+          params: t.Object({ deviceId: t.String(), commandId: t.String() }),
+          response: CommandSchema
+        })
+        .post('/:deviceId/commands/:commandId/complete', async ({ request, params: { deviceId, commandId }, body, io }) => {
+          return await completeCommandHandler(request, deviceId, commandId, (body as any).success, io);
+        }, {
+          params: t.Object({ deviceId: t.String(), commandId: t.String() }),
+          body: t.Object({ success: t.Boolean() }),
+          response: CommandSchema
         })
         .post('/:deviceId/reject', async ({ request, params: { deviceId }, io }) => {
           return await rejectDeviceHandler(request, deviceId, io);

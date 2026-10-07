@@ -16,7 +16,8 @@ export const DeviceSchema = t.Object({
   status: DeviceStatusSchema,
   connectedAt: t.String({ format: 'date-time' }),
   approvedAt: t.Optional(t.String({ format: 'date-time' })),
-  approvedBy: t.Optional(t.String())
+  approvedBy: t.Optional(t.String()),
+  tokenHash: t.String()
 });
 export type Device = Static<typeof DeviceSchema>;
 

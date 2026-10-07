@@ -58,7 +58,7 @@ test('Device Handlers', async (t) => {
 
   await t.test('Superadmin approves pending device → assigns org, name, location → device becomes active', async () => {
     const { io, org1, sReq } = await setup();
-    const d = await connectDeviceHandler({ identifier: 'mac-1' }, io);
+    const { device: d } = await connectDeviceHandler({ identifier: 'mac-1' }, io);
 
     await approveDeviceHandler(sReq, d.id, { name: 'Main Hall', location: 'Floor 1', organizationId: org1 }, io);
 
@@ -71,7 +71,7 @@ test('Device Handlers', async (t) => {
 
   await t.test('org Admin approves device that identified their org → device becomes active', async () => {
     const { io, org1, a1Req } = await setup();
-    const d = await connectDeviceHandler({ identifier: 'mac-2', organizationId: org1 }, io);
+    const { device: d } = await connectDeviceHandler({ identifier: 'mac-2', organizationId: org1 }, io);
 
     await approveDeviceHandler(a1Req, d.id, { name: 'Room 2', location: 'Floor 2' }, io);
 
@@ -81,7 +81,7 @@ test('Device Handlers', async (t) => {
 
   await t.test('org Admin cannot approve a device that belongs to another org queue', async () => {
     const { io, org1, org2, a2Req } = await setup();
-    const d = await connectDeviceHandler({ identifier: 'mac-1', organizationId: org1 }, io);
+    const { device: d } = await connectDeviceHandler({ identifier: 'mac-1', organizationId: org1 }, io);
 
     await assert.rejects(
       approveDeviceHandler(a2Req, d.id, { name: 'X', location: 'Y' }, io),
@@ -91,7 +91,7 @@ test('Device Handlers', async (t) => {
 
   await t.test('rejected device is excluded from pending and active lists', async () => {
     const { io, org1, a1Req } = await setup();
-    const d = await connectDeviceHandler({ identifier: 'mac-1', organizationId: org1 }, io);
+    const { device: d } = await connectDeviceHandler({ identifier: 'mac-1', organizationId: org1 }, io);
 
     await rejectDeviceHandler(a1Req, d.id, io);
 
@@ -104,8 +104,8 @@ test('Device Handlers', async (t) => {
 
   await t.test('list enrolled devices returns only active devices for the org', async () => {
     const { io, org1, a1Req } = await setup();
-    const d1 = await connectDeviceHandler({ identifier: 'mac-1', organizationId: org1 }, io);
-    const d2 = await connectDeviceHandler({ identifier: 'mac-2', organizationId: org1 }, io);
+    const { device: d1 } = await connectDeviceHandler({ identifier: 'mac-1', organizationId: org1 }, io);
+    const { device: d2 } = await connectDeviceHandler({ identifier: 'mac-2', organizationId: org1 }, io);
 
     await approveDeviceHandler(a1Req, d1.id, { name: 'D1', location: 'L1' }, io);
 
@@ -122,7 +122,7 @@ test('Device Handlers', async (t) => {
 
   await t.test('device in pending state has no name or location until approved', async () => {
     const { io } = await setup();
-    const d = await connectDeviceHandler({ identifier: 'mac-1' }, io);
+    const { device: d } = await connectDeviceHandler({ identifier: 'mac-1' }, io);
     
     assert.equal(d.name, undefined);
     assert.equal(d.location, undefined);

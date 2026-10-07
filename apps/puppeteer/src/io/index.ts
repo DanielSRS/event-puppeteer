@@ -3,6 +3,8 @@ import type { User } from '../types/user.ts';
 import type { Tag, LinkLabel } from '../types/tag.ts';
 import type { Event } from '../types/event.ts';
 import type { Vote } from '../types/vote.ts';
+import type { Heartbeat, DeviceLog, DeviceTelemetry } from '../types/telemetry.ts';
+import type { Command } from '../types/command.ts';
 import type { Device } from '../types/device.ts';
 import type { Report, AuditEntry } from '../types/moderation.ts';
 
@@ -71,11 +73,30 @@ export interface AuditRepository {
 export interface DeviceRepository {
   create(device: Omit<Device, 'id'>): Promise<Device>;
   getById(id: string): Promise<Device | null>;
+  getByTokenHash(hash: string): Promise<Device | null>;
   listByOrganization(orgId: string): Promise<Device[]>;
   listPending(): Promise<Device[]>; // For a specific org or without org? Spec: listByOrganization, listPending, listPendingWithoutOrg
   listPendingWithoutOrg(): Promise<Device[]>;
   listPendingByOrg(orgId: string): Promise<Device[]>;
   update(id: string, updates: Partial<Device>): Promise<Device | null>;
+}
+
+
+export interface TelemetryRepository {
+  recordHeartbeat(heartbeat: Heartbeat): Promise<void>;
+  recordLog(log: DeviceLog): Promise<void>;
+  getLatestHeartbeat(deviceId: string): Promise<Heartbeat | null>;
+  getHeartbeatHistory(deviceId: string): Promise<Heartbeat[]>;
+  getDeviceLogs(deviceId: string): Promise<DeviceLog[]>;
+  saveDetailedTelemetry(deviceId: string, telemetry: DeviceTelemetry): Promise<void>;
+  getLatestTelemetry(deviceId: string): Promise<DeviceTelemetry | null>;
+}
+
+export interface CommandRepository {
+  create(command: Command): Promise<Command>;
+  getById(id: string): Promise<Command | null>;
+  listByDevice(deviceId: string): Promise<Command[]>;
+  updateStatus(id: string, status: Command['status']): Promise<Command | null>;
 }
 
 export interface AuthSession {
@@ -99,6 +120,8 @@ export interface AppIO {
   reportRepo: ReportRepository;
   auditRepo: AuditRepository;
   deviceRepo: DeviceRepository;
+  telemetryRepo: TelemetryRepository;
+  commandRepo: CommandRepository;
   auth: AuthProvider;
 }
 
