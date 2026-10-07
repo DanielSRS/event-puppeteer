@@ -27,8 +27,15 @@ try {
   console.log(`⏳ Aplicando migrations em ${new URL(url).host}...`);
   await migrate(drizzle(client), { migrationsFolder });
   console.log('✅ Banco atualizado');
-} catch (error) {
-  console.error('❌ Falha na migration:', error);
+} catch (error: any) {
+  const cause = error?.cause ?? error;
+  if (cause?.code === 'ENETUNREACH' && String(cause?.address).includes(':')) {
+    // Supabase's direct host (db.<ref>.supabase.co) resolves to IPv6 only
+    console.error(`❌ Sem rota IPv6 até ${cause.address}. No Supabase, use a URL do Session pooler ` +
+      '(postgresql://postgres.<ref>:<senha>@aws-0-<região>.pooler.supabase.com:5432/postgres) em MIGRATION_DATABASE_URL.');
+  } else {
+    console.error('❌ Falha na migration:', error);
+  }
   process.exitCode = 1;
 } finally {
   await client.end();
