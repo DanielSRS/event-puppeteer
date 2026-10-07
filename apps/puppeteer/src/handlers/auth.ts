@@ -5,6 +5,8 @@ import { normalizeName } from '../utils/normalize.ts';
 export async function registerHandler(body: RegisterInput, orgId: string, io: AppIO) {
   const existing = await io.userRepo.getByEmail(body.email);
   if (existing) throw new Error('EMAIL_EXISTS');
+  // Checked up front: otherwise the auth insert fails on the foreign key with an opaque error
+  if (!(await io.orgRepo.getById(orgId))) throw new Error('ORGANIZATION_NOT_FOUND');
 
   const newUser: NewUser = {
     firstName: body.firstName,

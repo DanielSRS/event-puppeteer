@@ -114,6 +114,10 @@ export function createServer(io: AppIO, { adapter, appUrl = 'http://localhost:30
         set.status = 502;
         return { error: 'Verification email could not be sent; request a new one' };
       }
+      if (message === 'ORGANIZATION_NOT_FOUND') {
+        set.status = 400;
+        return { error: 'Organization not found' };
+      }
       if (message === 'EMAIL_EXISTS') {
         set.status = 400;
         return { error: 'Email already exists' };
@@ -286,18 +290,17 @@ export function createServer(io: AppIO, { adapter, appUrl = 'http://localhost:30
       app
         .post(
           '/register',
-          async ({ body, query, io }) => {
-            const orgId = query.orgId ?? 'default-org';
+          async ({ body, query: { orgId }, io }) => {
             return await registerHandler(body, orgId, io);
           },
           {
             body: RegisterBody,
-            query: t.Object({ orgId: t.Optional(t.String()) }),
+            query: t.Object({ orgId: t.String({ description: 'Organization the new Member joins' }) }),
             response: t.Object({ user: UserSchema }),
             detail: {
               tags: ['Auth'],
               summary: 'Register a User as Member of an Organization',
-              description: 'Sends a verification email. No session is returned: login is refused (403) until the link in the email is opened.'
+              description: 'Sends a verification email. No session is returned: login is refused (403) until the link in the email is opened. 400 when the Organization does not exist.'
             }
           }
         )

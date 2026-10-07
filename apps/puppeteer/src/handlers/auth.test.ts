@@ -69,6 +69,13 @@ test('Auth Handlers', async (t) => {
     assert.equal(io.emailSender.sent.length, 2);
   });
 
+  await t.test('registering into an unknown Organization fails before creating anything', async () => {
+    const { io } = await setup();
+    await assert.rejects(registerHandler(body, 'default-org', io), /ORGANIZATION_NOT_FOUND/);
+    assert.equal(await io.userRepo.getByEmail(body.email), null);
+    assert.equal(io.emailSender.sent.length, 0);
+  });
+
   await t.test('password shorter than 8 characters is rejected', async () => {
     const { io, orgId } = await setup();
     await assert.rejects(registerHandler({ ...body, password: '1234567' }, orgId, io), /SIGNUP_FAILED/);
