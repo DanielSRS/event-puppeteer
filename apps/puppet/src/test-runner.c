@@ -14,11 +14,15 @@
 #define PUPPET_CONFIG_IMPLEMENTATION
 #include "config/config.h"
 
+#define PUPPET_AGENT_SCHEDULE_IMPLEMENTATION
+#include "agent/agent-schedule.h"
+
 #include "testing/testing.h"
 
 #include "json/json.test.c"
 #include "protocol/protocol.test.c"
 #include "config/config.test.c"
+#include "agent/agent-schedule.test.c"
 
 #include <stdio.h>
 
@@ -29,6 +33,7 @@ static const TestSuite *const TEST_SUITES[] = {
   &JsonTestSuite,
   &ProtocolTestSuite,
   &ConfigTestSuite,
+  &AgentScheduleTestSuite,
 };
 
 int main(void) {
