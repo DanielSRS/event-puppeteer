@@ -5,19 +5,27 @@
 import { EventList } from "@/components/events/EventList";
 import { EventShowcase } from "@/components/events/EventShowcase";
 import { QrCodePanel } from "@/components/qrcode/QrCodePanel";
-import { useEvents } from "@/hooks/useEvents";
+import type { EventRecord } from "@/utils/events";
 
-type HomeContentProps = {
+export type HomeContentProps = {
   qrSvg: string;
+  events: EventRecord[];
+  loaded: boolean;
+  error: Error | null;
+  pendingId: string | null;
+  onToggleLike: (id: string) => void;
+  onToggleSubscription: (id: string) => void;
 };
 
-/* THE BIG SCREEN REFRESHES BY ITSELF, SO THE ORDER FOLLOWS THE LIKES IN REAL TIME */
-const REFRESH_INTERVAL = 15000;
-
-export function HomeContent({ qrSvg }: HomeContentProps) {
-  const { events, loaded, error, pendingId, toggleLike, toggleSubscription } = useEvents({
-    refreshInterval: REFRESH_INTERVAL,
-  });
+export function HomeContent({ 
+  qrSvg, 
+  events, 
+  loaded, 
+  error, 
+  pendingId, 
+  onToggleLike, 
+  onToggleSubscription 
+}: HomeContentProps) {
 
   return (
     <>
@@ -56,8 +64,8 @@ export function HomeContent({ qrSvg }: HomeContentProps) {
           loaded={loaded}
           error={error}
           pendingId={pendingId}
-          onToggleLike={toggleLike}
-          onToggleSubscription={toggleSubscription}
+          onToggleLike={onToggleLike}
+          onToggleSubscription={onToggleSubscription}
         />
       </main>
     </>

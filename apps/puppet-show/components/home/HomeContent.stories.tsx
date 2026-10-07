@@ -18,5 +18,26 @@ const mockQrSvg = '<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"
 export const Default: Story = {
   args: {
     qrSvg: mockQrSvg,
+    events: [
+      {
+        id: "1",
+        title: "Introduction to functional programming",
+        department: "Computer Science",
+        summary: "Learn the basics of functional programming.",
+        date: "2026-10-15",
+        time: "14:00",
+        location: "Auditorium A",
+        lat: -12.1975,
+        lng: -38.9722,
+        votes: 120,
+        likes: { "user-1": true },
+        creatorId: "admin",
+      }
+    ],
+    loaded: true,
+    error: null,
+    pendingId: null,
+    onToggleLike: (id) => console.log('Toggle like for', id),
+    onToggleSubscription: (id) => console.log('Toggle subscription for', id),
   },
 };

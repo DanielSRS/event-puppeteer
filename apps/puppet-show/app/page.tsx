@@ -1,7 +1,7 @@
 /* app/page.tsx */
 
 import QRCode from "qrcode";
-import { HomeContent } from "@/components/home/HomeContent";
+import { HomeContainer } from "@/components/home/containers/HomeContainer";
 
 /* READS THE SITE ADDRESS ON EVERY REQUEST, SO THE QR CODE IS ALWAYS CURRENT */
 export const dynamic = "force-dynamic";
@@ -17,5 +17,5 @@ export default async function HomePage() {
     color: { dark: "#0b0b0f", light: "#ffffff" },
   });
 
-  return <HomeContent qrSvg={qrSvg} />;
+  return <HomeContainer qrSvg={qrSvg} />;
 };
