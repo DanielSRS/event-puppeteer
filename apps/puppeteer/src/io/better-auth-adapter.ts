@@ -1,12 +1,15 @@
 import type { AuthProvider, AuthSession } from './index.ts';
+import type { NewUser } from '../types/user.ts';
 
 export class BetterAuthProvider implements AuthProvider {
   constructor(private authInstance: any) {}
 
-  async signUp(email: string, password: string, name: string): Promise<AuthSession> {
+  async signUp(password: string, user: NewUser): Promise<AuthSession> {
     try {
+      // App fields go in the same insert as better-auth's own (they are declared as
+      // additionalFields), so the row satisfies the role/organization check from the start
       const data = await this.authInstance.api.signUpEmail({
-        body: { email, password, name }
+        body: { ...user, password, name: `${user.firstName} ${user.lastName}` }
       });
       return {
         token: data.token,

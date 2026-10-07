@@ -9,18 +9,47 @@ export const UserRoleSchema = t.Union([
 
 export type UserRole = Static<typeof UserRoleSchema>;
 
-export const UserSchema = t.Object({
+// Roles scoped to an Organization; Superadmin is system-wide
+export const OrgRoleSchema = t.Union([
+  t.Literal('Admin'),
+  t.Literal('Moderator'),
+  t.Literal('Member')
+]);
+
+const userFields = {
   id: t.String(),
   firstName: t.String(),
   lastName: t.String(),
   normalizedName: t.String(),
   email: t.String({ format: 'email' }),
-  organizationId: t.String(),
-  role: UserRoleSchema,
   isShadowBanned: t.Boolean()
-});
+};
+
+// Discriminated by role: a Superadmin has no Organization, every other User has exactly one.
+// The database enforces the same rule (user_role_organization check).
+export const UserSchema = t.Union([
+  t.Object({ ...userFields, role: t.Literal('Superadmin') }),
+  t.Object({ ...userFields, role: OrgRoleSchema, organizationId: t.String() })
+]);
 
 export type User = Static<typeof UserSchema>;
+
+export function organizationOf(user: User): string | undefined {
+  return user.role === 'Superadmin' ? undefined : user.organizationId;
+}
+
+type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
+export type NewUser = DistributiveOmit<User, 'id'>;
+
+// Changing role to Superadmin drops the Organization (enforced by the repository)
+export type UserUpdate = Partial<{
+  firstName: string;
+  lastName: string;
+  normalizedName: string;
+  role: UserRole;
+  organizationId: string;
+  isShadowBanned: boolean;
+}>;
 
 export const RegisterBody = t.Object({
   firstName: t.String(),

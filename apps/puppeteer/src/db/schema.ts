@@ -1,4 +1,5 @@
-import { pgTable, text, timestamp, boolean, integer, doublePrecision, jsonb, primaryKey } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, boolean, integer, doublePrecision, jsonb, primaryKey, check } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 export const organization = pgTable("organization", {
 	id: text("id").primaryKey(),
@@ -33,7 +34,10 @@ export const user = pgTable("user", {
 	organizationId: text("organizationId").references(() => organization.id),
 	role: text("role").notNull().default('Member'),
 	isShadowBanned: boolean("isShadowBanned").notNull().default(false)
-});
+}, (t) => [
+	// Only a Superadmin has no Organization; every other role must have one
+	check("user_role_organization", sql`(${t.role} = 'Superadmin') = (${t.organizationId} IS NULL)`)
+]);
 
 export const session = pgTable("session", {
 	id: text("id").primaryKey(),

@@ -31,8 +31,28 @@ export const CommandSchema = t.Object({
 });
 export type Command = Static<typeof CommandSchema>;
 
-export const CreateCommandBody = t.Object({
-  type: CommandTypeSchema,
-  payload: t.Optional(t.Record(t.String(), t.Unknown()))
+// Contract implemented by Puppet: download, verify digest and architecture, install, re-exec
+export const UpdatePayloadSchema = t.Object({
+  url: t.String({
+    pattern: '^(https?://|/)',
+    description: 'Absolute http(s) URL, or a path on Puppeteer starting with "/" (only then does Puppet send its device token)'
+  }),
+  sha256: t.String({ pattern: '^[0-9a-fA-F]{64}$', description: 'SHA-256 of the binary, 64 hex characters' }),
+  version: t.Optional(t.String({ description: 'Informational; shows up in device logs' }))
 });
+export type UpdatePayload = Static<typeof UpdatePayloadSchema>;
+
+export const CreateCommandBody = t.Union([
+  t.Object({ type: t.Literal('update'), payload: UpdatePayloadSchema }),
+  t.Object({
+    type: t.Union([
+      t.Literal('restart'),
+      t.Literal('shutdown'),
+      t.Literal('open_ssh'),
+      t.Literal('custom'),
+      t.Literal('request_telemetry')
+    ]),
+    payload: t.Optional(t.Record(t.String(), t.Unknown()))
+  })
+]);
 export type CreateCommandInput = Static<typeof CreateCommandBody>;

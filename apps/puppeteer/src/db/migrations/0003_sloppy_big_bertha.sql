@@ -1,0 +1,1 @@
+ALTER TABLE "user" ADD CONSTRAINT "user_role_organization" CHECK (("user"."role" = 'Superadmin') = ("user"."organizationId" IS NULL));

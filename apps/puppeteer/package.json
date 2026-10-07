@@ -12,7 +12,8 @@
   },
   "scripts": {
     "start": "nub main.ts",
-    "test": "nub --test"
+    "test": "nub --test",
+    "seed:superadmin": "nub src/scripts/seed-superadmin.ts"
   },
   "devDependencies": {
     "@nubjs/types": ">=0.4.13 <=0.9.0",

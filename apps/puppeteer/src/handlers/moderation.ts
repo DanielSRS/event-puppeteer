@@ -2,12 +2,13 @@ import { randomUUID } from 'node:crypto';
 import type { AppIO } from '../io/index.ts';
 import type { CreateReportInput, AuditAction } from '../types/moderation.ts';
 import { requireAuth, assertCanManageOrg } from './users.ts';
+import { organizationOf } from '../types/user.ts';
 
-async function logAudit(io: AppIO, actorId: string | undefined, orgId: string, action: AuditAction, targetType: string, targetId: string, details?: Record<string, any>) {
+async function logAudit(io: AppIO, actorId: string | undefined, orgId: string | undefined, action: AuditAction, targetType: string, targetId: string, details?: Record<string, any>) {
   await io.auditRepo.create({
     id: randomUUID(),
     ...(actorId !== undefined ? { actorId } : {}),
-    organizationId: orgId,
+    ...(orgId !== undefined ? { organizationId: orgId } : {}),
     action,
     targetType,
     targetId,
@@ -104,7 +105,7 @@ export async function liftShadowBanHandler(request: Request, orgId: string, user
   assertCanManageOrg(actor, orgId, 'Moderator');
 
   const target = await io.userRepo.getById(userId);
-  if (!target || target.organizationId !== orgId) throw new Error('NOT_FOUND');
+  if (!target || organizationOf(target) !== orgId) throw new Error('NOT_FOUND');
 
   const updated = await io.userRepo.update(userId, { isShadowBanned: false });
   await logAudit(io, actor.id, orgId, 'lift_shadow_ban', 'user', userId);
@@ -124,7 +125,7 @@ export async function promoteTagHandler(request: Request, tagId: string, io: App
   if (!tag) throw new Error('NOT_FOUND');
 
   const updated = await io.tagRepo.update(tagId, { isSystemDefined: true });
-  await logAudit(io, actor.id, actor.organizationId, 'promote_tag', 'tag', tagId);
+  await logAudit(io, actor.id, organizationOf(actor), 'promote_tag', 'tag', tagId);
   if (!updated) throw new Error('NOT_FOUND');
   return updated;
 }

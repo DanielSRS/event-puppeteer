@@ -1,6 +1,7 @@
 import { eq, ilike, and } from 'drizzle-orm';
 import type { UserRepository } from '../index.ts';
-import type { User } from '../../types/user.ts';
+import type { User, UserUpdate } from '../../types/user.ts';
+import { organizationOf } from '../../types/user.ts';
 import { user } from '../../db/schema.ts';
 
 export class DrizzleUserRepository implements UserRepository {
@@ -14,7 +15,7 @@ export class DrizzleUserRepository implements UserRepository {
       lastName: u.lastName,
       normalizedName: u.normalizedName,
       email: u.email,
-      organizationId: u.organizationId,
+      organizationId: organizationOf(u) ?? null,
       role: u.role,
       isShadowBanned: u.isShadowBanned,
       name: `${u.firstName} ${u.lastName}`,
@@ -48,8 +49,10 @@ export class DrizzleUserRepository implements UserRepository {
     return rows.map((r: any) => this.mapToDomain(r));
   }
 
-  async update(id: string, updates: Partial<User>): Promise<User | null> {
+  async update(id: string, updates: UserUpdate): Promise<User | null> {
     const pgUpdates: any = { ...updates };
+    // A Superadmin has no Organization (also enforced by the user_role_organization check)
+    if (updates.role === 'Superadmin') pgUpdates.organizationId = null;
     if (updates.firstName && updates.lastName) {
       pgUpdates.name = `${updates.firstName} ${updates.lastName}`;
     }
@@ -81,9 +84,10 @@ export class DrizzleUserRepository implements UserRepository {
       lastName: row.lastName,
       normalizedName: row.normalizedName,
       email: row.email,
-      organizationId: row.organizationId,
-      role: row.role as User['role'],
       isShadowBanned: row.isShadowBanned,
+      ...(row.role === 'Superadmin'
+        ? { role: 'Superadmin' as const }
+        : { role: row.role, organizationId: row.organizationId })
     };
   }
 }

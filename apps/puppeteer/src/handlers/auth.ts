@@ -1,15 +1,12 @@
 import type { AppIO } from '../io/index.ts';
-import type { RegisterInput, LoginInput, User } from '../types/user.ts';
+import type { RegisterInput, LoginInput, NewUser, User } from '../types/user.ts';
 import { normalizeName } from '../utils/normalize.ts';
 
 export async function registerHandler(body: RegisterInput, orgId: string, io: AppIO) {
   const existing = await io.userRepo.getByEmail(body.email);
   if (existing) throw new Error('EMAIL_EXISTS');
 
-  const { token, userId } = await io.auth.signUp(body.email, body.password, `${body.firstName} ${body.lastName}`);
-  
-  const user: User = {
-    id: userId,
+  const newUser: NewUser = {
     firstName: body.firstName,
     lastName: body.lastName,
     normalizedName: normalizeName(`${body.firstName} ${body.lastName}`),
@@ -18,8 +15,9 @@ export async function registerHandler(body: RegisterInput, orgId: string, io: Ap
     role: 'Member',
     isShadowBanned: false
   };
+  const { token, userId } = await io.auth.signUp(body.password, newUser);
 
-  await io.userRepo.create(user);
+  const user: User = { ...newUser, id: userId };
   return { user, token };
 }
 

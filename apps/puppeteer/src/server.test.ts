@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createInMemoryIO } from './io/in-memory.ts';
 import { createServer } from './server.ts';
-import { registerHandler } from './handlers/auth.ts';
+import { registerHandler, loginHandler } from './handlers/auth.ts';
+import { seedSuperadminHandler } from './handlers/seed.ts';
 
 // Handler tests bypass Elysia; these go through the HTTP layer so response
 // schema validation (and the OpenAPI plugin) is exercised too.
@@ -25,7 +26,7 @@ async function setup() {
     return { status: res.status, body: await res.json() as any };
   };
 
-  return { orgId: org.id, adminToken, call };
+  return { io, orgId: org.id, adminToken, call };
 }
 
 test('HTTP layer', async (t) => {
@@ -52,6 +53,75 @@ test('HTTP layer', async (t) => {
     const listed = await call('GET', `/organizations/${orgId}/devices/${device.id}/commands`, adminToken);
     assert.equal(listed.status, 200);
     assert.equal(listed.body[0].status, 'acknowledged');
+  });
+
+  await t.test('update command requires a url and a sha256 digest', async () => {
+    const { orgId, adminToken, call } = await setup();
+    const { device } = (await call('POST', '/devices/connect', undefined, { identifier: 'mac-1', organizationId: orgId })).body;
+    await call('POST', `/devices/${device.id}/approve`, adminToken, { name: 'D1', location: 'L1' });
+    const send = (payload?: unknown) => call('POST', `/organizations/${orgId}/devices/${device.id}/commands`, adminToken,
+      payload === undefined ? { type: 'update' } : { type: 'update', payload });
+    const sha256 = 'a'.repeat(64);
+
+    assert.equal((await send()).status, 422);
+    assert.equal((await send({ url: '/releases/puppet' })).status, 422);
+    assert.equal((await send({ url: '/releases/puppet', sha256: 'abc' })).status, 422);
+    assert.equal((await send({ url: 'ftp://host/puppet', sha256 })).status, 422);
+
+    const relative = await send({ url: '/releases/puppet', sha256, version: '1.2.0' });
+    assert.equal(relative.status, 200);
+    assert.deepEqual(relative.body.payload, { url: '/releases/puppet', sha256, version: '1.2.0' });
+    assert.equal((await send({ url: 'https://cdn.example.com/puppet', sha256 })).status, 200);
+
+    // Other command types keep a free-form, optional payload
+    assert.equal((await call('POST', `/organizations/${orgId}/devices/${device.id}/commands`, adminToken, { type: 'custom', payload: { anything: 1 } })).status, 200);
+  });
+
+  await t.test('GET /auth/me returns each User variant', async () => {
+    const { io, orgId, adminToken, call } = await setup();
+    await seedSuperadminHandler({ email: 'root@a.com', password: 'secret-123', firstName: 'S', lastName: 'A' }, io);
+    const { token } = await loginHandler({ email: 'root@a.com', password: 'secret-123' }, io);
+
+    const superadmin = await call('GET', '/auth/me', token);
+    assert.equal(superadmin.status, 200);
+    assert.equal(superadmin.body.role, 'Superadmin');
+    assert.equal('organizationId' in superadmin.body, false);
+
+    const admin = await call('GET', '/auth/me', adminToken);
+    assert.equal(admin.status, 200);
+    assert.equal(admin.body.role, 'Admin');
+    assert.equal(admin.body.organizationId, orgId);
+  });
+
+  await t.test('every route except the public ones rejects anonymous requests', async () => {
+    const { call } = await setup();
+    // Public by decision: event listing (list, feed, details), what the TV display and the
+    // event page read, plus the entry points that cannot require a login
+    const isPublic = new Set([
+      'GET /health',
+      'POST /auth/register',
+      'POST /auth/login',
+      'POST /devices/connect',
+      'GET /organizations/{id}',
+      'GET /organizations/{id}/feed',
+      'GET /organizations/{id}/events/',
+      'GET /organizations/{id}/events/{eventId}',
+      'GET /tags/',
+      'GET /link-labels/'
+    ]);
+    const spec = (await call('GET', '/openapi/json')).body;
+    const exposed: string[] = [];
+    for (const [path, methods] of Object.entries(spec.paths) as [string, Record<string, any>][]) {
+      for (const [method, op] of Object.entries(methods)) {
+        const route = `${method.toUpperCase()} ${path}`;
+        if (isPublic.has(route)) continue;
+        const res = await call(method.toUpperCase(), path.replace(/\{[^}]+\}/g, 'some-id'));
+        // Body validation runs before the handler, so a route with a body may answer 422 first
+        const rejected = res.status === 401 || (res.status === 422 && op.requestBody);
+        if (!rejected) exposed.push(`${route} → ${res.status}`);
+      }
+    }
+    assert.deepEqual(exposed, []);
   });
 
   await t.test('OpenAPI spec documents every route', async () => {

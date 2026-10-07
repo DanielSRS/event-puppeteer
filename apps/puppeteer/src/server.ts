@@ -307,23 +307,23 @@ export function createServer(io: AppIO, adapter?: ElysiaAdapter) {
       app
         .post(
           '/',
-          async ({ body, io }) => {
-            return await createOrganizationHandler(body, io);
+          async ({ request, body, io }) => {
+            return await createOrganizationHandler(request, body, io);
           },
           {
             body: CreateOrganizationBody,
             response: OrganizationSchema,
-            detail: { tags: ['Organizations'], summary: 'Create an Organization' }
+            detail: { tags: ['Organizations'], summary: 'Create an Organization', description: 'Superadmin only.', security: asUser }
           }
         )
         .get(
           '/',
-          async ({ io }) => {
-            return await listOrganizationsHandler(io);
+          async ({ request, io }) => {
+            return await listOrganizationsHandler(request, io);
           },
           {
             response: t.Array(OrganizationSchema),
-            detail: { tags: ['Organizations'], summary: 'List Organizations' }
+            detail: { tags: ['Organizations'], summary: 'List Organizations', description: 'Superadmin only.', security: asUser }
           }
         )
         .get(
@@ -342,13 +342,13 @@ export function createServer(io: AppIO, adapter?: ElysiaAdapter) {
               200: OrganizationSchema,
               404: t.Object({ error: t.String() })
             },
-            detail: { tags: ['Organizations'], summary: 'Get an Organization' }
+            detail: { tags: ['Organizations'], summary: 'Get an Organization', description: 'Public: the kiosk TV display reads the branding.' }
           }
         )
         .patch(
           '/:id',
-          async ({ params: { id }, body, io, set }) => {
-            const org = await updateOrganizationHandler(id, body, io);
+          async ({ request, params: { id }, body, io, set }) => {
+            const org = await updateOrganizationHandler(request, id, body, io);
             if (!org) {
               set.status = 404;
               return { error: 'Not Found' };
@@ -362,7 +362,7 @@ export function createServer(io: AppIO, adapter?: ElysiaAdapter) {
               200: OrganizationSchema,
               404: t.Object({ error: t.String() })
             },
-            detail: { tags: ['Organizations'], summary: 'Update an Organization' }
+            detail: { tags: ['Organizations'], summary: 'Update an Organization', description: 'Admin of the Organization, or Superadmin.', security: asUser }
           }
         )
         .get(
@@ -526,7 +526,12 @@ export function createServer(io: AppIO, adapter?: ElysiaAdapter) {
               params: t.Object({ id: t.String(), deviceId: t.String() }),
               body: CreateCommandBody,
               response: CommandSchema,
-              detail: { tags: ['Device Management'], summary: 'Send a Command to a Device', security: asUser }
+              detail: {
+                tags: ['Device Management'],
+                summary: 'Send a Command to a Device',
+                description: 'An update Command requires payload { url, sha256, version? }; Puppet verifies the digest and architecture before installing. Other types take an optional free-form payload.',
+                security: asUser
+              }
             })
         )
         .group('/:id/events', (eventsApp) =>

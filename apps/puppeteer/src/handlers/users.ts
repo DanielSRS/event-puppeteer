@@ -1,5 +1,6 @@
 import type { AppIO } from '../io/index.ts';
 import type { ChangeRoleInput, User } from '../types/user.ts';
+import { organizationOf } from '../types/user.ts';
 import { hasAtLeastRole } from '../utils/roles.ts';
 
 export async function requireAuth(request: Request, io: AppIO): Promise<User> {
@@ -35,7 +36,7 @@ export async function assignRoleHandler(request: Request, orgId: string, userId:
 
   // Optional: Prevent Admin from assigning Superadmin or modifying Superadmins
   const targetUser = await io.userRepo.getById(userId);
-  if (!targetUser || targetUser.organizationId !== orgId) throw new Error('NOT_FOUND');
+  if (!targetUser || organizationOf(targetUser) !== orgId) throw new Error('NOT_FOUND');
   if (actor.role !== 'Superadmin' && body.role === 'Superadmin') throw new Error('FORBIDDEN');
 
   const updated = await io.userRepo.update(userId, { role: body.role });
@@ -48,7 +49,7 @@ export async function removeUserHandler(request: Request, orgId: string, userId:
   assertCanManageOrg(actor, orgId, 'Admin');
 
   const targetUser = await io.userRepo.getById(userId);
-  if (!targetUser || targetUser.organizationId !== orgId) throw new Error('NOT_FOUND');
+  if (!targetUser || organizationOf(targetUser) !== orgId) throw new Error('NOT_FOUND');
 
   return await io.userRepo.delete(userId);
 }

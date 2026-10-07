@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { AppIO } from '../io/index.ts';
 import type { CreateEventInput, Event } from '../types/event.ts';
 import { requireAuth } from './users.ts';
+import { organizationOf } from '../types/user.ts';
 
 function isEventExpired(event: Event): boolean {
   if (event.schedule.length === 0) return true;
@@ -16,7 +17,7 @@ function isEventExpired(event: Event): boolean {
 
 export async function createEventHandler(request: Request, orgId: string, body: CreateEventInput, io: AppIO) {
   const actor = await requireAuth(request, io);
-  if (actor.organizationId !== orgId && actor.role !== 'Superadmin') {
+  if (organizationOf(actor) !== orgId && actor.role !== 'Superadmin') {
     throw new Error('FORBIDDEN');
   }
 

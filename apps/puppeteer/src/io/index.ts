@@ -1,5 +1,5 @@
 import type { Organization } from '../types/organization.ts';
-import type { User } from '../types/user.ts';
+import type { User, NewUser, UserUpdate } from '../types/user.ts';
 import type { Tag, LinkLabel } from '../types/tag.ts';
 import type { Event } from '../types/event.ts';
 import type { Vote } from '../types/vote.ts';
@@ -20,7 +20,7 @@ export interface UserRepository {
   getById(id: string): Promise<User | null>;
   getByEmail(email: string): Promise<User | null>;
   listByOrganization(orgId: string): Promise<User[]>;
-  update(id: string, updates: Partial<User>): Promise<User | null>;
+  update(id: string, updates: UserUpdate): Promise<User | null>;
   searchByName(orgId: string, query: string): Promise<User[]>;
   delete(id: string): Promise<boolean>;
 }
@@ -106,7 +106,9 @@ export interface AuthSession {
 }
 
 export interface AuthProvider {
-  signUp(email: string, password: string, name: string): Promise<AuthSession>;
+  // Creates the auth account and the User row in one insert, so the row is never
+  // left without its role and Organization (the database rejects that)
+  signUp(password: string, user: NewUser): Promise<AuthSession>;
   signIn(email: string, password: string): Promise<AuthSession>;
   getSessionUserId(request: Request): Promise<string | null>;
 }

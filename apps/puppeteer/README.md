@@ -17,6 +17,12 @@ This project follows the **Functional Core / Imperative Shell** pattern to make 
 
 - `nub run start`: Starts the application server.
 - `nub run test`: Runs the test suite using the Node.js native test runner.
+- `nub run seed:superadmin`: Creates the first Superadmin (or promotes an existing user) from `SUPERADMIN_EMAIL` and `SUPERADMIN_PASSWORD` in `.env`. Idempotent. Registration only creates Members, so this is how the first Superadmin is bootstrapped.
+
+### Access rules
+
+- Public: `GET /health`, the docs, `POST /auth/register`, `POST /auth/login`, `POST /devices/connect`, and the read routes behind public screens: event list/feed/details, `GET /organizations/:id` (TV branding), `GET /tags`, `GET /link-labels`. Everything else requires a token; `src/server.test.ts` fails if a route is exposed by mistake.
+- A Superadmin has no Organization; every other User has exactly one. `User` is a union discriminated by `role`, and the database enforces the same rule (`user_role_organization` check).
 
 ### API Documentation
 
