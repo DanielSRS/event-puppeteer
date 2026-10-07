@@ -4,6 +4,9 @@
     "moduleResolution": "nodenext",
     "target": "es2024",
     "lib": ["es2024"],
+    // typeRoots pinned to this folder: Vercel compiles through a temp tsconfig in /tmp
+    // that extends this one, and default type lookup would start from there
+    "typeRoots": ["./node_modules/@types", "./node_modules", "../../node_modules/@types", "../../node_modules"],
     "types": ["node", "@nubjs/types"],
     "moduleDetection": "force",
     "allowImportingTsExtensions": true,

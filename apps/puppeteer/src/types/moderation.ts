@@ -36,7 +36,7 @@ export type AuditAction = Static<typeof AuditActionSchema>;
 
 export const AuditEntrySchema = t.Object({
   id: t.String(),
-  actorId: t.String(),
+  actorId: t.Optional(t.String()), // absent for automatic actions (e.g. report threshold)
   organizationId: t.Optional(t.String()),
   action: AuditActionSchema,
   targetType: t.String(), // 'event', 'user', 'tag', 'organization'

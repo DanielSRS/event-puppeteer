@@ -41,11 +41,12 @@ test('Organization Handlers', async (t) => {
 
   await t.test('list organizations returns all created orgs', async () => {
     const io = await createInMemoryIO();
-    await createOrganizationHandler({ name: 'Org 1', slug: 'O1', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }, io);
-    await createOrganizationHandler({ name: 'Org 2', slug: 'O2', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }, io);
+    await createOrganizationHandler({ name: 'Org 1', slug: 'O1' }, io);
+    await createOrganizationHandler({ name: 'Org 2', slug: 'O2' }, io);
 
     const orgs = await listOrganizationsHandler(io);
     assert.equal(orgs.length, 2);
+    assert.ok(orgs.every(o => !Number.isNaN(Date.parse(o.createdAt)) && o.updatedAt === o.createdAt));
     assert.equal(orgs[0]?.name, 'Org 1');
     assert.equal(orgs[1]?.name, 'Org 2');
   });
@@ -54,7 +55,7 @@ test('Organization Handlers', async (t) => {
     const io = await createInMemoryIO();
     const org = await createOrganizationHandler({
       name: 'Original Name',
-      slug: 'ON', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+      slug: 'ON',
       location: 'Old Location'
     }, io);
 

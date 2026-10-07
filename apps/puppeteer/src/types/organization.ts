@@ -11,7 +11,9 @@ export const OrganizationSchema = t.Object({
   location: t.Optional(t.String()),
   latitude: t.Optional(t.Number()),
   longitude: t.Optional(t.Number()),
-  shadowBanThreshold: t.Number({ default: 5 })
+  shadowBanThreshold: t.Number({ default: 5 }),
+  createdAt: t.String({ format: 'date-time' }),
+  updatedAt: t.String({ format: 'date-time' })
 });
 
 export type Organization = Static<typeof OrganizationSchema>;
