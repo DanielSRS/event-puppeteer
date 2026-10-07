@@ -27,7 +27,7 @@ export function useDashboard(): DashboardSession {
 /* MOST ORG PAGES CAN'T WORK WITHOUT AN ORGANIZATION; THIS IS THE MESSAGE THEY SHOW */
 export function SelectOrgNotice() {
   return (
-    <div className="p-8 text-center text-gray-500">
+    <div className="p-8 text-center text-foreground/60">
       Selecione uma organização no seletor do menu lateral para ver esta página.
     </div>
   );

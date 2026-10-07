@@ -83,7 +83,7 @@ export function DashboardEventsContainer() {
         <button className="button main" onClick={() => { setSaveError(''); setIsWizardOpen(true); }}>Novo Evento</button>
       </div>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-danger">{error}</p>}
 
       <UserEventList
         events={events}

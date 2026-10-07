@@ -38,10 +38,10 @@ export function DashboardSettingsContainer() {
   const data = loaded?.orgId === orgId ? loaded.data : null;
 
   const feedback = message && (
-    <p className={`mb-4 text-sm ${message.ok ? 'text-green-700' : 'text-red-600'}`}>{message.text}</p>
+    <p className={`mb-4 text-sm ${message.ok ? 'text-success' : 'text-danger'}`}>{message.text}</p>
   );
 
-  if (!data) return feedback || <div className="p-8 text-center text-gray-500 animate-pulse">Carregando configurações...</div>;
+  if (!data) return feedback || <div className="p-8 text-center text-foreground/60 animate-pulse">Carregando configurações...</div>;
 
   return (
     <>

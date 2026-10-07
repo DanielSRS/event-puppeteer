@@ -26,9 +26,9 @@ export function ContextSwitcher({
     <div className="relative group">
       <button
         type="button"
-        className="row gap-2 w-full p-2 rounded-md hover:bg-black/5 dark:hover:bg-white/5 transition-colors text-left"
+        className="row gap-2 w-full p-2 rounded-md hover:bg-white/5 transition-colors text-left"
       >
-        <div className="center w-8 h-8 rounded-md bg-main text-white shrink-0">
+        <div className="center w-8 h-8 rounded-md bg-main text-background shrink-0">
           {currentOrg ? (
             <span className="font-bold text-xs">{currentOrg.acronym}</span>
           ) : (
@@ -45,12 +45,12 @@ export function ContextSwitcher({
       </button>
 
       {/* DROPDOWN MENU */}
-      <div className="absolute top-full left-0 w-full mt-1 bg-white dark:bg-zinc-900 border border-muted rounded-md shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 column p-1">
+      <div className="absolute top-full left-0 w-full mt-1 bg-surface border border-muted rounded-md shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 column p-1">
         {isSuperadmin && (
           <button
             type="button"
             onClick={() => onSelectOrg(null)}
-            className={`row gap-2 p-2 rounded-sm hover:bg-black/5 dark:hover:bg-white/5 text-sm ${!currentOrgId ? "text-main font-semibold bg-main/5" : ""}`}
+            className={`row gap-2 p-2 rounded-sm hover:bg-white/5 text-sm ${!currentOrgId ? "text-main font-semibold bg-main/5" : ""}`}
           >
             <MdPublic className="icon shrink-0" />
             <span className="truncate">Sistema Global</span>
@@ -62,7 +62,7 @@ export function ContextSwitcher({
             key={org.id}
             type="button"
             onClick={() => onSelectOrg(org.id)}
-            className={`row gap-2 p-2 rounded-sm hover:bg-black/5 dark:hover:bg-white/5 text-sm ${currentOrgId === org.id ? "text-main font-semibold bg-main/5" : ""}`}
+            className={`row gap-2 p-2 rounded-sm hover:bg-white/5 text-sm ${currentOrgId === org.id ? "text-main font-semibold bg-main/5" : ""}`}
           >
             <MdDomain className="icon shrink-0" />
             <span className="truncate">{org.name}</span>

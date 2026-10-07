@@ -44,7 +44,7 @@ export function Drawer({ isOpen, onClose, title, children, width = "md" }: Drawe
           <h2 className="title text-lg">{title}</h2>
           <button 
             onClick={onClose} 
-            className="p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+            className="p-2 rounded-full hover:bg-white/5 transition-colors"
             title="Fechar"
           >
             <MdClose className="icon" />

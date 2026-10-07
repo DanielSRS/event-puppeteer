@@ -84,7 +84,7 @@ export function DashboardSidebar({ userRole, organizations, currentOrgId, onSele
             <Link 
               key={item.href} 
               href={item.href}
-              className={`row gap-3 p-2 rounded-md transition-colors ${active ? "bg-main text-white font-semibold" : "hover:bg-black/5 dark:hover:bg-white/5 opacity-80 hover:opacity-100"}`}
+              className={`row gap-3 p-2 rounded-md transition-colors ${active ? "bg-main text-background font-semibold" : "hover:bg-white/5 opacity-80 hover:opacity-100"}`}
             >
               <span className="icon text-lg">{item.icon}</span>
               <span className="text-sm">{item.label}</span>

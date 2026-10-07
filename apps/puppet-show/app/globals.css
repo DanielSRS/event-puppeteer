@@ -13,6 +13,11 @@
 }
 
 @layer base {
+  /* THE APP IS DARK-ONLY: NATIVE CONTROLS (SELECT POPUPS, COLOR PICKERS, SCROLLBARS) FOLLOW IT */
+  html {
+    color-scheme: dark;
+  }
+
   body {
     @apply
       bg-background

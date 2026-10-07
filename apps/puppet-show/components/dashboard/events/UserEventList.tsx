@@ -47,7 +47,7 @@ export function UserEventList({ events, loading, onEdit, onDelete }: UserEventLi
           </thead>
           <tbody>
             {events.map((event) => (
-              <tr key={event.id} className="border-b border-muted/50 hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
+              <tr key={event.id} className="border-b border-muted/50 hover:bg-white/5 transition-colors">
                 <td className="px-4 py-3 font-semibold min-w-48">{event.title}</td>
                 <td className="px-4 py-3 whitespace-nowrap">
                   {FromISODate(event.date)} às {event.time}
@@ -63,7 +63,7 @@ export function UserEventList({ events, loading, onEdit, onDelete }: UserEventLi
                     <button
                       type="button"
                       onClick={() => onEdit(event.id)}
-                      className="p-2 rounded hover:bg-black/10 dark:hover:bg-white/10 text-blue-600 dark:text-blue-400"
+                      className="p-2 rounded hover:bg-white/10 text-main"
                       title="Editar evento"
                     >
                       <MdEdit className="icon" />
@@ -71,7 +71,7 @@ export function UserEventList({ events, loading, onEdit, onDelete }: UserEventLi
                     <button
                       type="button"
                       onClick={() => onDelete(event.id)}
-                      className="p-2 rounded hover:bg-black/10 dark:hover:bg-white/10 text-red-600 dark:text-red-400"
+                      className="p-2 rounded hover:bg-white/10 text-danger"
                       title="Excluir evento"
                     >
                       <MdDelete className="icon" />
@@ -100,14 +100,14 @@ export function UserEventList({ events, loading, onEdit, onDelete }: UserEventLi
               <button
                 type="button"
                 onClick={() => onEdit(event.id)}
-                className="button clean flex-1 text-blue-600 dark:text-blue-400"
+                className="button clean flex-1 text-main"
               >
                 <MdEdit className="icon" /> Editar
               </button>
               <button
                 type="button"
                 onClick={() => onDelete(event.id)}
-                className="button clean flex-1 text-red-600 dark:text-red-400"
+                className="button clean flex-1 text-danger"
               >
                 <MdDelete className="icon" /> Excluir
               </button>
@@ -122,8 +122,8 @@ export function UserEventList({ events, loading, onEdit, onDelete }: UserEventLi
 function EventStatusBadge({ status }: { status: UserEventItem["status"] }) {
   const styles = {
     ACTIVE: "bg-success/10 text-success border-success/20",
-    HIDDEN: "bg-red-500/10 text-red-500 border-red-500/20",
-    PAST: "bg-zinc-500/10 text-zinc-500 border-zinc-500/20",
+    HIDDEN: "bg-danger/10 text-danger border-danger/20",
+    PAST: "bg-muted text-foreground/60 border-muted",
   };
 
   const labels = {

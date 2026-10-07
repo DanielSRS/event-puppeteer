@@ -34,17 +34,17 @@ export function ReportForm({ isSending, error, onSubmit, onCancel }: ReportFormP
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <fieldset>
-        <legend className="text-sm font-medium text-gray-700 mb-2">Motivo da denúncia</legend>
+        <legend className="text-sm font-medium text-foreground mb-2">Motivo da denúncia</legend>
         <div className="space-y-2">
           {REASONS.map(option => (
-            <label key={option.value} className="flex items-center gap-2 text-sm text-gray-800 cursor-pointer">
+            <label key={option.value} className="flex items-center gap-2 text-sm text-foreground cursor-pointer">
               <input
                 type="radio"
                 name="reason"
                 value={option.value}
                 checked={reason === option.value}
                 onChange={() => setReason(option.value)}
-                className="h-4 w-4 text-red-600"
+                className="h-4 w-4 text-danger"
               />
               {option.label}
             </label>
@@ -53,26 +53,26 @@ export function ReportForm({ isSending, error, onSubmit, onCancel }: ReportFormP
       </fieldset>
 
       <div>
-        <label htmlFor="report-comment" className="block text-sm font-medium text-gray-700">Comentário (opcional)</label>
+        <label htmlFor="report-comment" className="block text-sm font-medium text-foreground">Comentário (opcional)</label>
         <textarea
           id="report-comment"
           rows={3}
           value={comment}
           onChange={(e) => setComment(e.target.value)}
-          className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 sm:text-sm"
+          className="input mt-1"
         />
       </div>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-danger">{error}</p>}
 
       <div className="flex justify-end gap-2 pt-2">
-        <button type="button" onClick={onCancel} className="px-4 py-2 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-100">
+        <button type="button" onClick={onCancel} className="px-4 py-2 rounded-md text-sm font-medium text-foreground hover:bg-white/10">
           Cancelar
         </button>
         <button
           type="submit"
           disabled={!reason || isSending}
-          className="px-4 py-2 bg-red-600 text-white rounded-md text-sm font-medium hover:bg-red-700 disabled:opacity-50"
+          className="px-4 py-2 bg-danger text-background rounded-md text-sm font-medium hover:opacity-90 disabled:opacity-50"
         >
           {isSending ? 'Enviando...' : 'Enviar denúncia'}
         </button>

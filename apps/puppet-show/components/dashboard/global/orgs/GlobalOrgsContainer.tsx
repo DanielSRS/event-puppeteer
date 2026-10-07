@@ -72,11 +72,11 @@ export function GlobalOrgsContainer() {
     }
   };
 
-  if (isLoading) return <div className="p-8 text-center text-gray-500 animate-pulse">Carregando tenants...</div>;
+  if (isLoading) return <div className="p-8 text-center text-foreground/60 animate-pulse">Carregando tenants...</div>;
 
   return (
     <>
-      {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
+      {error && <p className="mb-4 text-sm text-danger">{error}</p>}
       <OrgManager 
         organizations={orgs.map(ToTenant)}
         onEditOrg={openDrawer}

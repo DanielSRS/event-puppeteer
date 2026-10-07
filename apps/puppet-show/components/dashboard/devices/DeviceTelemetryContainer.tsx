@@ -71,13 +71,13 @@ export function DeviceTelemetryContainer({ deviceId }: Props) {
   };
 
   if (!orgId) return <SelectOrgNotice />;
-  if (!device && error) return <div className="p-8 text-center text-gray-500">{error}</div>;
-  if (!device) return <div className="p-8 text-center text-gray-500 animate-pulse">Carregando dispositivo...</div>;
+  if (!device && error) return <div className="p-8 text-center text-foreground/60">{error}</div>;
+  if (!device) return <div className="p-8 text-center text-foreground/60 animate-pulse">Carregando dispositivo...</div>;
 
   return (
     <>
-      {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
-      {notice && <p role="status" className="mb-4 text-sm text-green-700">{notice}</p>}
+      {error && <p className="mb-4 text-sm text-danger">{error}</p>}
+      {notice && <p role="status" className="mb-4 text-sm text-success">{notice}</p>}
       <DeviceTelemetry
         device={device}
         sendingCommand={sendingCommand}

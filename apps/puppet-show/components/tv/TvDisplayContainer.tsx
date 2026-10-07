@@ -49,7 +49,7 @@ export function TvDisplayContainer() {
   }, []);
 
   if (!PUBLIC_ORG_ID)
-    return <div className="min-h-screen flex items-center justify-center p-8 text-center text-gray-500">{MISSING_ORG_MESSAGE}</div>;
+    return <div className="min-h-screen flex items-center justify-center p-8 text-center text-foreground/60">{MISSING_ORG_MESSAGE}</div>;
 
   return (
     <TvDisplay 

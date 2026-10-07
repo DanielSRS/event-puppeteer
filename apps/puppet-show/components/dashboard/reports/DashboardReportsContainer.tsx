@@ -68,12 +68,12 @@ export function DashboardReportsContainer() {
   const isLoading = loadedOrgId !== orgId;
 
   if (isLoading) {
-    return <div className="p-8 text-center text-gray-500 animate-pulse">Carregando denúncias...</div>;
+    return <div className="p-8 text-center text-foreground/60 animate-pulse">Carregando denúncias...</div>;
   }
 
   return (
     <div className={isPending ? "opacity-50" : ""}>
-      {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
+      {error && <p className="mb-4 text-sm text-danger">{error}</p>}
       <ReportList 
         reports={reports}
         onToggleVisibility={handleToggleVisibility}

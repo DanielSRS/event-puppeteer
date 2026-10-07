@@ -22,36 +22,36 @@ export function TagManager({ tags, onPromoteTag, onRejectTag }: TagManagerProps)
     <div className="space-y-8">
       {/* Pending Tags Section */}
       <section>
-        <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center gap-2">
+        <h3 className="text-lg font-medium text-foreground mb-4 flex items-center gap-2">
           <MdLabel className="w-5 h-5" /> Tags Sugeridas ({pendingTags.length})
         </h3>
         {pendingTags.length === 0 ? (
-          <div className="p-6 bg-gray-50 border border-dashed rounded-lg text-center text-gray-500">
+          <div className="p-6 bg-background border border-dashed rounded-lg text-center text-foreground/60 border-muted">
             Nenhuma nova tag aguardando revisão.
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             {pendingTags.map(tag => (
-              <div key={tag.id} className="flex items-center justify-between p-4 bg-white border rounded-lg shadow-sm">
+              <div key={tag.id} className="flex items-center justify-between p-4 bg-surface border rounded-lg shadow-sm border-muted">
                 <div>
-                  <span className="inline-flex items-center rounded-md bg-blue-50 px-2.5 py-1 text-sm font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10">
+                  <span className="inline-flex items-center rounded-md bg-main/10 px-2.5 py-1 text-sm font-medium text-main ring-1 ring-inset ring-main/30">
                     #{tag.name}
                   </span>
                   {tag.usageCount !== undefined && (
-                    <div className="mt-1 text-xs text-gray-500">Usada {tag.usageCount} vezes</div>
+                    <div className="mt-1 text-xs text-foreground/60">Usada {tag.usageCount} vezes</div>
                   )}
                 </div>
                 <div className="flex gap-2">
                   <button
                     onClick={() => onPromoteTag(tag.id)}
-                    className="p-1.5 text-green-600 hover:bg-green-50 rounded"
+                    className="p-1.5 text-success hover:bg-success/20 rounded"
                     title="Promover"
                   >
                     <MdArrowUpward className="w-5 h-5" />
                   </button>
                   <button
                     onClick={() => onRejectTag(tag.id)}
-                    className="p-1.5 text-red-600 hover:bg-red-50 rounded"
+                    className="p-1.5 text-danger hover:bg-danger/20 rounded"
                     title="Rejeitar"
                   >
                     <MdDelete className="w-5 h-5" />
@@ -65,18 +65,18 @@ export function TagManager({ tags, onPromoteTag, onRejectTag }: TagManagerProps)
 
       {/* Promoted Tags Section */}
       <section>
-        <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center gap-2">
-          <MdCheckCircle className="w-5 h-5 text-green-600" /> Tags Promovidas ({promotedTags.length})
+        <h3 className="text-lg font-medium text-foreground mb-4 flex items-center gap-2">
+          <MdCheckCircle className="w-5 h-5 text-success" /> Tags Promovidas ({promotedTags.length})
         </h3>
-        <div className="flex flex-wrap gap-2 p-6 bg-gray-50 rounded-lg border">
+        <div className="flex flex-wrap gap-2 p-6 bg-background rounded-lg border border-muted">
           {promotedTags.length === 0 ? (
-            <span className="text-gray-500 text-sm">Nenhuma tag promovida ainda.</span>
+            <span className="text-foreground/60 text-sm">Nenhuma tag promovida ainda.</span>
           ) : (
             promotedTags.map(tag => (
-              <span key={tag.id} className="inline-flex items-center gap-1.5 rounded-full bg-green-100 px-3 py-1 text-sm font-medium text-green-800">
+              <span key={tag.id} className="inline-flex items-center gap-1.5 rounded-full bg-success/10 px-3 py-1 text-sm font-medium text-success">
                 #{tag.name}
                 {tag.usageCount !== undefined && (
-                  <span className="bg-green-200 text-green-800 rounded-full px-1.5 py-0.5 text-xs">
+                  <span className="bg-success/20 text-success rounded-full px-1.5 py-0.5 text-xs">
                     {tag.usageCount}
                   </span>
                 )}

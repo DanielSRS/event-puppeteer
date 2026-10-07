@@ -29,11 +29,11 @@ export function GlobalLinksContainer() {
     }
   };
 
-  if (isLoading) return <div className="p-8 text-center text-gray-500 animate-pulse">Carregando links...</div>;
+  if (isLoading) return <div className="p-8 text-center text-foreground/60 animate-pulse">Carregando links...</div>;
 
   return (
     <>
-      {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
+      {error && <p className="mb-4 text-sm text-danger">{error}</p>}
       <GlobalLinksManager 
         links={links}
         onCreateLink={handleCreate}

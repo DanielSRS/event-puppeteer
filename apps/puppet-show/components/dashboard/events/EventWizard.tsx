@@ -68,10 +68,10 @@ export function EventWizard({ initialData, loading, generalError, onSave, onCanc
   return (
     <form onSubmit={handleSubmit} className="column h-full">
       {/* Stepper Header */}
-      <div className="row gap-2 p-6 bg-black/5 dark:bg-white/5 border-b border-muted">
+      <div className="row gap-2 p-6 bg-white/[0.03] border-b border-muted">
         {STEPS.map((step, index) => (
           <div key={step} className="row items-center gap-2 flex-1">
-            <div className={`center w-8 h-8 rounded-full text-sm font-bold ${index <= currentStep ? "bg-main text-white" : "bg-muted text-muted-foreground opacity-50"}`}>
+            <div className={`center w-8 h-8 rounded-full text-sm font-bold ${index <= currentStep ? "bg-main text-background" : "bg-muted text-muted-foreground opacity-50"}`}>
               {index + 1}
             </div>
             <span className={`text-sm hidden sm:block ${index <= currentStep ? "font-semibold" : "opacity-60"}`}>
@@ -155,7 +155,7 @@ export function EventWizard({ initialData, loading, generalError, onSave, onCanc
                 {errors.time && <span className="error-message">{errors.time}</span>}
               </div>
             </div>
-            <div className="card bg-blue-500/10 border-blue-500/20 text-blue-600 dark:text-blue-400 p-4 rounded-md text-sm">
+            <div className="card bg-main/10 border-main/20 text-main p-4 rounded-md text-sm">
               <p>No futuro, o agendamento multi-dias será adicionado aqui.</p>
             </div>
           </div>
@@ -163,7 +163,7 @@ export function EventWizard({ initialData, loading, generalError, onSave, onCanc
 
         {currentStep === 2 && (
           <div className="column gap-4 animate-in fade-in slide-in-from-right-4 duration-300">
-            <div className="card center py-12 border-dashed">
+            <div className="card center py-12 border-dashed border-muted">
               <p className="opacity-60 text-sm">Upload de Banner (Em breve)</p>
             </div>
             <div className="column">
@@ -180,18 +180,18 @@ export function EventWizard({ initialData, loading, generalError, onSave, onCanc
 
       {generalError && (
         <div className="px-6">
-          <p className="error-message p-3 bg-red-500/10 rounded-md">{generalError}</p>
+          <p className="error-message p-3 bg-danger/10 rounded-md">{generalError}</p>
         </div>
       )}
 
       {/* Footer Actions */}
-      <div className="row gap-3 p-6 border-t border-muted bg-black/5 dark:bg-white/5 mt-auto">
+      <div className="row gap-3 p-6 border-t border-muted bg-white/[0.03] mt-auto">
         {currentStep > 0 ? (
           <button type="button" onClick={prevStep} disabled={loading} className="button clean">
             <MdArrowBack className="icon" /> Voltar
           </button>
         ) : (
-          <button type="button" onClick={onCancel} disabled={loading} className="button clean text-red-600 dark:text-red-400">
+          <button type="button" onClick={onCancel} disabled={loading} className="button clean text-danger">
             Cancelar
           </button>
         )}

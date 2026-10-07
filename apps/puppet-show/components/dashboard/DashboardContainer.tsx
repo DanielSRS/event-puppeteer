@@ -55,7 +55,7 @@ export function DashboardContainer({ children }: { children: React.ReactNode }) 
   }, [user]);
 
   if (loading || !user)
-    return <div className="p-8 text-center text-gray-500 animate-pulse">Carregando painel...</div>;
+    return <div className="p-8 text-center text-foreground/60 animate-pulse">Carregando painel...</div>;
 
   return (
     <DashboardProvider value={{ user, orgId: currentOrgId }}>

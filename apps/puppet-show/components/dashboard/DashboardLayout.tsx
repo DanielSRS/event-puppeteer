@@ -24,7 +24,7 @@ export function DashboardLayout({ children, userRole, organizations, currentOrgI
           onSelectOrg={onSelectOrg}
         />
         
-        <main className="flex-1 overflow-y-auto bg-black/5 dark:bg-white/5">
+        <main className="flex-1 overflow-y-auto bg-white/[0.03]">
           <div className="p-8 max-w-6xl mx-auto w-full">
             {children}
           </div>

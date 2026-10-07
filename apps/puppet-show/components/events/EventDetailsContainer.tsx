@@ -86,13 +86,13 @@ export function EventDetailsContainer({ eventId }: Props) {
     }
   };
 
-  if (!authLoading && !orgId) return <div className="p-12 text-center text-gray-500">{MISSING_ORG_MESSAGE}</div>;
-  if (error) return <div className="p-12 text-center text-gray-500">{error}</div>;
-  if (!event) return <div className="p-12 text-center text-gray-500 animate-pulse">Carregando detalhes do evento...</div>;
+  if (!authLoading && !orgId) return <div className="p-12 text-center text-foreground/60">{MISSING_ORG_MESSAGE}</div>;
+  if (error) return <div className="p-12 text-center text-foreground/60">{error}</div>;
+  if (!event) return <div className="p-12 text-center text-foreground/60 animate-pulse">Carregando detalhes do evento...</div>;
 
   return (
     <>
-      {notice && <p role="status" className="max-w-4xl mx-auto mb-4 text-sm text-green-700">{notice}</p>}
+      {notice && <p role="status" className="max-w-4xl mx-auto mb-4 text-sm text-success">{notice}</p>}
       <EventDetails 
         event={event}
         onReport={handleReport}
