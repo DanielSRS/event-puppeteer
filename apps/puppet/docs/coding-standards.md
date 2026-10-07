@@ -55,6 +55,7 @@ To achieve strict namespacing, modularity, and high readability, we group operat
 ### The Implementation File (`module-name.c`)
 
 - **Private by Default**: Every function written in the `.c` file *must* be declared `static` (and `inline` when appropriate). They must not leak into the global C namespace.
+- **Module-Prefixed Statics**: Because every implementation is `#include`d into a single translation unit (`main.c`, `test-runner.c`), `static` functions of different modules share one scope. Prefix them with the module name in `camelCase` (e.g. `httpClientInitialize`, `jsonParse`) so two modules can both expose an `initialize` without colliding.
 - **The Binding**: At the bottom of the `.c` file, instantiate the exported struct and bind the `static` functions to the public pointers.
 - **No Conditional Compilation for Platforms**: Conditional compilation (`#ifdef`, `#if`) is **completely forbidden** inside implementation files for platform-specific code. Platform branching must happen purely by having separate files (e.g., `module-name.android.c`, `module-name.linux.c`). Implementation files with no platform extension (`module-name.c`) are the portable/default implementations.
 
@@ -89,4 +90,6 @@ Testing in this repository follows the same minimalist, dependency-light philoso
 
 - **Unit Test Location**: Unit tests must be co-located next to the source files they test. They must use the `.test.c` suffix (e.g., `src/module/module.test.c`). This keeps tests highly visible when modifying a module.
 - **Build Integration**: Tests are compiled into a standalone executable. We explicitly bypass heavy C++ test suites to keep things lean and fast.
-- **Implementation Inclusion**: The central test runner is responsible for defining the `[PROJECT]_[MODULE]_IMPLEMENTATION` macros required to instantiate the modules under test. Individual `.test.c` files must only include the `.h` headers.
+- **Implementation Inclusion**: The central test runner (`src/test-runner.c`) is responsible for defining the `[PROJECT]_[MODULE]_IMPLEMENTATION` macros required to instantiate the modules under test. Individual `.test.c` files must only include the `.h` headers.
+- **Suites**: Each `.test.c` file declares a `static const TestSuite` (see `src/testing/testing.h`); the runner includes the file and lists the suite.
+- **Functional Core First**: Tests target pure modules (parsing, encoding, scheduling decisions). Keep IO in thin shells so the logic worth testing never needs a network, a clock or a filesystem.
