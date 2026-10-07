@@ -87,7 +87,7 @@ test('Event Handlers', async (t) => {
 
     await deleteEventHandler(req, 'org-1', e1.id, io);
 
-    const events = await listEventsHandler('org-1', io);
+    const events = await listEventsHandler(req, 'org-1', io);
     assert.equal(events.length, 1);
     assert.equal(events[0]?.title, 'Ev2');
   });
@@ -102,7 +102,7 @@ test('Event Handlers', async (t) => {
       schedule: [{ date: '2100-10-01' }], tags: [], links: []
     }, io);
     
-    const events = await listEventsHandler('org-1', io);
+    const events = await listEventsHandler(req, 'org-1', io);
     assert.equal(events.length, 0);
   });
 
@@ -116,7 +116,7 @@ test('Event Handlers', async (t) => {
       schedule: [{ date: '1990-01-01' }], tags: [], links: []
     }, io);
     
-    const events = await listEventsHandler('org-1', io);
+    const events = await listEventsHandler(req, 'org-1', io);
     assert.equal(events.length, 0);
   });
 
@@ -135,7 +135,7 @@ test('Event Handlers', async (t) => {
       links: []
     }, io);
     
-    const events = await listEventsHandler('org-1', io);
+    const events = await listEventsHandler(req, 'org-1', io);
     assert.equal(events[0]?.tags.length, 1);
     assert.equal(events[0]?.tags[0]?.tagId, 't1');
   });
@@ -158,7 +158,7 @@ test('Event Handlers', async (t) => {
 
     // Creator succeeds
     await deleteEventHandler(cReq, 'org-1', e1.id, io);
-    const delEvent = await getEventHandler('org-1', e1.id, io).catch(e => e.message);
+    const delEvent = await getEventHandler(cReq, 'org-1', e1.id, io).catch(e => e.message);
     assert.equal(delEvent, 'NOT_FOUND');
   });
 

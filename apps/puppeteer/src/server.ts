@@ -23,6 +23,8 @@ import { createTagHandler, listTagsHandler, createLinkLabelHandler, listLinkLabe
 import { createEventHandler, listEventsHandler, getEventHandler, deleteEventHandler } from './handlers/events.ts';
 import { voteHandler, getVoteStatusHandler } from './handlers/votes.ts';
 import { eventFeedHandler } from './handlers/feed.ts';
+import { ReportSchema, CreateReportBody, AuditEntrySchema } from './types/moderation.ts';
+import { reportEventHandler, listReportsHandler, hideEventHandler, unhideEventHandler, listShadowBansHandler, liftShadowBanHandler, promoteTagHandler, listAuditTrailHandler } from './handlers/moderation.ts';
 
 // Wire the imperative shell: the HTTP layer assembles real IO and passes it to handlers
 export function createServer(io: AppIO) {
@@ -68,6 +70,12 @@ export function createServer(io: AppIO) {
         })
         .get('/', async ({ io }) => listTagsHandler(io), {
           response: t.Array(TagSchema)
+        })
+        .post('/:tagId/promote', async ({ request, params: { tagId }, io }) => {
+          return await promoteTagHandler(request, tagId, io);
+        }, {
+          params: t.Object({ tagId: t.String() }),
+          response: TagSchema
         })
     )
     .group('/link-labels', (app) =>
@@ -188,6 +196,30 @@ export function createServer(io: AppIO) {
             response: t.Array(FeedEventSchema)
           }
         )
+        .get('/:id/reports', async ({ request, params: { id }, io }) => {
+          return await listReportsHandler(request, id, io);
+        }, {
+          params: t.Object({ id: t.String() }),
+          response: t.Array(ReportSchema)
+        })
+        .get('/:id/shadow-bans', async ({ request, params: { id }, io }) => {
+          return await listShadowBansHandler(request, id, io);
+        }, {
+          params: t.Object({ id: t.String() }),
+          response: t.Array(UserSchema)
+        })
+        .delete('/:id/shadow-bans/:userId', async ({ request, params: { id, userId }, io }) => {
+          return await liftShadowBanHandler(request, id, userId, io);
+        }, {
+          params: t.Object({ id: t.String(), userId: t.String() }),
+          response: UserSchema
+        })
+        .get('/:id/audit', async ({ request, params: { id }, io }) => {
+          return await listAuditTrailHandler(request, id, io);
+        }, {
+          params: t.Object({ id: t.String() }),
+          response: t.Array(AuditEntrySchema)
+        })
         .group('/:id/users', (usersApp) =>
           usersApp
             .get(
@@ -232,14 +264,14 @@ export function createServer(io: AppIO) {
               body: CreateEventBody,
               response: EventSchema
             })
-            .get('/', async ({ params: { id }, io }) => {
-              return await listEventsHandler(id, io);
+            .get('/', async ({ request, params: { id }, io }) => {
+              return await listEventsHandler(request, id, io);
             }, {
               params: t.Object({ id: t.String() }),
               response: t.Array(EventSchema)
             })
-            .get('/:eventId', async ({ params: { id, eventId }, io }) => {
-              return await getEventHandler(id, eventId, io);
+            .get('/:eventId', async ({ request, params: { id, eventId }, io }) => {
+              return await getEventHandler(request, id, eventId, io);
             }, {
               params: t.Object({ id: t.String(), eventId: t.String() }),
               response: EventSchema
@@ -262,6 +294,25 @@ export function createServer(io: AppIO) {
             }, {
               params: t.Object({ id: t.String(), eventId: t.String() }),
               response: t.Object({ voted: t.Boolean() })
+            })
+            .post('/:eventId/report', async ({ request, params: { id, eventId }, body, io }) => {
+              return await reportEventHandler(request, id, eventId, body, io);
+            }, {
+              params: t.Object({ id: t.String(), eventId: t.String() }),
+              body: CreateReportBody,
+              response: ReportSchema
+            })
+            .post('/:eventId/hide', async ({ request, params: { id, eventId }, io }) => {
+              return await hideEventHandler(request, id, eventId, io);
+            }, {
+              params: t.Object({ id: t.String(), eventId: t.String() }),
+              response: EventSchema
+            })
+            .post('/:eventId/unhide', async ({ request, params: { id, eventId }, io }) => {
+              return await unhideEventHandler(request, id, eventId, io);
+            }, {
+              params: t.Object({ id: t.String(), eventId: t.String() }),
+              response: EventSchema
             })
         )
     );

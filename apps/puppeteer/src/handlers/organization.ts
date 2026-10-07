@@ -17,6 +17,23 @@ export async function listOrganizationsHandler(io: AppIO) {
   return await io.orgRepo.getAll();
 }
 
+import { randomUUID } from 'node:crypto';
+
 export async function updateOrganizationHandler(id: string, body: UpdateOrganizationInput, io: AppIO) {
-  return await io.orgRepo.update(id, body);
+  const updated = await io.orgRepo.update(id, body);
+  
+  if (updated && body.shadowBanThreshold !== undefined) {
+    await io.auditRepo.create({
+      id: randomUUID(),
+      actorId: 'system',
+      organizationId: id,
+      action: 'update_org_threshold',
+      targetType: 'organization',
+      targetId: id,
+      details: { shadowBanThreshold: body.shadowBanThreshold },
+      createdAt: new Date().toISOString()
+    });
+  }
+
+  return updated;
 }

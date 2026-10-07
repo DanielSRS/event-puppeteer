@@ -1,7 +1,8 @@
 import type { Tag, LinkLabel } from '../types/tag.ts';
 import type { Event } from '../types/event.ts';
 import type { Vote } from '../types/vote.ts';
-import type { AppIO, OrganizationRepository, UserRepository, AuthProvider, AuthSession, TagRepository, LinkLabelRepository, EventRepository, VoteRepository } from './index.ts';
+import type { Report, AuditEntry } from '../types/moderation.ts';
+import type { AppIO, OrganizationRepository, UserRepository, AuthProvider, AuthSession, TagRepository, LinkLabelRepository, EventRepository, VoteRepository, ReportRepository, AuditRepository } from './index.ts';
 import type { Organization } from '../types/organization.ts';
 import type { User } from '../types/user.ts';
 import { randomUUID } from 'node:crypto';
@@ -90,6 +91,13 @@ export class InMemoryTagRepository implements TagRepository {
   async getById(id: string): Promise<Tag | null> {
     return this.tags.get(id) ?? null;
   }
+  async update(id: string, updates: Partial<Tag>): Promise<Tag | null> {
+    const existing = this.tags.get(id);
+    if (!existing) return null;
+    const updated = { ...existing, ...updates };
+    this.tags.set(id, updated);
+    return updated;
+  }
 }
 
 export class InMemoryLinkLabelRepository implements LinkLabelRepository {
@@ -167,6 +175,57 @@ export class InMemoryVoteRepository implements VoteRepository {
   }
 }
 
+export class InMemoryReportRepository implements ReportRepository {
+  private reports: Report[] = [];
+
+  async create(report: Report): Promise<Report> {
+    this.reports.push(report);
+    return report;
+  }
+
+  async listByEvent(eventId: string): Promise<Report[]> {
+    return this.reports.filter(r => r.eventId === eventId);
+  }
+
+  async listByOrganization(orgId: string): Promise<Report[]> {
+    // For in-memory mock, we'd normally need to fetch events to filter by orgId, 
+    // but we can just filter it later in the handler if needed, or assume it's complex.
+    // We'll leave it returning all for now, or filter by looking up events (but we don't have eventRepo here).
+    // Let's rely on the handler to filter, or we can pass eventRepo in constructor.
+    return this.reports; // Simplified for in-memory, handler will need to filter.
+  }
+
+  async countUniqueReportersByEvent(eventId: string): Promise<number> {
+    const reporters = new Set(this.reports.filter(r => r.eventId === eventId).map(r => r.reporterId));
+    return reporters.size;
+  }
+
+  async existsByUserAndEvent(userId: string, eventId: string): Promise<boolean> {
+    return this.reports.some(r => r.reporterId === userId && r.eventId === eventId);
+  }
+}
+
+export class InMemoryAuditRepository implements AuditRepository {
+  private entries: AuditEntry[] = [];
+
+  async create(entry: AuditEntry): Promise<AuditEntry> {
+    this.entries.push(entry);
+    return entry;
+  }
+
+  async listByOrganization(orgId: string): Promise<AuditEntry[]> {
+    return this.entries.filter(e => e.organizationId === orgId);
+  }
+
+  async listByActor(actorId: string): Promise<AuditEntry[]> {
+    return this.entries.filter(e => e.actorId === actorId);
+  }
+
+  async listByTarget(targetId: string): Promise<AuditEntry[]> {
+    return this.entries.filter(e => e.targetId === targetId);
+  }
+}
+
 export class InMemoryAuthProvider implements AuthProvider {
   // Simple in-memory mock for tests since we can't easily run real betterAuth isolated in-memory for pure unit tests
   private users: Map<string, { email: string, pass: string, name: string }> = new Map();
@@ -210,6 +269,8 @@ export function createInMemoryIO(): AppIO {
     linkLabelRepo: new InMemoryLinkLabelRepository(),
     eventRepo: new InMemoryEventRepository(),
     voteRepo: new InMemoryVoteRepository(),
+    reportRepo: new InMemoryReportRepository(),
+    auditRepo: new InMemoryAuditRepository(),
     auth: new InMemoryAuthProvider()
   };
 }

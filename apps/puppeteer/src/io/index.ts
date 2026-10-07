@@ -3,6 +3,7 @@ import type { User } from '../types/user.ts';
 import type { Tag, LinkLabel } from '../types/tag.ts';
 import type { Event } from '../types/event.ts';
 import type { Vote } from '../types/vote.ts';
+import type { Report, AuditEntry } from '../types/moderation.ts';
 
 export interface OrganizationRepository {
   create(org: Omit<Organization, 'id'>): Promise<Organization>;
@@ -25,6 +26,7 @@ export interface TagRepository {
   create(tag: Tag): Promise<Tag>;
   getAll(): Promise<Tag[]>;
   getById(id: string): Promise<Tag | null>;
+  update(id: string, updates: Partial<Tag>): Promise<Tag | null>;
 }
 
 export interface LinkLabelRepository {
@@ -49,6 +51,21 @@ export interface VoteRepository {
   listByEvent(eventId: string): Promise<Vote[]>;
 }
 
+export interface ReportRepository {
+  create(report: Report): Promise<Report>;
+  listByEvent(eventId: string): Promise<Report[]>;
+  listByOrganization(orgId: string): Promise<Report[]>;
+  countUniqueReportersByEvent(eventId: string): Promise<number>;
+  existsByUserAndEvent(userId: string, eventId: string): Promise<boolean>;
+}
+
+export interface AuditRepository {
+  create(entry: AuditEntry): Promise<AuditEntry>;
+  listByOrganization(orgId: string): Promise<AuditEntry[]>;
+  listByActor(actorId: string): Promise<AuditEntry[]>;
+  listByTarget(targetId: string): Promise<AuditEntry[]>;
+}
+
 export interface AuthSession {
   token: string;
   userId: string;
@@ -67,6 +84,8 @@ export interface AppIO {
   linkLabelRepo: LinkLabelRepository;
   eventRepo: EventRepository;
   voteRepo: VoteRepository;
+  reportRepo: ReportRepository;
+  auditRepo: AuditRepository;
   auth: AuthProvider;
 }
 

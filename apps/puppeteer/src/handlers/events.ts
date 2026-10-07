@@ -52,11 +52,19 @@ export async function createEventHandler(request: Request, orgId: string, body: 
   return await io.eventRepo.create(event);
 }
 
-export async function listEventsHandler(orgId: string, io: AppIO) {
+export async function listEventsHandler(request: Request, orgId: string, io: AppIO) {
   const allEvents = await io.eventRepo.listByOrganization(orgId);
+  const viewerId = await io.auth.getSessionUserId(request).catch(() => null);
   
-  // exclude deleted, hidden, and expired events
-  const publicEvents = allEvents.filter(e => !e.isDeleted && !e.isHidden && !isEventExpired(e));
+  const publicEvents = [];
+  for (const e of allEvents) {
+    if (e.isDeleted || e.isHidden || isEventExpired(e)) continue;
+
+    const creator = await io.userRepo.getById(e.creatorId);
+    if (creator?.isShadowBanned && creator.id !== viewerId) continue;
+
+    publicEvents.push(e);
+  }
 
   // remove free-form tags from response
   return publicEvents.map(e => ({
@@ -65,11 +73,18 @@ export async function listEventsHandler(orgId: string, io: AppIO) {
   }));
 }
 
-export async function getEventHandler(orgId: string, eventId: string, io: AppIO) {
+export async function getEventHandler(request: Request, orgId: string, eventId: string, io: AppIO) {
   const event = await io.eventRepo.getById(eventId);
   if (!event || event.organizationId !== orgId || event.isDeleted) {
     throw new Error('NOT_FOUND');
   }
+
+  const creator = await io.userRepo.getById(event.creatorId);
+  const viewerId = await io.auth.getSessionUserId(request).catch(() => null);
+  if (creator?.isShadowBanned && creator.id !== viewerId) {
+    throw new Error('NOT_FOUND');
+  }
+
   return event;
 }
 
