@@ -173,9 +173,15 @@ export function createRealIO(): AppIO {
   const queryClient = postgres(env.DATABASE_URL, { prepare: false });
   const db = drizzle(queryClient, { schema });
 
-  const emailSender: EmailSender = env.BREVO_API_KEY
-    ? new BrevoEmailSender(env.BREVO_API_KEY, { email: env.EMAIL_FROM!, name: env.EMAIL_FROM_NAME })
-    : new ConsoleEmailSender();
+  let emailSender: EmailSender = new ConsoleEmailSender();
+  if (env.BREVO_API_KEY) {
+    const brevo = new BrevoEmailSender(env.BREVO_API_KEY, { email: env.EMAIL_FROM!, name: env.EMAIL_FROM_NAME });
+    // In the background: an invalid sender would otherwise only show up in Brevo's logs
+    brevo.checkSender()
+      .then(warning => { if (warning) console.warn(`⚠️  ${warning}`); })
+      .catch(error => console.warn(`⚠️  Não foi possível verificar o remetente no Brevo: ${error.message}`));
+    emailSender = brevo;
+  }
 
   const authInstance = createAuth({
     db,

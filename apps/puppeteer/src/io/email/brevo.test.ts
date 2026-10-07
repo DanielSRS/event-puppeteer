@@ -32,4 +32,27 @@ test('Brevo email sender', async (t) => {
     const sender = new BrevoEmailSender('bad-key', { email: 'no-reply@app.com', name: 'App' }, fakeFetch);
     await assert.rejects(sender.send(message), /EMAIL_DELIVERY_FAILED: Brevo answered 401/);
   });
+
+  const accountFetch = (senders: object[], domains: object[]) => (async (url: string) => {
+    if (url.endsWith('/v3/senders')) return new Response(JSON.stringify({ senders }), { status: 200 });
+    if (url.endsWith('/v3/senders/domains')) return new Response(JSON.stringify({ domains }), { status: 200 });
+    return new Response('{}', { status: 404 });
+  }) as unknown as typeof fetch;
+
+  await t.test('sender check passes for an active sender', async () => {
+    const sender = new BrevoEmailSender('k', { email: 'me@gmail.com', name: 'App' }, accountFetch([{ email: 'me@gmail.com', active: true }], []));
+    assert.equal(await sender.checkSender(), null);
+  });
+
+  await t.test('sender check passes for any address on an authenticated domain', async () => {
+    const sender = new BrevoEmailSender('k', { email: 'no-reply@uefs.br', name: 'App' }, accountFetch([], [{ domain_name: 'uefs.br', authenticated: true }]));
+    assert.equal(await sender.checkSender(), null);
+  });
+
+  await t.test('sender check warns when Brevo would reject the sender', async () => {
+    // Brevo accepts the API call (201) and only rejects delivery afterwards, so this is the only early signal
+    const sender = new BrevoEmailSender('k', { email: 'no-reply@app.vercel.app', name: 'App' },
+      accountFetch([{ email: 'me@gmail.com', active: true }], [{ domain_name: 'app.vercel.app', authenticated: false }]));
+    assert.match(await sender.checkSender() ?? '', /no-reply@app\.vercel\.app.*me@gmail\.com/s);
+  });
 });
