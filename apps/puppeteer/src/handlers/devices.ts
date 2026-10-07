@@ -7,7 +7,17 @@ export async function connectDeviceHandler(body: ConnectDeviceInput, io: AppIO) 
   const token = randomBytes(32).toString('hex');
   const tokenHash = createHash('sha256').update(token).digest('hex');
 
+  // A pending device that lost its token reconnects into the same queue entry.
+  // Active devices are never re-issued a token: the identifier is guessable.
+  const pending = await io.deviceRepo.findPendingByIdentifier(body.identifier);
+  if (pending) {
+    const device = await io.deviceRepo.update(pending.id, { tokenHash });
+    if (!device) throw new Error('NOT_FOUND');
+    return { device, token };
+  }
+
   const device = await io.deviceRepo.create({
+    identifier: body.identifier,
     ...(body.organizationId ? { organizationId: body.organizationId } : {}),
     status: 'pending',
     connectedAt: new Date().toISOString(),
@@ -30,6 +40,9 @@ export async function requireDeviceAuth(request: Request, io: AppIO) {
   return device;
 }
 
+export async function getCurrentDeviceHandler(request: Request, io: AppIO) {
+  return await requireDeviceAuth(request, io);
+}
 
 export async function listPendingDevicesGlobalHandler(request: Request, io: AppIO) {
   const actor = await requireAuth(request, io);

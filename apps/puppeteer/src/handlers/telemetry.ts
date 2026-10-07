@@ -53,6 +53,7 @@ export async function ackCommandHandler(request: Request, deviceId: string, comm
   const device = await requireDeviceAuth(request, io);
   if (device.id !== deviceId) throw new Error('FORBIDDEN');
 
+  await requireDeviceCommand(deviceId, commandId, io);
   const updated = await io.commandRepo.updateStatus(commandId, 'acknowledged');
   if (!updated) throw new Error('NOT_FOUND');
   return updated;
@@ -62,9 +63,34 @@ export async function completeCommandHandler(request: Request, deviceId: string,
   const device = await requireDeviceAuth(request, io);
   if (device.id !== deviceId) throw new Error('FORBIDDEN');
 
+  await requireDeviceCommand(deviceId, commandId, io);
   const updated = await io.commandRepo.updateStatus(commandId, success ? 'completed' : 'failed');
   if (!updated) throw new Error('NOT_FOUND');
   return updated;
+}
+
+export async function pullPendingCommandsHandler(request: Request, deviceId: string, io: AppIO) {
+  const device = await requireDeviceAuth(request, io);
+  if (device.id !== deviceId) throw new Error('FORBIDDEN');
+  if (device.status !== 'active') return [];
+
+  const pending = (await io.commandRepo.listByDevice(deviceId))
+    .filter(c => c.status === 'pending')
+    .sort((a, b) => a.issuedAt.localeCompare(b.issuedAt));
+
+  // Mark as sent so the next poll doesn't redeliver them
+  const sent = [];
+  for (const command of pending) {
+    const updated = await io.commandRepo.updateStatus(command.id, 'sent');
+    if (updated) sent.push(updated);
+  }
+  return sent;
+}
+
+async function requireDeviceCommand(deviceId: string, commandId: string, io: AppIO) {
+  const command = await io.commandRepo.getById(commandId);
+  if (!command || command.deviceId !== deviceId) throw new Error('NOT_FOUND');
+  return command;
 }
 
 // ADMIN HANDLERS

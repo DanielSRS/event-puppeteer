@@ -17,3 +17,12 @@ This project follows the **Functional Core / Imperative Shell** pattern to make 
 
 - `nub run start`: Starts the application server.
 - `nub run test`: Runs the test suite using the Node.js native test runner.
+
+### API Documentation
+
+The server publishes an OpenAPI spec via [`@elysiajs/openapi`](https://elysiajs.com/plugins/openapi.html):
+
+- `GET /openapi`: interactive docs (Scalar)
+- `GET /openapi/json`: raw OpenAPI spec
+
+Docs are generated from each route's `body`/`params`/`query`/`response` schemas. When adding a route, also give it a `detail` with `tags`, a `summary`, and `security` (`asUser` or `asDevice`, defined in `src/server.ts`) when it requires a token.

@@ -26,6 +26,7 @@
     "@better-auth/memory-adapter": "^1.7.7",
     "@electric-sql/pglite": "^0.5.8",
     "@elysiajs/node": "^1.4.5",
+    "@elysiajs/openapi": "^1.4.16",
     "better-auth": "^1.7.7",
     "better-sqlite3": "^13.0.3",
     "drizzle-orm": "^0.45.3",

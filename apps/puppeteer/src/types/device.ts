@@ -10,6 +10,7 @@ export type DeviceStatus = Static<typeof DeviceStatusSchema>;
 
 export const DeviceSchema = t.Object({
   id: t.String(),
+  identifier: t.Optional(t.String()),
   name: t.Optional(t.String()),
   location: t.Optional(t.String()),
   organizationId: t.Optional(t.String()),
@@ -20,6 +21,9 @@ export const DeviceSchema = t.Object({
   tokenHash: t.String()
 });
 export type Device = Static<typeof DeviceSchema>;
+
+// What the API exposes: the token hash never leaves the server
+export const PublicDeviceSchema = t.Omit(DeviceSchema, ['tokenHash']);
 
 export const ConnectDeviceBody = t.Object({
   identifier: t.String(),

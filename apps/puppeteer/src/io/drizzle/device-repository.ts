@@ -1,4 +1,4 @@
-import { eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import type { DeviceRepository } from '../index.ts';
 import type { Device } from '../../types/device.ts';
 import { device } from '../../db/schema.ts';
@@ -51,6 +51,13 @@ export class DrizzleDeviceRepository implements DeviceRepository {
     return rows.filter((r: any) => r.status === 'pending').map((r: any) => this.mapToDomain(r));
   }
 
+  async findPendingByIdentifier(identifier: string): Promise<Device | null> {
+    const rows = await this.db.select().from(device)
+      .where(and(eq(device.identifier, identifier), eq(device.status, 'pending')));
+    if (rows.length === 0) return null;
+    return this.mapToDomain(rows[0]);
+  }
+
   async update(id: string, updates: Partial<Device>): Promise<Device | null> {
     const pgUpdates: any = { ...updates };
     if (updates.connectedAt) pgUpdates.connectedAt = new Date(updates.connectedAt);
@@ -66,6 +73,7 @@ export class DrizzleDeviceRepository implements DeviceRepository {
       ...row,
       connectedAt: row.connectedAt.toISOString(),
       approvedAt: row.approvedAt ? row.approvedAt.toISOString() : undefined,
+      identifier: row.identifier || undefined,
       approvedBy: row.approvedBy || undefined,
       name: row.name || undefined,
       location: row.location || undefined,

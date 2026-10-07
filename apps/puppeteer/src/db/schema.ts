@@ -131,6 +131,7 @@ export const audit = pgTable("audit", {
 
 export const device = pgTable("device", {
 	id: text("id").primaryKey(),
+	identifier: text("identifier"),
 	name: text("name"),
 	location: text("location"),
 	organizationId: text("organizationId").references(() => organization.id),

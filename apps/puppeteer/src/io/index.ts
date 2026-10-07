@@ -78,6 +78,7 @@ export interface DeviceRepository {
   listPending(): Promise<Device[]>; // For a specific org or without org? Spec: listByOrganization, listPending, listPendingWithoutOrg
   listPendingWithoutOrg(): Promise<Device[]>;
   listPendingByOrg(orgId: string): Promise<Device[]>;
+  findPendingByIdentifier(identifier: string): Promise<Device | null>;
   update(id: string, updates: Partial<Device>): Promise<Device | null>;
 }
 

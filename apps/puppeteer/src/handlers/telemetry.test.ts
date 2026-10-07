@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createInMemoryIO } from '../io/in-memory.ts';
 import { connectDeviceHandler, approveDeviceHandler } from './devices.ts';
 import { registerHandler } from './auth.ts';
-import { heartbeatHandler, postLogHandler, postTelemetryHandler, ackCommandHandler, completeCommandHandler, getDeviceStatusHandler, getDeviceLogsHandler, getDetailedTelemetryHandler, sendCommandHandler, requestTelemetryHandler, listCommandsHandler } from './telemetry.ts';
+import { heartbeatHandler, postLogHandler, postTelemetryHandler, ackCommandHandler, completeCommandHandler, getDeviceStatusHandler, getDeviceLogsHandler, getDetailedTelemetryHandler, sendCommandHandler, requestTelemetryHandler, listCommandsHandler, pullPendingCommandsHandler } from './telemetry.ts';
 
 async function setup() {
   const io = await createInMemoryIO();
@@ -108,5 +108,44 @@ test('Telemetry & Command Handlers', async (t) => {
     const { io, orgId, memberReq, device } = await setup();
     await assert.rejects(getDetailedTelemetryHandler(memberReq, orgId, device.id, io), /FORBIDDEN/);
     await assert.rejects(sendCommandHandler(memberReq, orgId, device.id, { type: 'restart' }, io), /FORBIDDEN/);
+  });
+
+  await t.test('device pulls pending commands oldest first and they become sent', async () => {
+    const { io, orgId, adminReq, devReq, device } = await setup();
+    const admin = (await io.userRepo.listByOrganization(orgId)).find(u => u.role === 'Admin')!;
+    await io.commandRepo.create({ id: 'newer', deviceId: device.id, type: 'shutdown', status: 'pending', issuedBy: admin.id, issuedAt: '2026-01-02T00:00:00.000Z' });
+    await io.commandRepo.create({ id: 'older', deviceId: device.id, type: 'restart', status: 'pending', issuedBy: admin.id, issuedAt: '2026-01-01T00:00:00.000Z' });
+
+    const pulled = await pullPendingCommandsHandler(devReq, device.id, io);
+    assert.deepEqual(pulled.map(c => c.id), ['older', 'newer']);
+    assert.ok(pulled.every(c => c.status === 'sent'));
+
+    assert.deepEqual(await pullPendingCommandsHandler(devReq, device.id, io), []);
+    const cmds = await listCommandsHandler(adminReq, orgId, device.id, io);
+    assert.ok(cmds.every(c => c.status === 'sent'));
+  });
+
+  await t.test('device cannot pull another device\'s commands', async () => {
+    const { io, devReq } = await setup();
+    const { device: other } = await connectDeviceHandler({ identifier: 'mac-2' }, io);
+    await assert.rejects(pullPendingCommandsHandler(devReq, other.id, io), /FORBIDDEN/);
+  });
+
+  await t.test('pending device pulls no commands', async () => {
+    const { io } = await setup();
+    const { device, token } = await connectDeviceHandler({ identifier: 'mac-2' }, io);
+    const req = new Request('http://localhost/', { headers: { authorization: `Bearer ${token}` } });
+    assert.deepEqual(await pullPendingCommandsHandler(req, device.id, io), []);
+  });
+
+  await t.test('device cannot ack or complete another device\'s command', async () => {
+    const { io, orgId, adminReq, device } = await setup();
+    const cmd = await sendCommandHandler(adminReq, orgId, device.id, { type: 'restart' }, io);
+    const { device: other, token } = await connectDeviceHandler({ identifier: 'mac-2' }, io);
+    const otherReq = new Request('http://localhost/', { headers: { authorization: `Bearer ${token}` } });
+
+    await assert.rejects(ackCommandHandler(otherReq, other.id, cmd.id, io), /NOT_FOUND/);
+    await assert.rejects(completeCommandHandler(otherReq, other.id, cmd.id, true, io), /NOT_FOUND/);
+    assert.equal((await io.commandRepo.getById(cmd.id))?.status, 'pending');
   });
 });

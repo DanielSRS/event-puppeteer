@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createInMemoryIO } from '../io/in-memory.ts';
-import { connectDeviceHandler, listPendingDevicesGlobalHandler, listPendingDevicesOrgHandler, listActiveDevicesOrgHandler, getDeviceHandler, approveDeviceHandler, rejectDeviceHandler } from './devices.ts';
+import { connectDeviceHandler, listPendingDevicesGlobalHandler, listPendingDevicesOrgHandler, listActiveDevicesOrgHandler, getDeviceHandler, approveDeviceHandler, rejectDeviceHandler, getCurrentDeviceHandler } from './devices.ts';
 import { registerHandler } from './auth.ts';
 
 async function setup() {
@@ -127,5 +127,63 @@ test('Device Handlers', async (t) => {
     assert.equal(d.name, undefined);
     assert.equal(d.location, undefined);
     assert.equal(d.status, 'pending');
+  });
+
+  await t.test('connect persists the identifier', async () => {
+    const { io } = await setup();
+    const { device: d } = await connectDeviceHandler({ identifier: 'mac-1' }, io);
+
+    assert.equal(d.identifier, 'mac-1');
+    assert.equal((await io.deviceRepo.getById(d.id))?.identifier, 'mac-1');
+  });
+
+  await t.test('reconnecting a pending device reuses its row and rotates the token', async () => {
+    const { io, sReq } = await setup();
+    const first = await connectDeviceHandler({ identifier: 'mac-1' }, io);
+    const second = await connectDeviceHandler({ identifier: 'mac-1' }, io);
+
+    assert.equal(second.device.id, first.device.id);
+    assert.notEqual(second.token, first.token);
+    assert.equal((await listPendingDevicesGlobalHandler(sReq, io)).length, 1);
+
+    const devReq = (token: string) => new Request('http://localhost/', { headers: { authorization: `Bearer ${token}` } });
+    await assert.rejects(getCurrentDeviceHandler(devReq(first.token), io), /UNAUTHORIZED/);
+    assert.equal((await getCurrentDeviceHandler(devReq(second.token), io)).id, first.device.id);
+  });
+
+  await t.test('reconnecting an active device creates a new pending device', async () => {
+    const { io, org1, a1Req } = await setup();
+    const first = await connectDeviceHandler({ identifier: 'mac-1', organizationId: org1 }, io);
+    await approveDeviceHandler(a1Req, first.device.id, { name: 'D1', location: 'L1' }, io);
+
+    const second = await connectDeviceHandler({ identifier: 'mac-1', organizationId: org1 }, io);
+
+    assert.notEqual(second.device.id, first.device.id);
+    assert.equal(second.device.status, 'pending');
+    assert.equal((await io.deviceRepo.getById(first.device.id))?.status, 'active');
+  });
+
+  await t.test('device reads its own record whatever its status', async () => {
+    const { io, org1, a1Req } = await setup();
+    const devReq = (token: string) => new Request('http://localhost/', { headers: { authorization: `Bearer ${token}` } });
+
+    const pending = await connectDeviceHandler({ identifier: 'mac-1', organizationId: org1 }, io);
+    assert.equal((await getCurrentDeviceHandler(devReq(pending.token), io)).status, 'pending');
+
+    await approveDeviceHandler(a1Req, pending.device.id, { name: 'D1', location: 'L1' }, io);
+    const me = await getCurrentDeviceHandler(devReq(pending.token), io);
+    assert.equal(me.status, 'active');
+    assert.equal(me.organizationId, org1);
+    assert.equal(me.name, 'D1');
+
+    const rejected = await connectDeviceHandler({ identifier: 'mac-2', organizationId: org1 }, io);
+    await rejectDeviceHandler(a1Req, rejected.device.id, io);
+    assert.equal((await getCurrentDeviceHandler(devReq(rejected.token), io)).status, 'rejected');
+  });
+
+  await t.test('unknown device token is unauthorized', async () => {
+    const { io } = await setup();
+    const req = new Request('http://localhost/', { headers: { authorization: 'Bearer nope' } });
+    await assert.rejects(getCurrentDeviceHandler(req, io), /UNAUTHORIZED/);
   });
 });
