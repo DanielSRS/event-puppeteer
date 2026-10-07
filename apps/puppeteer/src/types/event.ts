@@ -64,3 +64,12 @@ export const CreateEventBody = t.Object({
   }))
 });
 export type CreateEventInput = Static<typeof CreateEventBody>;
+
+export const FeedEventSchema = t.Intersect([
+  EventSchema,
+  t.Object({
+    voteCount: t.Number(),
+    weight: t.Number()
+  })
+]);
+export type FeedEvent = Static<typeof FeedEventSchema>;

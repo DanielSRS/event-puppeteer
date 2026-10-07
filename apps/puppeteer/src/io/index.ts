@@ -2,6 +2,7 @@ import type { Organization } from '../types/organization.ts';
 import type { User } from '../types/user.ts';
 import type { Tag, LinkLabel } from '../types/tag.ts';
 import type { Event } from '../types/event.ts';
+import type { Vote } from '../types/vote.ts';
 
 export interface OrganizationRepository {
   create(org: Omit<Organization, 'id'>): Promise<Organization>;
@@ -40,6 +41,14 @@ export interface EventRepository {
   update(id: string, updates: Partial<Event>): Promise<Event | null>;
 }
 
+export interface VoteRepository {
+  create(vote: Vote): Promise<Vote>;
+  delete(userId: string, eventId: string): Promise<boolean>;
+  countByEvent(eventId: string): Promise<number>;
+  existsByUserAndEvent(userId: string, eventId: string): Promise<boolean>;
+  listByEvent(eventId: string): Promise<Vote[]>;
+}
+
 export interface AuthSession {
   token: string;
   userId: string;
@@ -57,6 +66,7 @@ export interface AppIO {
   tagRepo: TagRepository;
   linkLabelRepo: LinkLabelRepository;
   eventRepo: EventRepository;
+  voteRepo: VoteRepository;
   auth: AuthProvider;
 }
 

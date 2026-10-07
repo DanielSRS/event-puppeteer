@@ -1,6 +1,7 @@
 import type { Tag, LinkLabel } from '../types/tag.ts';
 import type { Event } from '../types/event.ts';
-import type { AppIO, OrganizationRepository, UserRepository, AuthProvider, AuthSession, TagRepository, LinkLabelRepository, EventRepository } from './index.ts';
+import type { Vote } from '../types/vote.ts';
+import type { AppIO, OrganizationRepository, UserRepository, AuthProvider, AuthSession, TagRepository, LinkLabelRepository, EventRepository, VoteRepository } from './index.ts';
 import type { Organization } from '../types/organization.ts';
 import type { User } from '../types/user.ts';
 import { randomUUID } from 'node:crypto';
@@ -135,6 +136,37 @@ export class InMemoryEventRepository implements EventRepository {
   }
 }
 
+export class InMemoryVoteRepository implements VoteRepository {
+  private votes: Vote[] = [];
+
+  async create(vote: Vote): Promise<Vote> {
+    if (await this.existsByUserAndEvent(vote.userId, vote.eventId)) {
+      throw new Error('Vote already exists');
+    }
+    this.votes.push(vote);
+    return vote;
+  }
+
+  async delete(userId: string, eventId: string): Promise<boolean> {
+    const idx = this.votes.findIndex(v => v.userId === userId && v.eventId === eventId);
+    if (idx === -1) return false;
+    this.votes.splice(idx, 1);
+    return true;
+  }
+
+  async countByEvent(eventId: string): Promise<number> {
+    return this.votes.filter(v => v.eventId === eventId).length;
+  }
+
+  async existsByUserAndEvent(userId: string, eventId: string): Promise<boolean> {
+    return this.votes.some(v => v.userId === userId && v.eventId === eventId);
+  }
+
+  async listByEvent(eventId: string): Promise<Vote[]> {
+    return this.votes.filter(v => v.eventId === eventId);
+  }
+}
+
 export class InMemoryAuthProvider implements AuthProvider {
   // Simple in-memory mock for tests since we can't easily run real betterAuth isolated in-memory for pure unit tests
   private users: Map<string, { email: string, pass: string, name: string }> = new Map();
@@ -177,6 +209,7 @@ export function createInMemoryIO(): AppIO {
     tagRepo: new InMemoryTagRepository(),
     linkLabelRepo: new InMemoryLinkLabelRepository(),
     eventRepo: new InMemoryEventRepository(),
+    voteRepo: new InMemoryVoteRepository(),
     auth: new InMemoryAuthProvider()
   };
 }

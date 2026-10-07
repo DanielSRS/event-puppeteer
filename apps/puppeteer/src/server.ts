@@ -18,9 +18,11 @@ import { UserSchema, RegisterBody, LoginBody, ChangeRoleBody } from './types/use
 import { registerHandler, loginHandler, meHandler } from './handlers/auth.ts';
 import { listOrgUsersHandler, assignRoleHandler, removeUserHandler } from './handlers/users.ts';
 import { TagSchema, CreateTagBody, LinkLabelSchema, CreateLinkLabelBody } from './types/tag.ts';
-import { EventSchema, CreateEventBody } from './types/event.ts';
+import { EventSchema, CreateEventBody, FeedEventSchema } from './types/event.ts';
 import { createTagHandler, listTagsHandler, createLinkLabelHandler, listLinkLabelsHandler } from './handlers/system.ts';
 import { createEventHandler, listEventsHandler, getEventHandler, deleteEventHandler } from './handlers/events.ts';
+import { voteHandler, getVoteStatusHandler } from './handlers/votes.ts';
+import { eventFeedHandler } from './handlers/feed.ts';
 
 // Wire the imperative shell: the HTTP layer assembles real IO and passes it to handlers
 export function createServer(io: AppIO) {
@@ -176,6 +178,16 @@ export function createServer(io: AppIO) {
             }
           }
         )
+        .get(
+          '/:id/feed',
+          async ({ params: { id }, io }) => {
+            return await eventFeedHandler(id, io);
+          },
+          {
+            params: t.Object({ id: t.String() }),
+            response: t.Array(FeedEventSchema)
+          }
+        )
         .group('/:id/users', (usersApp) =>
           usersApp
             .get(
@@ -238,6 +250,18 @@ export function createServer(io: AppIO) {
             }, {
               params: t.Object({ id: t.String(), eventId: t.String() }),
               response: t.Object({ success: t.Literal(true) })
+            })
+            .post('/:eventId/vote', async ({ request, params: { id, eventId }, io }) => {
+              return await voteHandler(request, id, eventId, io);
+            }, {
+              params: t.Object({ id: t.String(), eventId: t.String() }),
+              response: t.Object({ status: t.Union([t.Literal('voted'), t.Literal('unvoted')]) })
+            })
+            .get('/:eventId/vote', async ({ request, params: { id, eventId }, io }) => {
+              return await getVoteStatusHandler(request, id, eventId, io);
+            }, {
+              params: t.Object({ id: t.String(), eventId: t.String() }),
+              response: t.Object({ voted: t.Boolean() })
             })
         )
     );
