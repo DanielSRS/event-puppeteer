@@ -13,7 +13,7 @@ test('Organization Handlers', async (t) => {
     const io = await createInMemoryIO();
     const input = {
       name: 'Test Org',
-      shortName: 'TO',
+      slug: 'TO', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
       description: 'A test organization',
       logo: 'logo.png',
       url: 'https://test.org',
@@ -27,7 +27,7 @@ test('Organization Handlers', async (t) => {
 
     assert.ok(org.id);
     assert.equal(org.name, 'Test Org');
-    assert.equal(org.shortName, 'TO');
+    assert.equal(org.slug, 'TO');
     assert.equal(org.description, 'A test organization');
     assert.equal(org.logo, 'logo.png');
     assert.equal(org.url, 'https://test.org');
@@ -41,8 +41,8 @@ test('Organization Handlers', async (t) => {
 
   await t.test('list organizations returns all created orgs', async () => {
     const io = await createInMemoryIO();
-    await createOrganizationHandler({ name: 'Org 1', shortName: 'O1' }, io);
-    await createOrganizationHandler({ name: 'Org 2', shortName: 'O2' }, io);
+    await createOrganizationHandler({ name: 'Org 1', slug: 'O1', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }, io);
+    await createOrganizationHandler({ name: 'Org 2', slug: 'O2', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }, io);
 
     const orgs = await listOrganizationsHandler(io);
     assert.equal(orgs.length, 2);
@@ -54,7 +54,7 @@ test('Organization Handlers', async (t) => {
     const io = await createInMemoryIO();
     const org = await createOrganizationHandler({
       name: 'Original Name',
-      shortName: 'ON',
+      slug: 'ON', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
       location: 'Old Location'
     }, io);
 
@@ -64,7 +64,7 @@ test('Organization Handlers', async (t) => {
 
     assert.ok(updatedOrg);
     assert.equal(updatedOrg.name, 'New Name');
-    assert.equal(updatedOrg.shortName, 'ON');
+    assert.equal(updatedOrg.slug, 'ON');
     assert.equal(updatedOrg.location, 'Old Location');
 
     // Verify it was actually saved

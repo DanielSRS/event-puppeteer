@@ -7,8 +7,8 @@ import { registerHandler } from './auth.ts';
 async function setup() {
   const io = await createInMemoryIO();
   
-  const org1 = await io.orgRepo.create({ name: 'Org 1', shortName: 'org1', shadowBanThreshold: 5 });
-  const org2 = await io.orgRepo.create({ name: 'Org 2', shortName: 'org2', shadowBanThreshold: 5 });
+  const org1 = await io.orgRepo.create({ name: 'Org 1', slug: 'org1', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), shadowBanThreshold: 5 });
+  const org2 = await io.orgRepo.create({ name: 'Org 2', slug: 'org2', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), shadowBanThreshold: 5 });
 
   const { token: superToken, user: superadmin } = await registerHandler({ firstName: 'Super', lastName: 'X', email: 's@a.com', password: '123' }, org1.id, io);
   await io.userRepo.update(superadmin.id, { role: 'Superadmin' });

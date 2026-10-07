@@ -3,11 +3,24 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { createInMemoryDatabase } from "./db/index.ts";
 import { bearer } from "better-auth/plugins";
 
+import * as schema from "./db/schema.ts";
+
 export async function createTestAuth() {
   const testDb = await createInMemoryDatabase();
   return betterAuth({
+    user: {
+      additionalFields: {
+        firstName: { type: "string", required: false },
+        lastName: { type: "string", required: false },
+        normalizedName: { type: "string", required: false },
+        organizationId: { type: "string", required: false },
+        role: { type: "string", required: false },
+        isShadowBanned: { type: "boolean", required: false }
+      }
+    },
     database: drizzleAdapter(testDb, {
-      provider: "pg"
+      provider: "pg",
+      schema
     }),
     emailAndPassword: {
       enabled: true,

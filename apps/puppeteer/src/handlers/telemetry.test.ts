@@ -7,7 +7,7 @@ import { heartbeatHandler, postLogHandler, postTelemetryHandler, ackCommandHandl
 
 async function setup() {
   const io = await createInMemoryIO();
-  const org = await io.orgRepo.create({ name: 'Org', shortName: 'org', shadowBanThreshold: 5 });
+  const org = await io.orgRepo.create({ name: 'Org', slug: 'org', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), shadowBanThreshold: 5 });
   
   const { token: adminToken, user: admin } = await registerHandler({ firstName: 'A', lastName: 'X', email: 'a@a.com', password: '123' }, org.id, io);
   await io.userRepo.update(admin.id, { role: 'Admin' });
@@ -37,11 +37,13 @@ test('Telemetry & Command Handlers', async (t) => {
 
   await t.test('no heartbeat for configured interval → device shows as offline', async () => {
     const { io, orgId, adminReq, devReq, device } = await setup();
-    await heartbeatHandler(devReq, device.id, 'ok', undefined, io);
-
-    // Manually backdate the heartbeat
-    const hbs = await io.telemetryRepo.getHeartbeatHistory(device.id);
-    hbs[0]!.timestamp = new Date(Date.now() - 65000).toISOString();
+    
+    // Insert a heartbeat in the past
+    await io.telemetryRepo.recordHeartbeat({
+      deviceId: device.id,
+      status: 'ok',
+      timestamp: new Date('2000-01-01T00:00:00Z').toISOString()
+    });
 
     const { isOnline } = await getDeviceStatusHandler(adminReq, orgId, device.id, io);
     assert.equal(isOnline, false);

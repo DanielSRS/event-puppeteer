@@ -8,7 +8,7 @@ import { createTagHandler } from './system.ts';
 
 async function setup() {
   const io = await createInMemoryIO();
-  const org = await io.orgRepo.create({ name: 'Test Org', shortName: 'testorg', shadowBanThreshold: 2 });
+  const org = await io.orgRepo.create({ name: 'Test Org', slug: 'testorg', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), shadowBanThreshold: 2 });
   const orgId = org.id;
 
   // Create users

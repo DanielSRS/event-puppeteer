@@ -25,7 +25,7 @@ export async function updateOrganizationHandler(id: string, body: UpdateOrganiza
   if (updated && body.shadowBanThreshold !== undefined) {
     await io.auditRepo.create({
       id: randomUUID(),
-      actorId: 'system',
+      actorId: null,
       organizationId: id,
       action: 'update_org_threshold',
       targetType: 'organization',

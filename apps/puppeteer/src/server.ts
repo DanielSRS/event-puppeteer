@@ -386,7 +386,9 @@ export function createServer(io: AppIO) {
     );
 }
 
-export function startServer(port = 3000) {
+import { env } from './env.ts';
+
+export function startServer(port = env.PORT) {
   const io = createRealIO(); // Wire up the real IO for production
   const app = createServer(io);
   app.listen(port);

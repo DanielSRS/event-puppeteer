@@ -48,11 +48,11 @@ export async function reportEventHandler(request: Request, orgId: string, eventI
     const creator = await io.userRepo.getById(event.creatorId);
     if (creator && !creator.isShadowBanned) {
       await io.userRepo.update(creator.id, { isShadowBanned: true });
-      await logAudit(io, 'system', orgId, 'apply_shadow_ban', 'user', creator.id, { reason: 'auto_threshold_reached', eventId });
+      await logAudit(io, null, orgId, 'apply_shadow_ban', 'user', creator.id, { reason: 'auto_threshold_reached', eventId });
     }
     if (!event.isHidden) {
       await io.eventRepo.update(eventId, { isHidden: true });
-      await logAudit(io, 'system', orgId, 'hide_event', 'event', eventId, { reason: 'auto_threshold_reached' });
+      await logAudit(io, null, orgId, 'hide_event', 'event', eventId, { reason: 'auto_threshold_reached' });
     }
   }
 

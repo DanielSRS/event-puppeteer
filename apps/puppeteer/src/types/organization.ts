@@ -3,7 +3,7 @@ import { t, type Static } from 'elysia';
 export const OrganizationSchema = t.Object({
   id: t.String(),
   name: t.String(),
-  shortName: t.String(),
+  slug: t.String(),
   description: t.Optional(t.String()),
   logo: t.Optional(t.String()),
   url: t.Optional(t.String()),
@@ -18,7 +18,7 @@ export type Organization = Static<typeof OrganizationSchema>;
 
 export const CreateOrganizationBody = t.Object({
   name: t.String(),
-  shortName: t.String(),
+  slug: t.String(),
   description: t.Optional(t.String()),
   logo: t.Optional(t.String()),
   url: t.Optional(t.String()),

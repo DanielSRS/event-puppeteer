@@ -125,6 +125,70 @@ export interface AppIO {
   auth: AuthProvider;
 }
 
+import postgres from 'postgres';
+import { drizzle } from 'drizzle-orm/postgres-js';
+import * as schema from '../db/schema.ts';
+import { env } from '../env.ts';
+import { betterAuth } from "better-auth";
+import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { bearer } from "better-auth/plugins";
+
+import { DrizzleOrganizationRepository } from './drizzle/organization-repository.ts';
+import { DrizzleUserRepository } from './drizzle/user-repository.ts';
+import { DrizzleTagRepository } from './drizzle/tag-repository.ts';
+import { DrizzleLinkLabelRepository } from './drizzle/link-label-repository.ts';
+import { DrizzleEventRepository } from './drizzle/event-repository.ts';
+import { DrizzleVoteRepository } from './drizzle/vote-repository.ts';
+import { DrizzleReportRepository } from './drizzle/report-repository.ts';
+import { DrizzleAuditRepository } from './drizzle/audit-repository.ts';
+import { DrizzleDeviceRepository } from './drizzle/device-repository.ts';
+import { DrizzleTelemetryRepository } from './drizzle/telemetry-repository.ts';
+import { DrizzleCommandRepository } from './drizzle/command-repository.ts';
+import { BetterAuthProvider } from './better-auth-adapter.ts';
+
 export function createRealIO(): AppIO {
-  throw new Error("Real IO not implemented yet");
+  const queryClient = postgres(env.DATABASE_URL);
+  const db = drizzle(queryClient, { schema });
+
+  const authInstance = betterAuth({
+    secret: env.BETTER_AUTH_SECRET,
+    baseURL: env.BETTER_AUTH_URL,
+    user: {
+      additionalFields: {
+        firstName: { type: "string", required: false },
+        lastName: { type: "string", required: false },
+        normalizedName: { type: "string", required: false },
+        organizationId: { type: "string", required: false },
+        role: { type: "string", required: false },
+        isShadowBanned: { type: "boolean", required: false }
+      }
+    },
+    database: drizzleAdapter(db, {
+      provider: "pg",
+      schema
+    }),
+    emailAndPassword: {
+      enabled: true,
+      minPasswordLength: 3
+    },
+    advanced: {
+      useSecureCookies: env.NODE_ENV === "production"
+    },
+    plugins: [bearer()]
+  });
+
+  return {
+    orgRepo: new DrizzleOrganizationRepository(db),
+    userRepo: new DrizzleUserRepository(db),
+    tagRepo: new DrizzleTagRepository(db),
+    linkLabelRepo: new DrizzleLinkLabelRepository(db),
+    eventRepo: new DrizzleEventRepository(db),
+    voteRepo: new DrizzleVoteRepository(db),
+    reportRepo: new DrizzleReportRepository(db),
+    auditRepo: new DrizzleAuditRepository(db),
+    deviceRepo: new DrizzleDeviceRepository(db),
+    telemetryRepo: new DrizzleTelemetryRepository(db),
+    commandRepo: new DrizzleCommandRepository(db),
+    auth: new BetterAuthProvider(authInstance)
+  };
 }
