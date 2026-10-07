@@ -6,7 +6,7 @@ import { createInMemoryIO } from '../io/in-memory.ts';
 
 test('Event Handlers', async (t) => {
   await t.test('create event with all properties', async () => {
-    const io = createInMemoryIO();
+    const io = await createInMemoryIO();
     const { token, user } = await registerHandler({ firstName: 'Creator', lastName: 'X', email: 'c@a.com', password: '123' }, 'org-1', io);
 
     const req = new Request('http://localhost/', { headers: { authorization: `Bearer ${token}` } });
@@ -33,7 +33,7 @@ test('Event Handlers', async (t) => {
   });
 
   await t.test('create event with multi-day schedule', async () => {
-    const io = createInMemoryIO();
+    const io = await createInMemoryIO();
     const { token } = await registerHandler({ firstName: 'Creator', lastName: 'X', email: 'c@a.com', password: '123' }, 'org-1', io);
     const req = new Request('http://localhost/', { headers: { authorization: `Bearer ${token}` } });
     
@@ -55,7 +55,7 @@ test('Event Handlers', async (t) => {
   });
 
   await t.test('DayEntry with end time but no start time is rejected', async () => {
-    const io = createInMemoryIO();
+    const io = await createInMemoryIO();
     const { token } = await registerHandler({ firstName: 'Creator', lastName: 'X', email: 'c@a.com', password: '123' }, 'org-1', io);
     const req = new Request('http://localhost/', { headers: { authorization: `Bearer ${token}` } });
     
@@ -71,7 +71,7 @@ test('Event Handlers', async (t) => {
   });
 
   await t.test('list events excludes soft-deleted events', async () => {
-    const io = createInMemoryIO();
+    const io = await createInMemoryIO();
     const { token } = await registerHandler({ firstName: 'Creator', lastName: 'X', email: 'c@a.com', password: '123' }, 'org-1', io);
     const req = new Request('http://localhost/', { headers: { authorization: `Bearer ${token}` } });
     
@@ -93,7 +93,7 @@ test('Event Handlers', async (t) => {
   });
 
   await t.test('list events excludes hidden events', async () => {
-    const io = createInMemoryIO();
+    const io = await createInMemoryIO();
     const { token } = await registerHandler({ firstName: 'Creator', lastName: 'X', email: 'c@a.com', password: '123' }, 'org-1', io);
     const req = new Request('http://localhost/', { headers: { authorization: `Bearer ${token}` } });
     
@@ -107,7 +107,7 @@ test('Event Handlers', async (t) => {
   });
 
   await t.test('list events excludes events past their last date', async () => {
-    const io = createInMemoryIO();
+    const io = await createInMemoryIO();
     const { token } = await registerHandler({ firstName: 'Creator', lastName: 'X', email: 'c@a.com', password: '123' }, 'org-1', io);
     const req = new Request('http://localhost/', { headers: { authorization: `Bearer ${token}` } });
     
@@ -121,7 +121,7 @@ test('Event Handlers', async (t) => {
   });
 
   await t.test('list events shows only predefined tags, not free-form ones', async () => {
-    const io = createInMemoryIO();
+    const io = await createInMemoryIO();
     const { token } = await registerHandler({ firstName: 'Creator', lastName: 'X', email: 'c@a.com', password: '123' }, 'org-1', io);
     const req = new Request('http://localhost/', { headers: { authorization: `Bearer ${token}` } });
     
@@ -141,7 +141,7 @@ test('Event Handlers', async (t) => {
   });
 
   await t.test('only the creator can soft-delete their own event', async () => {
-    const io = createInMemoryIO();
+    const io = await createInMemoryIO();
     const { token: cToken } = await registerHandler({ firstName: 'Creator', lastName: 'X', email: 'c@a.com', password: '123' }, 'org-1', io);
     const { token: mToken } = await registerHandler({ firstName: 'Member', lastName: 'Y', email: 'm@a.com', password: '123' }, 'org-1', io);
     
@@ -163,7 +163,7 @@ test('Event Handlers', async (t) => {
   });
 
   await t.test('event model supports editing (fields are mutable) but no edit handler is exposed yet', async () => {
-    const io = createInMemoryIO();
+    const io = await createInMemoryIO();
     const { token } = await registerHandler({ firstName: 'Creator', lastName: 'X', email: 'c@a.com', password: '123' }, 'org-1', io);
     const req = new Request('http://localhost/', { headers: { authorization: `Bearer ${token}` } });
     

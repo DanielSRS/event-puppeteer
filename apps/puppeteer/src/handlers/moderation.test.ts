@@ -7,7 +7,7 @@ import { registerHandler } from './auth.ts';
 import { createTagHandler } from './system.ts';
 
 async function setup() {
-  const io = createInMemoryIO();
+  const io = await createInMemoryIO();
   const org = await io.orgRepo.create({ name: 'Test Org', shortName: 'testorg', shadowBanThreshold: 2 });
   const orgId = org.id;
 

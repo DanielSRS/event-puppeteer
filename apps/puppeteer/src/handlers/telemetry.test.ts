@@ -6,7 +6,7 @@ import { registerHandler } from './auth.ts';
 import { heartbeatHandler, postLogHandler, postTelemetryHandler, ackCommandHandler, completeCommandHandler, getDeviceStatusHandler, getDeviceLogsHandler, getDetailedTelemetryHandler, sendCommandHandler, requestTelemetryHandler, listCommandsHandler } from './telemetry.ts';
 
 async function setup() {
-  const io = createInMemoryIO();
+  const io = await createInMemoryIO();
   const org = await io.orgRepo.create({ name: 'Org', shortName: 'org', shadowBanThreshold: 5 });
   
   const { token: adminToken, user: admin } = await registerHandler({ firstName: 'A', lastName: 'X', email: 'a@a.com', password: '123' }, org.id, io);
@@ -41,7 +41,7 @@ test('Telemetry & Command Handlers', async (t) => {
 
     // Manually backdate the heartbeat
     const hbs = await io.telemetryRepo.getHeartbeatHistory(device.id);
-    hbs[0].timestamp = new Date(Date.now() - 65000).toISOString();
+    hbs[0]!.timestamp = new Date(Date.now() - 65000).toISOString();
 
     const { isOnline } = await getDeviceStatusHandler(adminReq, orgId, device.id, io);
     assert.equal(isOnline, false);
@@ -53,7 +53,7 @@ test('Telemetry & Command Handlers', async (t) => {
 
     const logs = await getDeviceLogsHandler(adminReq, orgId, device.id, io);
     assert.equal(logs.length, 1);
-    assert.equal(logs[0].message, 'crash');
+    assert.equal(logs[0]!.message, 'crash');
   });
 
   await t.test('admin requests detailed telemetry → request recorded for device to pick up', async () => {
@@ -89,7 +89,7 @@ test('Telemetry & Command Handlers', async (t) => {
     await ackCommandHandler(devReq, device.id, cmd.id, io);
     
     const cmds = await listCommandsHandler(adminReq, orgId, device.id, io);
-    assert.equal(cmds[0].status, 'acknowledged');
+    assert.equal(cmds[0]!.status, 'acknowledged');
   });
 
   await t.test('device completes command → status changes to completed', async () => {
@@ -99,7 +99,7 @@ test('Telemetry & Command Handlers', async (t) => {
     await completeCommandHandler(devReq, device.id, cmd.id, true, io);
     
     const cmds = await listCommandsHandler(adminReq, orgId, device.id, io);
-    assert.equal(cmds[0].status, 'completed');
+    assert.equal(cmds[0]!.status, 'completed');
   });
 
   await t.test('Member cannot send commands or view telemetry (forbidden)', async () => {

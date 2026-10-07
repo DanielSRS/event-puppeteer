@@ -6,7 +6,7 @@ import { createInMemoryIO } from '../io/in-memory.ts';
 
 test('Users Handlers & Roles', async (t) => {
   await t.test('search finds "José" when searching "jose" (accent-insensitive)', async () => {
-    const io = createInMemoryIO();
+    const io = await createInMemoryIO();
     const { token: adminToken } = await registerHandler({ firstName: 'Admin', lastName: 'X', email: 'admin@a.com', password: '123' }, 'org-1', io);
     await io.userRepo.update((await io.auth.getSessionUserId(new Request('http://localhost/', { headers: { authorization: `Bearer ${adminToken}` } })))!, { role: 'Admin' });
 
@@ -20,7 +20,7 @@ test('Users Handlers & Roles', async (t) => {
   });
 
   await t.test('search finds "MARIA" when searching "maria" (case-insensitive)', async () => {
-    const io = createInMemoryIO();
+    const io = await createInMemoryIO();
     const { token: adminToken } = await registerHandler({ firstName: 'Admin', lastName: 'X', email: 'admin@a.com', password: '123' }, 'org-1', io);
     await io.userRepo.update((await io.auth.getSessionUserId(new Request('http://localhost/', { headers: { authorization: `Bearer ${adminToken}` } })))!, { role: 'Admin' });
 
@@ -33,7 +33,7 @@ test('Users Handlers & Roles', async (t) => {
   });
 
   await t.test('Admin can change a user role', async () => {
-    const io = createInMemoryIO();
+    const io = await createInMemoryIO();
     const { token: adminToken } = await registerHandler({ firstName: 'Admin', lastName: 'X', email: 'admin@a.com', password: '123' }, 'org-1', io);
     await io.userRepo.update((await io.auth.getSessionUserId(new Request('http://localhost/', { headers: { authorization: `Bearer ${adminToken}` } })))!, { role: 'Admin' });
 
@@ -47,7 +47,7 @@ test('Users Handlers & Roles', async (t) => {
   });
 
   await t.test('Member cannot change roles', async () => {
-    const io = createInMemoryIO();
+    const io = await createInMemoryIO();
     const { token: memberToken } = await registerHandler({ firstName: 'Member', lastName: 'X', email: 'm@a.com', password: '123' }, 'org-1', io);
     const { user: targetUser } = await registerHandler({ firstName: 'Target', lastName: 'Y', email: 't@a.com', password: '123' }, 'org-1', io);
 
@@ -59,7 +59,7 @@ test('Users Handlers & Roles', async (t) => {
   });
 
   await t.test('Superadmin can act on any organization', async () => {
-    const io = createInMemoryIO();
+    const io = await createInMemoryIO();
     const { token: superAdminToken } = await registerHandler({ firstName: 'Super', lastName: 'X', email: 's@a.com', password: '123' }, 'org-1', io);
     await io.userRepo.update((await io.auth.getSessionUserId(new Request('http://localhost/', { headers: { authorization: `Bearer ${superAdminToken}` } })))!, { role: 'Superadmin' });
 

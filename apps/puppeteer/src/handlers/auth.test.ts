@@ -5,7 +5,7 @@ import { createInMemoryIO } from '../io/in-memory.ts';
 
 test('Auth Handlers', async (t) => {
   await t.test('register user places them in correct org with Member role', async () => {
-    const io = createInMemoryIO();
+    const io = await createInMemoryIO();
     const result = await registerHandler({
       firstName: 'José',
       lastName: 'Silva',
@@ -20,7 +20,7 @@ test('Auth Handlers', async (t) => {
   });
 
   await t.test('login with correct credentials succeeds', async () => {
-    const io = createInMemoryIO();
+    const io = await createInMemoryIO();
     await registerHandler({ firstName: 'A', lastName: 'B', email: 'a@b.com', password: 'pass' }, 'org-1', io);
     
     const session = await loginHandler({ email: 'a@b.com', password: 'pass' }, io);
@@ -28,7 +28,7 @@ test('Auth Handlers', async (t) => {
   });
 
   await t.test('login with wrong credentials fails', async () => {
-    const io = createInMemoryIO();
+    const io = await createInMemoryIO();
     await registerHandler({ firstName: 'A', lastName: 'B', email: 'a@b.com', password: 'pass' }, 'org-1', io);
     
     await assert.rejects(
@@ -38,7 +38,7 @@ test('Auth Handlers', async (t) => {
   });
 
   await t.test('meHandler returns current user', async () => {
-    const io = createInMemoryIO();
+    const io = await createInMemoryIO();
     const { token, user } = await registerHandler({ firstName: 'A', lastName: 'B', email: 'a@b.com', password: 'pass' }, 'org-1', io);
     
     const req = new Request('http://localhost/', { headers: { authorization: `Bearer ${token}` } });

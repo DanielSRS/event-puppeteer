@@ -6,7 +6,7 @@ import { createInMemoryIO } from '../io/in-memory.ts';
 
 test('System Handlers', async (t) => {
   await t.test('Superadmin can create Tag and LinkLabel', async () => {
-    const io = createInMemoryIO();
+    const io = await createInMemoryIO();
     const { token, user } = await registerHandler({ firstName: 'Super', lastName: 'Admin', email: 's@a.com', password: '123' }, 'org-1', io);
     await io.userRepo.update(user.id, { role: 'Superadmin' });
 
@@ -26,7 +26,7 @@ test('System Handlers', async (t) => {
   });
 
   await t.test('Member cannot create Tag or LinkLabel', async () => {
-    const io = createInMemoryIO();
+    const io = await createInMemoryIO();
     const { token } = await registerHandler({ firstName: 'Member', lastName: 'User', email: 'm@a.com', password: '123' }, 'org-1', io);
 
     const req = new Request('http://localhost/', { headers: { authorization: `Bearer ${token}` } });

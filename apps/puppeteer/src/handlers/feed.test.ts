@@ -8,7 +8,7 @@ import { createInMemoryIO } from '../io/in-memory.ts';
 
 test('Votes & Feed Handlers', async (t) => {
   await t.test('voting toggles and feed calculates weights correctly', async () => {
-    const io = createInMemoryIO();
+    const io = await createInMemoryIO();
     const { token, user } = await registerHandler({ firstName: 'Creator', lastName: 'X', email: 'c@a.com', password: '123' }, 'org-1', io);
     const { token: user2Token } = await registerHandler({ firstName: 'Voter', lastName: 'Y', email: 'v@a.com', password: '123' }, 'org-1', io);
 
@@ -61,7 +61,7 @@ test('Votes & Feed Handlers', async (t) => {
   });
 
   await t.test('feed excludes hidden, deleted, and expired events', async () => {
-    const io = createInMemoryIO();
+    const io = await createInMemoryIO();
     const { token } = await registerHandler({ firstName: 'Creator', lastName: 'X', email: 'c@a.com', password: '123' }, 'org-1', io);
     const req = new Request('http://localhost/', { headers: { authorization: `Bearer ${token}` } });
     
@@ -98,7 +98,7 @@ test('Votes & Feed Handlers', async (t) => {
   });
 
   await t.test('one vote per user per event enforced at IO level', async () => {
-    const io = createInMemoryIO();
+    const io = await createInMemoryIO();
     const { token, user } = await registerHandler({ firstName: 'C', lastName: 'X', email: 'c@a.com', password: '123' }, 'org-1', io);
     const req = new Request('http://localhost/', { headers: { authorization: `Bearer ${token}` } });
     

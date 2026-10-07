@@ -10,7 +10,7 @@ import { createInMemoryIO } from '../io/in-memory.ts';
 
 test('Organization Handlers', async (t) => {
   await t.test('create organization stores all properties correctly and defaults shadowBanThreshold to 5', async () => {
-    const io = createInMemoryIO();
+    const io = await createInMemoryIO();
     const input = {
       name: 'Test Org',
       shortName: 'TO',
@@ -40,7 +40,7 @@ test('Organization Handlers', async (t) => {
   });
 
   await t.test('list organizations returns all created orgs', async () => {
-    const io = createInMemoryIO();
+    const io = await createInMemoryIO();
     await createOrganizationHandler({ name: 'Org 1', shortName: 'O1' }, io);
     await createOrganizationHandler({ name: 'Org 2', shortName: 'O2' }, io);
 
@@ -51,7 +51,7 @@ test('Organization Handlers', async (t) => {
   });
 
   await t.test('update organization modifies only specified fields', async () => {
-    const io = createInMemoryIO();
+    const io = await createInMemoryIO();
     const org = await createOrganizationHandler({
       name: 'Original Name',
       shortName: 'ON',
@@ -74,13 +74,13 @@ test('Organization Handlers', async (t) => {
   });
 
   await t.test('getOrganizationHandler returns null for non-existent org', async () => {
-    const io = createInMemoryIO();
+    const io = await createInMemoryIO();
     const org = await getOrganizationHandler('non-existent', io);
     assert.equal(org, null);
   });
 
   await t.test('updateOrganizationHandler returns null for non-existent org', async () => {
-    const io = createInMemoryIO();
+    const io = await createInMemoryIO();
     const org = await updateOrganizationHandler('non-existent', { name: 'Test' }, io);
     assert.equal(org, null);
   });

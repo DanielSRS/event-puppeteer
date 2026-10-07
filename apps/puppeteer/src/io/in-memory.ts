@@ -334,6 +334,7 @@ export class InMemoryCommandRepository implements CommandRepository {
   }
 }
 
+import { BetterAuthProvider } from './better-auth-adapter.ts';
 export class InMemoryAuthProvider implements AuthProvider {
   // Simple in-memory mock for tests since we can't easily run real betterAuth isolated in-memory for pure unit tests
   private users: Map<string, { email: string, pass: string, name: string }> = new Map();
@@ -369,7 +370,9 @@ export class InMemoryAuthProvider implements AuthProvider {
   }
 }
 
-export function createInMemoryIO(): AppIO {
+import { createTestAuth } from "../auth.ts";
+
+export async function createInMemoryIO(): AppIO {
   return {
     orgRepo: new InMemoryOrganizationRepository(),
     userRepo: new InMemoryUserRepository(),
@@ -382,6 +385,6 @@ export function createInMemoryIO(): AppIO {
     deviceRepo: new InMemoryDeviceRepository(),
     telemetryRepo: new InMemoryTelemetryRepository(),
     commandRepo: new InMemoryCommandRepository(),
-    auth: new InMemoryAuthProvider()
+    auth: new BetterAuthProvider(await createTestAuth())
   };
 }

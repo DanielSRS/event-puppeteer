@@ -5,7 +5,7 @@ import { connectDeviceHandler, listPendingDevicesGlobalHandler, listPendingDevic
 import { registerHandler } from './auth.ts';
 
 async function setup() {
-  const io = createInMemoryIO();
+  const io = await createInMemoryIO();
   
   const org1 = await io.orgRepo.create({ name: 'Org 1', shortName: 'org1', shadowBanThreshold: 5 });
   const org2 = await io.orgRepo.create({ name: 'Org 2', shortName: 'org2', shadowBanThreshold: 5 });
