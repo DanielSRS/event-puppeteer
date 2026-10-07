@@ -11,17 +11,28 @@ if(NOT SYSROOT_DIR)
     set(SYSROOT_DIR "${CMAKE_CURRENT_LIST_DIR}/../sysroot")
 endif()
 
-# Auto-download the sysroot if it doesn't exist
-if(NOT EXISTS "${SYSROOT_DIR}")
-    message(STATUS "Sysroot not found at ${SYSROOT_DIR}. Running setup-arm32-sysroot.sh...")
+# The stamp records which version of the setup script produced the sysroot,
+# so editing its package list re-runs it over an existing sysroot.
+set(SYSROOT_SETUP_SCRIPT "${CMAKE_CURRENT_LIST_DIR}/../scripts/setup-arm32-sysroot.sh")
+set(SYSROOT_STAMP_FILE "${SYSROOT_DIR}/.setup-script.sha256")
+file(SHA256 "${SYSROOT_SETUP_SCRIPT}" SYSROOT_SETUP_SCRIPT_HASH)
+set(SYSROOT_RECORDED_HASH "")
+if(EXISTS "${SYSROOT_STAMP_FILE}")
+    file(READ "${SYSROOT_STAMP_FILE}" SYSROOT_RECORDED_HASH)
+endif()
+
+# Auto-download the sysroot if it doesn't exist or is out of date
+if(NOT SYSROOT_RECORDED_HASH STREQUAL SYSROOT_SETUP_SCRIPT_HASH)
+    message(STATUS "Sysroot at ${SYSROOT_DIR} is missing or outdated. Running setup-arm32-sysroot.sh...")
     execute_process(
-        COMMAND bash "${CMAKE_CURRENT_LIST_DIR}/../scripts/setup-arm32-sysroot.sh" "${SYSROOT_DIR}"
+        COMMAND bash "${SYSROOT_SETUP_SCRIPT}" "${SYSROOT_DIR}"
         WORKING_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/.."
         RESULT_VARIABLE SYSROOT_SETUP_RESULT
     )
     if(NOT SYSROOT_SETUP_RESULT EQUAL 0)
         message(FATAL_ERROR "Failed to setup sysroot! Script exited with code ${SYSROOT_SETUP_RESULT}.")
     endif()
+    file(WRITE "${SYSROOT_STAMP_FILE}" "${SYSROOT_SETUP_SCRIPT_HASH}")
 endif()
 
 # Only set CMAKE_SYSROOT if the directory actually exists to avoid CMake errors
@@ -36,7 +47,7 @@ if(EXISTS "${SYSROOT_DIR}")
     # Add sysroot specific flags
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -B ${SYSROOT_DIR}/usr/lib/arm-linux-gnueabihf -isystem ${SYSROOT_DIR}/usr/include/arm-linux-gnueabihf")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -B ${SYSROOT_DIR}/usr/lib/arm-linux-gnueabihf -isystem ${SYSROOT_DIR}/usr/include/arm-linux-gnueabihf -isystem ${SYSROOT_DIR}/usr/include/c++/10 -isystem ${SYSROOT_DIR}/usr/include/arm-linux-gnueabihf/c++/10")
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -B ${SYSROOT_DIR}/usr/lib/arm-linux-gnueabihf -isystem ${SYSROOT_DIR}/usr/include/arm-linux-gnueabihf -L${SYSROOT_DIR}/usr/lib/arm-linux-gnueabihf -L${SYSROOT_DIR}/usr/lib/gcc/arm-linux-gnueabihf/10 -L${SYSROOT_DIR}/lib/arm-linux-gnueabihf -Wl,-rpath-link=${SYSROOT_DIR}/lib/arm-linux-gnueabihf")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -B ${SYSROOT_DIR}/usr/lib/arm-linux-gnueabihf -isystem ${SYSROOT_DIR}/usr/include/arm-linux-gnueabihf -L${SYSROOT_DIR}/usr/lib/arm-linux-gnueabihf -L${SYSROOT_DIR}/usr/lib/gcc/arm-linux-gnueabihf/10 -L${SYSROOT_DIR}/lib/arm-linux-gnueabihf -Wl,-rpath-link=${SYSROOT_DIR}/lib/arm-linux-gnueabihf -Wl,-rpath-link=${SYSROOT_DIR}/usr/lib/arm-linux-gnueabihf")
 endif()
 
 # Search for programs in the build host directories

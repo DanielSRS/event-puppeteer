@@ -6,7 +6,7 @@ DEBIAN_RELEASE="bullseye"
 ARCH="armhf"
 MIRROR="http://deb.debian.org/debian"
 
-# Minimal list of packages for X11 + EGL + C Standard Library + C++ Standard Library
+# Minimal list of packages for X11 + EGL + libcurl + C and C++ Standard Libraries
 PACKAGES=(
     "libstdc++-10-dev"
     "libstdc++6"
@@ -44,6 +44,37 @@ PACKAGES=(
     "libglvnd0"
     "mesa-common-dev"
     "libgl-dev"
+
+    # libcurl (HTTP(S) transport to Puppeteer) and its runtime dependency
+    # closure, required so the linker can resolve libcurl's DT_NEEDED entries
+    "libcurl4-openssl-dev"
+    "libcurl4"
+    "libssl1.1"
+    "libnghttp2-14"
+    "libidn2-0"
+    "libunistring2"
+    "libpsl5"
+    "librtmp1"
+    "libssh2-1"
+    "libgcrypt20"
+    "libgpg-error0"
+    "libgnutls30"
+    "libhogweed6"
+    "libnettle8"
+    "libgmp10"
+    "libp11-kit0"
+    "libffi7"
+    "libtasn1-6"
+    "libgssapi-krb5-2"
+    "libkrb5-3"
+    "libk5crypto3"
+    "libkrb5support0"
+    "libcom-err2"
+    "libkeyutils1"
+    "libldap-2.4-2"
+    "libsasl2-2"
+    "libsasl2-modules-db"
+    "libdb5.3"
 )
 
 mkdir -p "$SYSROOT_DIR/tmp_debs"
