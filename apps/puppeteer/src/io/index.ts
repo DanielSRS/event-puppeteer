@@ -148,7 +148,8 @@ import { DrizzleCommandRepository } from './drizzle/command-repository.ts';
 import { BetterAuthProvider } from './better-auth-adapter.ts';
 
 export function createRealIO(): AppIO {
-  const queryClient = postgres(env.DATABASE_URL);
+  // prepare: false — Supabase's transaction pooler (what serverless should use) rejects prepared statements
+  const queryClient = postgres(env.DATABASE_URL, { prepare: false });
   const db = drizzle(queryClient, { schema });
 
   const authInstance = betterAuth({

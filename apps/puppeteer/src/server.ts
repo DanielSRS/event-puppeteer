@@ -1,7 +1,5 @@
-import { Elysia, t } from 'elysia';
-import { node } from '@elysiajs/node';
+import { Elysia, t, type ElysiaAdapter } from 'elysia';
 import { openapi } from '@elysiajs/openapi';
-import { createRealIO } from './io/index.ts';
 import type { AppIO } from './io/index.ts';
 import { healthCheck } from './handlers/health.ts';
 import {
@@ -73,8 +71,9 @@ const docs = openapi({
 });
 
 // Wire the imperative shell: the HTTP layer assembles real IO and passes it to handlers
-export function createServer(io: AppIO) {
-  return new Elysia({ adapter: node() })
+// Adapter defaults to Web Standard (what Vercel runs); local Node passes node()
+export function createServer(io: AppIO, adapter?: ElysiaAdapter) {
+  return new Elysia(adapter ? { adapter } : {})
     .use(docs)
     // Not .decorate(): Elysia deep-merges decorators into every group, and walking the
     // Drizzle/better-auth instances inside io never terminates (heap OOM at startup)
@@ -206,7 +205,7 @@ export function createServer(io: AppIO) {
           detail: {
             tags: ['Device'],
             summary: 'Pull pending Commands',
-            description: 'Returns pending Commands oldest first and marks them as sent, so each is delivered once. Returns an empty list while the Device is not active.',
+            description: 'Returns Commands not yet acknowledged, oldest first, marking pending ones as sent. A Command is redelivered on every poll until the Device acknowledges it (at-least-once). Returns an empty list while the Device is not active.',
             security: asDevice
           }
         })
@@ -605,15 +604,4 @@ export function createServer(io: AppIO) {
             })
         )
     );
-}
-
-import { env } from './env.ts';
-
-export function startServer(port = env.PORT) {
-  const io = createRealIO(); // Wire up the real IO for production
-  const app = createServer(io);
-  app.listen(port);
-  console.log(`🦊 Server is running at http://localhost:${port}`);
-  console.log(`📚 API docs at http://localhost:${port}/openapi`);
-  return app;
 }

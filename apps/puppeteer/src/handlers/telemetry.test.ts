@@ -120,9 +120,20 @@ test('Telemetry & Command Handlers', async (t) => {
     assert.deepEqual(pulled.map(c => c.id), ['older', 'newer']);
     assert.ok(pulled.every(c => c.status === 'sent'));
 
-    assert.deepEqual(await pullPendingCommandsHandler(devReq, device.id, io), []);
     const cmds = await listCommandsHandler(adminReq, orgId, device.id, io);
     assert.ok(cmds.every(c => c.status === 'sent'));
+  });
+
+  await t.test('unacknowledged commands are redelivered until the device acks them', async () => {
+    const { io, orgId, adminReq, devReq, device } = await setup();
+    const cmd = await sendCommandHandler(adminReq, orgId, device.id, { type: 'restart' }, io);
+
+    assert.deepEqual((await pullPendingCommandsHandler(devReq, device.id, io)).map(c => c.id), [cmd.id]);
+    // Response or ack lost: the next poll delivers it again
+    assert.deepEqual((await pullPendingCommandsHandler(devReq, device.id, io)).map(c => c.id), [cmd.id]);
+
+    await ackCommandHandler(devReq, device.id, cmd.id, io);
+    assert.deepEqual(await pullPendingCommandsHandler(devReq, device.id, io), []);
   });
 
   await t.test('device cannot pull another device\'s commands', async () => {

@@ -3,6 +3,7 @@ import type { CommandRepository } from '../index.ts';
 import type { Command } from '../../types/command.ts';
 import { command } from '../../db/schema.ts';
 import { randomUUID } from 'node:crypto';
+import { withoutNulls } from './without-nulls.ts';
 
 export class DrizzleCommandRepository implements CommandRepository {
   constructor(private db: any) {}
@@ -41,7 +42,7 @@ export class DrizzleCommandRepository implements CommandRepository {
 
   private mapToDomain(row: any): Command {
     return {
-      ...row,
+      ...withoutNulls(row),
       issuedAt: row.issuedAt.toISOString(),
       completedAt: row.completedAt ? row.completedAt.toISOString() : undefined
     };

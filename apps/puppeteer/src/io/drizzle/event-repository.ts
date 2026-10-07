@@ -3,6 +3,7 @@ import type { EventRepository } from '../index.ts';
 import type { Event } from '../../types/event.ts';
 import { event } from '../../db/schema.ts';
 import { randomUUID } from 'node:crypto';
+import { withoutNulls } from './without-nulls.ts';
 
 export class DrizzleEventRepository implements EventRepository {
   constructor(private db: any) {}
@@ -43,7 +44,7 @@ export class DrizzleEventRepository implements EventRepository {
 
   private mapToDomain(row: any): Event {
     return {
-      ...row,
+      ...withoutNulls(row),
       createdAt: row.createdAt.toISOString()
     };
   }

@@ -3,6 +3,7 @@ import type { ReportRepository } from '../index.ts';
 import type { Report } from '../../types/moderation.ts';
 import { report } from '../../db/schema.ts';
 import { randomUUID } from 'node:crypto';
+import { withoutNulls } from './without-nulls.ts';
 
 export class DrizzleReportRepository implements ReportRepository {
   constructor(private db: any) {}
@@ -49,7 +50,7 @@ export class DrizzleReportRepository implements ReportRepository {
 
   private mapToDomain(row: any): Report {
     return {
-      ...row,
+      ...withoutNulls(row),
       createdAt: row.createdAt.toISOString()
     };
   }

@@ -74,14 +74,15 @@ export async function pullPendingCommandsHandler(request: Request, deviceId: str
   if (device.id !== deviceId) throw new Error('FORBIDDEN');
   if (device.status !== 'active') return [];
 
-  const pending = (await io.commandRepo.listByDevice(deviceId))
-    .filter(c => c.status === 'pending')
+  // At-least-once: 'sent' commands are redelivered until the device acks them,
+  // so a lost response or ack doesn't strand a command
+  const undelivered = (await io.commandRepo.listByDevice(deviceId))
+    .filter(c => c.status === 'pending' || c.status === 'sent')
     .sort((a, b) => a.issuedAt.localeCompare(b.issuedAt));
 
-  // Mark as sent so the next poll doesn't redeliver them
   const sent = [];
-  for (const command of pending) {
-    const updated = await io.commandRepo.updateStatus(command.id, 'sent');
+  for (const command of undelivered) {
+    const updated = command.status === 'pending' ? await io.commandRepo.updateStatus(command.id, 'sent') : command;
     if (updated) sent.push(updated);
   }
   return sent;

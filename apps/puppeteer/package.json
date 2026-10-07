@@ -11,7 +11,7 @@
     }
   },
   "scripts": {
-    "start": "nub index.ts",
+    "start": "nub main.ts",
     "test": "nub --test"
   },
   "devDependencies": {

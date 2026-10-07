@@ -3,6 +3,7 @@ import type { AuditRepository } from '../index.ts';
 import type { AuditEntry } from '../../types/moderation.ts';
 import { audit } from '../../db/schema.ts';
 import { randomUUID } from 'node:crypto';
+import { withoutNulls } from './without-nulls.ts';
 
 export class DrizzleAuditRepository implements AuditRepository {
   constructor(private db: any) {}
@@ -34,7 +35,7 @@ export class DrizzleAuditRepository implements AuditRepository {
 
   private mapToDomain(row: any): AuditEntry {
     return {
-      ...row,
+      ...withoutNulls(row),
       createdAt: row.createdAt.toISOString()
     };
   }
