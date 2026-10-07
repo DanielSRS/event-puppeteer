@@ -4,7 +4,7 @@ import React, { useState, useEffect, useSyncExternalStore } from 'react';
 import { TvDisplay, TvEvent } from './TvDisplay';
 import { api } from '@/lib/api/client';
 import { NextDay } from '@/lib/api/mappers';
-import { DEFAULT_ORG_ID } from '@/lib/api/session';
+import { MISSING_ORG_MESSAGE, PUBLIC_ORG_ID } from '@/lib/api/session';
 
 const REFRESH_INTERVAL = 300000; // 5 min
 
@@ -19,13 +19,16 @@ export function TvDisplayContainer() {
   );
 
   useEffect(() => {
-    api.organizations.get(DEFAULT_ORG_ID)
+    if (!PUBLIC_ORG_ID) return;
+    const orgId = PUBLIC_ORG_ID;
+
+    api.organizations.get(orgId)
       .then(org => setOrgName(org.name))
       .catch(() => setOrgName(''));
 
     // A TV is unattended: on failure it keeps the last list and tries again next round
     const fetchEvents = () => {
-      api.organizations.feed(DEFAULT_ORG_ID)
+      api.organizations.feed(orgId)
         .then(feed => setEvents(feed.map(e => {
           const day = NextDay(e);
           return {
@@ -44,6 +47,9 @@ export function TvDisplayContainer() {
     const interval = setInterval(fetchEvents, REFRESH_INTERVAL);
     return () => clearInterval(interval);
   }, []);
+
+  if (!PUBLIC_ORG_ID)
+    return <div className="min-h-screen flex items-center justify-center p-8 text-center text-gray-500">{MISSING_ORG_MESSAGE}</div>;
 
   return (
     <TvDisplay 

@@ -8,7 +8,7 @@ import { AuthForm, AuthFormData } from "../AuthForm";
 import { VerifyEmailNotice } from "../VerifyEmailNotice";
 import { StartSession } from "@/hooks/useAuth";
 import { api, ApiError } from "@/lib/api/client";
-import { DEFAULT_ORG_ID } from "@/lib/api/session";
+import { MISSING_ORG_MESSAGE, PUBLIC_ORG_ID } from "@/lib/api/session";
 import { MIN_PASSWORD_LENGTH } from "@/utils/validation/UserValidation";
 
 /* THE FORM ASKS FOR ONE NAME; THE API WANTS FIRST AND LAST */
@@ -69,8 +69,14 @@ export function AuthFormContainer({ mode }: AuthFormContainerProps) {
 
     try {
       if (isRegister) {
+        /* SIGN-UP ALWAYS JOINS AN ORGANIZATION; WITHOUT ONE CONFIGURED THERE IS NOTHING TO JOIN */
+        if (!PUBLIC_ORG_ID) {
+          setGeneralError(MISSING_ORG_MESSAGE);
+          return;
+        };
+
         /* NO SESSION YET: THE ACCOUNT ONLY WORKS AFTER THE EMAIL IS CONFIRMED */
-        await api.auth.register({ ...SplitName(data.name), email: data.email, password: data.password }, DEFAULT_ORG_ID);
+        await api.auth.register({ ...SplitName(data.name), email: data.email, password: data.password }, PUBLIC_ORG_ID);
         setUnverifiedEmail(data.email);
         setRegistered(true);
         return;
@@ -92,6 +98,8 @@ export function AuthFormContainer({ mode }: AuthFormContainerProps) {
         setGeneralError("E-mail ou senha incorretos.");
       else if (err.status === 422)
         setGeneralError(`Dados inválidos. A senha precisa ter pelo menos ${MIN_PASSWORD_LENGTH} caracteres.`);
+      else if (err.status === 400 && err.message === "Organization not found")
+        setGeneralError("Organização não encontrada. Verifique NEXT_PUBLIC_ORG_ID.");
       else if (err.status === 400)
         setGeneralError("Este e-mail já está cadastrado.");
       else

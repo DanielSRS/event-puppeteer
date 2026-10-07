@@ -7,7 +7,7 @@ import { ReportForm, ReportFormData } from './ReportForm';
 import { Drawer } from '@/components/ui/Drawer';
 import { useAuth } from '@/hooks/useAuth';
 import { api, ApiError } from '@/lib/api/client';
-import { DEFAULT_ORG_ID } from '@/lib/api/session';
+import { MISSING_ORG_MESSAGE, PUBLIC_ORG_ID } from '@/lib/api/session';
 import { UserOrgId } from '@/lib/api/types';
 
 interface Props {
@@ -17,7 +17,7 @@ interface Props {
 export function EventDetailsContainer({ eventId }: Props) {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
-  const orgId = UserOrgId(user) ?? DEFAULT_ORG_ID;
+  const orgId = UserOrgId(user) ?? PUBLIC_ORG_ID;
 
   const [event, setEvent] = useState<EventDetailData | null>(null);
   const [error, setError] = useState('');
@@ -27,7 +27,7 @@ export function EventDetailsContainer({ eventId }: Props) {
   const [reportError, setReportError] = useState('');
 
   useEffect(() => {
-    if (authLoading) return;
+    if (authLoading || !orgId) return;
 
     // The event only carries tag/label ids, so the catalogs give their names
     Promise.all([api.events.get(orgId, eventId), api.tags.list(), api.linkLabels.list()])
@@ -57,11 +57,13 @@ export function EventDetailsContainer({ eventId }: Props) {
       router.push(`/entrar?redirect=/eventos/${eventId}`);
       return;
     }
+    if (!orgId) return;
     setReportError('');
     setIsReporting(true);
   };
 
   const handleSendReport = async (data: ReportFormData) => {
+    if (!orgId) return;
     setIsSending(true);
     setReportError('');
     try {
@@ -84,6 +86,7 @@ export function EventDetailsContainer({ eventId }: Props) {
     }
   };
 
+  if (!authLoading && !orgId) return <div className="p-12 text-center text-gray-500">{MISSING_ORG_MESSAGE}</div>;
   if (error) return <div className="p-12 text-center text-gray-500">{error}</div>;
   if (!event) return <div className="p-12 text-center text-gray-500 animate-pulse">Carregando detalhes do evento...</div>;
 

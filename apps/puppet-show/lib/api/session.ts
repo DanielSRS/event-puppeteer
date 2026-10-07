@@ -27,5 +27,8 @@ export function SetToken(token: string | null) {
   };
 };
 
-/* ANONYMOUS VISITORS STILL NEED AN ORGANIZATION TO SEE ITS FEED (WHITE-LABEL DEFAULT) */
-export const DEFAULT_ORG_ID = process.env.NEXT_PUBLIC_ORG_ID ?? "default-org";
+/* THE ORGANIZATION ANONYMOUS VISITORS SEE AND SIGN UP INTO (WHITE-LABEL). NO FALLBACK:
+   THE DATABASE STARTS WITHOUT ORGANIZATIONS, SO A MISSING VALUE MUST SHOW UP, NOT POINT AT NOTHING */
+export const PUBLIC_ORG_ID: string | null = process.env.NEXT_PUBLIC_ORG_ID || null;
+
+export const MISSING_ORG_MESSAGE = "Organização não configurada. Defina NEXT_PUBLIC_ORG_ID com o id de uma organização existente.";

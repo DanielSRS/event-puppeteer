@@ -4,7 +4,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api/client";
-import { DEFAULT_ORG_ID } from "@/lib/api/session";
+import { MISSING_ORG_MESSAGE, PUBLIC_ORG_ID } from "@/lib/api/session";
 import { ToEventItem } from "@/lib/api/mappers";
 import { UserOrgId } from "@/lib/api/types";
 import { useAuth } from "@/hooks/useAuth";
@@ -30,7 +30,7 @@ type UseEventsOptions = {
 
 export function useEvents({ refreshInterval }: UseEventsOptions = {}) {
   const { user, loading: authLoading } = useAuth();
-  const orgId = UserOrgId(user) ?? DEFAULT_ORG_ID;
+  const orgId = UserOrgId(user) ?? PUBLIC_ORG_ID;
 
   const [events, setEvents] = useState<EventItem[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -41,6 +41,9 @@ export function useEvents({ refreshInterval }: UseEventsOptions = {}) {
   const likedRef = useRef(new Set<string>());
 
   const loadEvents = useCallback(async () => {
+    if (!orgId)
+      return;
+
     try {
       const feed = await api.organizations.feed(orgId);
 
@@ -59,7 +62,7 @@ export function useEvents({ refreshInterval }: UseEventsOptions = {}) {
 
   useEffect(() => {
     /* WAITS FOR THE SESSION SO WE ASK FOR THE RIGHT ORGANIZATION'S FEED */
-    if (authLoading)
+    if (authLoading || !orgId)
       return;
 
     loadEvents();
@@ -69,13 +72,16 @@ export function useEvents({ refreshInterval }: UseEventsOptions = {}) {
 
     const timer = setInterval(loadEvents, refreshInterval);
     return () => clearInterval(timer);
-  }, [authLoading, loadEvents, refreshInterval]);
+  }, [authLoading, orgId, loadEvents, refreshInterval]);
 
   const toggleLike = useCallback(async (eventId: string) => {
     if (!user) {
       setError("Entre na sua conta para curtir eventos.");
       return;
     };
+
+    if (!orgId)
+      return;
 
     setPendingId(eventId);
     setError("");
@@ -110,10 +116,13 @@ export function useEvents({ refreshInterval }: UseEventsOptions = {}) {
     setError("Inscrições ainda não estão disponíveis.");
   }, []);
 
+  /* WITHOUT AN ORGANIZATION THERE IS NO FEED TO ASK FOR: SAY SO INSTEAD OF SPINNING */
+  const missingOrg = !authLoading && !orgId;
+
   return {
     events,
-    loaded,
-    error,
+    loaded: loaded || missingOrg,
+    error: missingOrg ? MISSING_ORG_MESSAGE : error,
     pendingId,
     toggleLike,
     toggleSubscription,
