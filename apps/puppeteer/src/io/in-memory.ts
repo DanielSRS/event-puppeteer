@@ -1,8 +1,9 @@
 import type { Tag, LinkLabel } from '../types/tag.ts';
 import type { Event } from '../types/event.ts';
 import type { Vote } from '../types/vote.ts';
+import type { Device } from '../types/device.ts';
 import type { Report, AuditEntry } from '../types/moderation.ts';
-import type { AppIO, OrganizationRepository, UserRepository, AuthProvider, AuthSession, TagRepository, LinkLabelRepository, EventRepository, VoteRepository, ReportRepository, AuditRepository } from './index.ts';
+import type { AppIO, OrganizationRepository, UserRepository, AuthProvider, AuthSession, TagRepository, LinkLabelRepository, EventRepository, VoteRepository, ReportRepository, AuditRepository, DeviceRepository } from './index.ts';
 import type { Organization } from '../types/organization.ts';
 import type { User } from '../types/user.ts';
 import { randomUUID } from 'node:crypto';
@@ -226,6 +227,46 @@ export class InMemoryAuditRepository implements AuditRepository {
   }
 }
 
+
+export class InMemoryDeviceRepository implements DeviceRepository {
+  private devices: Map<string, Device> = new Map();
+
+  async create(device: Omit<Device, 'id'>): Promise<Device> {
+    const id = randomUUID();
+    const newDevice = { id, ...device };
+    this.devices.set(id, newDevice);
+    return newDevice;
+  }
+
+  async getById(id: string): Promise<Device | null> {
+    return this.devices.get(id) || null;
+  }
+
+  async listByOrganization(orgId: string): Promise<Device[]> {
+    return Array.from(this.devices.values()).filter(d => d.organizationId === orgId);
+  }
+
+  async listPending(): Promise<Device[]> {
+    return Array.from(this.devices.values()).filter(d => d.status === 'pending');
+  }
+
+  async listPendingWithoutOrg(): Promise<Device[]> {
+    return Array.from(this.devices.values()).filter(d => d.status === 'pending' && !d.organizationId);
+  }
+
+  async listPendingByOrg(orgId: string): Promise<Device[]> {
+    return Array.from(this.devices.values()).filter(d => d.status === 'pending' && d.organizationId === orgId);
+  }
+
+  async update(id: string, updates: Partial<Device>): Promise<Device | null> {
+    const device = this.devices.get(id);
+    if (!device) return null;
+    const updated = { ...device, ...updates };
+    this.devices.set(id, updated);
+    return updated;
+  }
+}
+
 export class InMemoryAuthProvider implements AuthProvider {
   // Simple in-memory mock for tests since we can't easily run real betterAuth isolated in-memory for pure unit tests
   private users: Map<string, { email: string, pass: string, name: string }> = new Map();
@@ -271,6 +312,7 @@ export function createInMemoryIO(): AppIO {
     voteRepo: new InMemoryVoteRepository(),
     reportRepo: new InMemoryReportRepository(),
     auditRepo: new InMemoryAuditRepository(),
+    deviceRepo: new InMemoryDeviceRepository(),
     auth: new InMemoryAuthProvider()
   };
 }

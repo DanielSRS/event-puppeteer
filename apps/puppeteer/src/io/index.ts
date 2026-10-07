@@ -3,6 +3,7 @@ import type { User } from '../types/user.ts';
 import type { Tag, LinkLabel } from '../types/tag.ts';
 import type { Event } from '../types/event.ts';
 import type { Vote } from '../types/vote.ts';
+import type { Device } from '../types/device.ts';
 import type { Report, AuditEntry } from '../types/moderation.ts';
 
 export interface OrganizationRepository {
@@ -66,6 +67,17 @@ export interface AuditRepository {
   listByTarget(targetId: string): Promise<AuditEntry[]>;
 }
 
+
+export interface DeviceRepository {
+  create(device: Omit<Device, 'id'>): Promise<Device>;
+  getById(id: string): Promise<Device | null>;
+  listByOrganization(orgId: string): Promise<Device[]>;
+  listPending(): Promise<Device[]>; // For a specific org or without org? Spec: listByOrganization, listPending, listPendingWithoutOrg
+  listPendingWithoutOrg(): Promise<Device[]>;
+  listPendingByOrg(orgId: string): Promise<Device[]>;
+  update(id: string, updates: Partial<Device>): Promise<Device | null>;
+}
+
 export interface AuthSession {
   token: string;
   userId: string;
@@ -86,6 +98,7 @@ export interface AppIO {
   voteRepo: VoteRepository;
   reportRepo: ReportRepository;
   auditRepo: AuditRepository;
+  deviceRepo: DeviceRepository;
   auth: AuthProvider;
 }
 

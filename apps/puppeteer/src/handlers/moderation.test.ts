@@ -8,7 +8,7 @@ import { createTagHandler } from './system.ts';
 
 async function setup() {
   const io = createInMemoryIO();
-  const org = await io.orgRepo.create({ name: 'Test Org', shadowBanThreshold: 2 });
+  const org = await io.orgRepo.create({ name: 'Test Org', shortName: 'testorg', shadowBanThreshold: 2 });
   const orgId = org.id;
 
   // Create users
@@ -119,7 +119,7 @@ test('Moderation Handlers', async (t) => {
     // System handlers might need superadmin or admin, let's use adminReq to create tag
     // Wait, createTagHandler requires Superadmin. In users.ts, who can create tags?
     // Let's create it manually in the repo.
-    const tag = await io.tagRepo.create({ name: 'indie', isSystemDefined: false });
+    const tag = await io.tagRepo.create({ id: 'tag-1', name: 'indie', isSystemDefined: false });
 
     await promoteTagHandler(modReq, tag.id, io);
     

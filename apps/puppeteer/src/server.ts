@@ -19,6 +19,8 @@ import { registerHandler, loginHandler, meHandler } from './handlers/auth.ts';
 import { listOrgUsersHandler, assignRoleHandler, removeUserHandler } from './handlers/users.ts';
 import { TagSchema, CreateTagBody, LinkLabelSchema, CreateLinkLabelBody } from './types/tag.ts';
 import { EventSchema, CreateEventBody, FeedEventSchema } from './types/event.ts';
+import { connectDeviceHandler, listPendingDevicesGlobalHandler, listPendingDevicesOrgHandler, listActiveDevicesOrgHandler, getDeviceHandler, approveDeviceHandler, rejectDeviceHandler } from './handlers/devices.ts';
+import { DeviceSchema, ConnectDeviceBody, ApproveDeviceBody } from './types/device.ts';
 import { createTagHandler, listTagsHandler, createLinkLabelHandler, listLinkLabelsHandler } from './handlers/system.ts';
 import { createEventHandler, listEventsHandler, getEventHandler, deleteEventHandler } from './handlers/events.ts';
 import { voteHandler, getVoteStatusHandler } from './handlers/votes.ts';
@@ -61,6 +63,34 @@ export function createServer(io: AppIO) {
           status: t.Literal('ok')
         })
       }
+    )
+    
+    .group('/devices', (app) =>
+      app
+        .post('/connect', async ({ body, io }) => {
+          return await connectDeviceHandler(body, io);
+        }, {
+          body: ConnectDeviceBody,
+          response: DeviceSchema
+        })
+        .get('/pending', async ({ request, io }) => {
+          return await listPendingDevicesGlobalHandler(request, io);
+        }, {
+          response: t.Array(DeviceSchema)
+        })
+        .post('/:deviceId/approve', async ({ request, params: { deviceId }, body, io }) => {
+          return await approveDeviceHandler(request, deviceId, body, io);
+        }, {
+          params: t.Object({ deviceId: t.String() }),
+          body: ApproveDeviceBody,
+          response: DeviceSchema
+        })
+        .post('/:deviceId/reject', async ({ request, params: { deviceId }, io }) => {
+          return await rejectDeviceHandler(request, deviceId, io);
+        }, {
+          params: t.Object({ deviceId: t.String() }),
+          response: DeviceSchema
+        })
     )
     .group('/tags', (app) =>
       app
