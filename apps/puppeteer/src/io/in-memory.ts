@@ -1,4 +1,6 @@
-import type { AppIO, OrganizationRepository, UserRepository, AuthProvider, AuthSession } from './index.ts';
+import type { Tag, LinkLabel } from '../types/tag.ts';
+import type { Event } from '../types/event.ts';
+import type { AppIO, OrganizationRepository, UserRepository, AuthProvider, AuthSession, TagRepository, LinkLabelRepository, EventRepository } from './index.ts';
 import type { Organization } from '../types/organization.ts';
 import type { User } from '../types/user.ts';
 import { randomUUID } from 'node:crypto';
@@ -74,6 +76,65 @@ export class InMemoryUserRepository implements UserRepository {
   }
 }
 
+export class InMemoryTagRepository implements TagRepository {
+  private tags: Map<string, Tag> = new Map();
+
+  async create(tag: Tag): Promise<Tag> {
+    this.tags.set(tag.id, tag);
+    return tag;
+  }
+  async getAll(): Promise<Tag[]> {
+    return Array.from(this.tags.values());
+  }
+  async getById(id: string): Promise<Tag | null> {
+    return this.tags.get(id) ?? null;
+  }
+}
+
+export class InMemoryLinkLabelRepository implements LinkLabelRepository {
+  private linkLabels: Map<string, LinkLabel> = new Map();
+
+  async create(label: LinkLabel): Promise<LinkLabel> {
+    this.linkLabels.set(label.id, label);
+    return label;
+  }
+  async getAll(): Promise<LinkLabel[]> {
+    return Array.from(this.linkLabels.values());
+  }
+  async getById(id: string): Promise<LinkLabel | null> {
+    return this.linkLabels.get(id) ?? null;
+  }
+}
+
+export class InMemoryEventRepository implements EventRepository {
+  private events: Map<string, Event> = new Map();
+
+  async create(event: Event): Promise<Event> {
+    this.events.set(event.id, event);
+    return event;
+  }
+  async getById(id: string): Promise<Event | null> {
+    return this.events.get(id) ?? null;
+  }
+  async listByOrganization(orgId: string): Promise<Event[]> {
+    return Array.from(this.events.values()).filter(e => e.organizationId === orgId);
+  }
+  async softDelete(id: string): Promise<Event | null> {
+    const event = this.events.get(id);
+    if (!event) return null;
+    const deleted = { ...event, isDeleted: true };
+    this.events.set(id, deleted);
+    return deleted;
+  }
+  async update(id: string, updates: Partial<Event>): Promise<Event | null> {
+    const event = this.events.get(id);
+    if (!event) return null;
+    const updated = { ...event, ...updates };
+    this.events.set(id, updated);
+    return updated;
+  }
+}
+
 export class InMemoryAuthProvider implements AuthProvider {
   // Simple in-memory mock for tests since we can't easily run real betterAuth isolated in-memory for pure unit tests
   private users: Map<string, { email: string, pass: string, name: string }> = new Map();
@@ -113,6 +174,9 @@ export function createInMemoryIO(): AppIO {
   return {
     orgRepo: new InMemoryOrganizationRepository(),
     userRepo: new InMemoryUserRepository(),
+    tagRepo: new InMemoryTagRepository(),
+    linkLabelRepo: new InMemoryLinkLabelRepository(),
+    eventRepo: new InMemoryEventRepository(),
     auth: new InMemoryAuthProvider()
   };
 }

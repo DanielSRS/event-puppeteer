@@ -1,5 +1,7 @@
 import type { Organization } from '../types/organization.ts';
 import type { User } from '../types/user.ts';
+import type { Tag, LinkLabel } from '../types/tag.ts';
+import type { Event } from '../types/event.ts';
 
 export interface OrganizationRepository {
   create(org: Omit<Organization, 'id'>): Promise<Organization>;
@@ -18,6 +20,26 @@ export interface UserRepository {
   delete(id: string): Promise<boolean>;
 }
 
+export interface TagRepository {
+  create(tag: Tag): Promise<Tag>;
+  getAll(): Promise<Tag[]>;
+  getById(id: string): Promise<Tag | null>;
+}
+
+export interface LinkLabelRepository {
+  create(label: LinkLabel): Promise<LinkLabel>;
+  getAll(): Promise<LinkLabel[]>;
+  getById(id: string): Promise<LinkLabel | null>;
+}
+
+export interface EventRepository {
+  create(event: Event): Promise<Event>;
+  getById(id: string): Promise<Event | null>;
+  listByOrganization(orgId: string): Promise<Event[]>;
+  softDelete(id: string): Promise<Event | null>;
+  update(id: string, updates: Partial<Event>): Promise<Event | null>;
+}
+
 export interface AuthSession {
   token: string;
   userId: string;
@@ -32,6 +54,9 @@ export interface AuthProvider {
 export interface AppIO {
   orgRepo: OrganizationRepository;
   userRepo: UserRepository;
+  tagRepo: TagRepository;
+  linkLabelRepo: LinkLabelRepository;
+  eventRepo: EventRepository;
   auth: AuthProvider;
 }
 

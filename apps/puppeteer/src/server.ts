@@ -17,6 +17,10 @@ import {
 import { UserSchema, RegisterBody, LoginBody, ChangeRoleBody } from './types/user.ts';
 import { registerHandler, loginHandler, meHandler } from './handlers/auth.ts';
 import { listOrgUsersHandler, assignRoleHandler, removeUserHandler } from './handlers/users.ts';
+import { TagSchema, CreateTagBody, LinkLabelSchema, CreateLinkLabelBody } from './types/tag.ts';
+import { EventSchema, CreateEventBody } from './types/event.ts';
+import { createTagHandler, listTagsHandler, createLinkLabelHandler, listLinkLabelsHandler } from './handlers/system.ts';
+import { createEventHandler, listEventsHandler, getEventHandler, deleteEventHandler } from './handlers/events.ts';
 
 // Wire the imperative shell: the HTTP layer assembles real IO and passes it to handlers
 export function createServer(io: AppIO) {
@@ -40,6 +44,10 @@ export function createServer(io: AppIO) {
         set.status = 400;
         return { error: 'Email already exists' };
       }
+      if (message === 'BAD_REQUEST') {
+        set.status = 400;
+        return { error: 'Bad Request' };
+      }
     })
     .get(
       '/health', 
@@ -49,6 +57,26 @@ export function createServer(io: AppIO) {
           status: t.Literal('ok')
         })
       }
+    )
+    .group('/tags', (app) =>
+      app
+        .post('/', async ({ request, body, io }) => createTagHandler(request, body, io), {
+          body: CreateTagBody,
+          response: TagSchema
+        })
+        .get('/', async ({ io }) => listTagsHandler(io), {
+          response: t.Array(TagSchema)
+        })
+    )
+    .group('/link-labels', (app) =>
+      app
+        .post('/', async ({ request, body, io }) => createLinkLabelHandler(request, body, io), {
+          body: CreateLinkLabelBody,
+          response: LinkLabelSchema
+        })
+        .get('/', async ({ io }) => listLinkLabelsHandler(io), {
+          response: t.Array(LinkLabelSchema)
+        })
     )
     .group('/auth', (app) =>
       app
@@ -182,6 +210,35 @@ export function createServer(io: AppIO) {
                 response: t.Object({ success: t.Literal(true) })
               }
             )
+        )
+        .group('/:id/events', (eventsApp) =>
+          eventsApp
+            .post('/', async ({ request, params: { id }, body, io }) => {
+              return await createEventHandler(request, id, body, io);
+            }, {
+              params: t.Object({ id: t.String() }),
+              body: CreateEventBody,
+              response: EventSchema
+            })
+            .get('/', async ({ params: { id }, io }) => {
+              return await listEventsHandler(id, io);
+            }, {
+              params: t.Object({ id: t.String() }),
+              response: t.Array(EventSchema)
+            })
+            .get('/:eventId', async ({ params: { id, eventId }, io }) => {
+              return await getEventHandler(id, eventId, io);
+            }, {
+              params: t.Object({ id: t.String(), eventId: t.String() }),
+              response: EventSchema
+            })
+            .delete('/:eventId', async ({ request, params: { id, eventId }, io }) => {
+              await deleteEventHandler(request, id, eventId, io);
+              return { success: true };
+            }, {
+              params: t.Object({ id: t.String(), eventId: t.String() }),
+              response: t.Object({ success: t.Literal(true) })
+            })
         )
     );
 }
