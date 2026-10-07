@@ -1,4 +1,4 @@
-// Usage: nub run seed:superadmin
+// Usage: nub run db:seed:superadmin
 // Reads SUPERADMIN_EMAIL and SUPERADMIN_PASSWORD (plus the server's DATABASE_URL etc.) from .env
 import { z } from 'zod';
 import { createRealIO } from '../io/index.ts';

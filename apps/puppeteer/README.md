@@ -17,7 +17,8 @@ This project follows the **Functional Core / Imperative Shell** pattern to make 
 
 - `nub run start`: Starts the application server.
 - `nub run test`: Runs the test suite using the Node.js native test runner.
-- `nub run seed:superadmin`: Creates the first Superadmin (or promotes an existing user) from `SUPERADMIN_EMAIL` and `SUPERADMIN_PASSWORD` in `.env`. Idempotent. Registration only creates Members, so this is how the first Superadmin is bootstrapped.
+- `nub run db:migrate`: Applies pending migrations using `MIGRATION_DATABASE_URL` (or `DATABASE_URL`) from `.env`. On Supabase, point it at the Session pooler or direct connection (port 5432).
+- `nub run db:seed:superadmin`: Creates the first Superadmin (or promotes an existing user) from `SUPERADMIN_EMAIL` and `SUPERADMIN_PASSWORD` in `.env`. Idempotent. Registration only creates Members, so this is how the first Superadmin is bootstrapped.
 
 ### Access rules
 
