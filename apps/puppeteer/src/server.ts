@@ -1,13 +1,22 @@
-import { Elysia } from 'elysia';
+import { Elysia, t } from 'elysia';
 import { node } from '@elysiajs/node';
-import { createRealIO, AppIO } from './io/index.ts';
+import { createRealIO } from './io/index.ts';
+import type { AppIO } from './io/index.ts';
 import { healthCheck } from './handlers/health.ts';
 
 // Wire the imperative shell: the HTTP layer assembles real IO and passes it to handlers
 export function createServer(io: AppIO) {
   return new Elysia({ adapter: node() })
     .decorate('io', io)
-    .get('/health', ({ request, io }) => healthCheck(request, io));
+    .get(
+      '/health', 
+      ({ request, io }) => healthCheck(request, io),
+      {
+        response: t.Object({
+          status: t.Literal('ok')
+        })
+      }
+    );
 }
 
 export function startServer(port = 3000) {
