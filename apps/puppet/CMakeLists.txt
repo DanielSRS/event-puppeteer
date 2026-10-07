@@ -25,6 +25,9 @@ FetchContent_MakeAvailable(mmkv)
 # Add threads for cross-platform support
 find_package(Threads REQUIRED)
 
+# Require libcurl (provides HTTPS transport to Puppeteer)
+find_package(CURL REQUIRED)
+
 # Add an executable with the source file
 add_executable(puppet src/main.c)
 
@@ -62,13 +65,14 @@ target_compile_options(puppet PRIVATE
     $<$<COMPILE_LANGUAGE:C>:-Wold-style-definition>
 )
 
-# Link MMKV Core and Threads to the puppet executable
-target_link_libraries(puppet PRIVATE core Threads::Threads gcc_s stdc++)
+# Link MMKV Core, Threads, and libcurl to the puppet executable
+target_link_libraries(puppet PRIVATE core Threads::Threads gcc_s stdc++ CURL::libcurl)
 
 # Add include paths for our internal modules
 target_include_directories(puppet PRIVATE
     src/storage
     src/stats
+    src/http
     src
 )
 
