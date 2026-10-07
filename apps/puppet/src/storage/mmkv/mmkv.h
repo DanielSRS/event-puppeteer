@@ -6,8 +6,19 @@
 struct MmkvType {
   /**
    * Initialize the MMKV system.
+   *
+   * @param rootDirectory  Directory holding all MMKV files. Created (with
+   *                       parents) when missing. It must be persistent
+   *                       storage: anything kept here is expected to survive
+   *                       reboots.
    */
-  void (*const initialize)(void);
+  void (*const initialize)(const char *rootDirectory);
+
+  /**
+   * Flush pending writes and release MMKV global resources. Call once at
+   * program exit.
+   */
+  void (*const shutdown)(void);
 
   /**
    * Create a default MMKV instance.
@@ -16,8 +27,9 @@ struct MmkvType {
 
   /**
    * Encode a string value into the MMKV instance for a given key.
+   * Returns false if the value could not be stored.
    */
-  void (*const encodeString)(
+  bool (*const encodeString)(
     MMKVHandle_t handle, const char *key, const char *value
   );
 
@@ -32,6 +44,17 @@ struct MmkvType {
    * Free a string value previously returned by decodeString().
    */
   void (*const freeString)(char *value);
+
+  /**
+   * Remove the value stored under `key`, if any.
+   */
+  void (*const removeValue)(MMKVHandle_t handle, const char *key);
+
+  /**
+   * Synchronously persist pending writes to disk. Use after values whose
+   * loss on power failure would be costly (e.g. Device credentials).
+   */
+  void (*const sync)(MMKVHandle_t handle);
 };
 
 extern const struct MmkvType MmkvI;
