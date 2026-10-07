@@ -20,6 +20,10 @@ This project follows the **Functional Core / Imperative Shell** pattern to make 
 - `nub run db:migrate`: Applies pending migrations using `MIGRATION_DATABASE_URL` (or `DATABASE_URL`) from `.env`. On Supabase, point it at the Session pooler or direct connection (port 5432).
 - `nub run db:seed:superadmin`: Creates the first Superadmin (or promotes an existing user) from `SUPERADMIN_EMAIL` and `SUPERADMIN_PASSWORD` in `.env`. Idempotent. Registration only creates Members, so this is how the first Superadmin is bootstrapped.
 
+### Email verification
+
+New accounts must confirm their email before logging in (`POST /auth/login` answers 403 until then). Registration sends a link to `GET /auth/verify-email`, which marks the email as verified and redirects to `$APP_URL/login?emailVerified=1` (or `0` for an invalid/expired link). `POST /auth/resend-verification` sends a new link. Emails go through Brevo (`BREVO_API_KEY`, `EMAIL_FROM`); without a key outside production they are printed to the console. The Superadmin seed creates an already-verified account.
+
 ### Access rules
 
 - Public: `GET /health`, the docs, `POST /auth/register`, `POST /auth/login`, `POST /devices/connect`, and the read routes behind public screens: event list/feed/details, `GET /organizations/:id` (TV branding), `GET /tags`, `GET /link-labels`. Everything else requires a token; `src/server.test.ts` fails if a route is exposed by mistake.

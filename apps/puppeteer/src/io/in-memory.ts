@@ -11,11 +11,13 @@ import { DrizzleTelemetryRepository } from './drizzle/telemetry-repository.ts';
 import { DrizzleCommandRepository } from './drizzle/command-repository.ts';
 import { BetterAuthProvider } from './better-auth-adapter.ts';
 import { createInMemoryDatabase } from '../db/index.ts';
-import { createTestAuth } from "../auth.ts";
+import { createAuth } from "../auth.ts";
+import { InMemoryEmailSender } from "./email/in-memory.ts";
 import type { AppIO } from './index.ts';
 
-export async function createInMemoryIO(): Promise<AppIO> {
+export async function createInMemoryIO(): Promise<AppIO & { emailSender: InMemoryEmailSender }> {
   const db = await createInMemoryDatabase();
+  const emailSender = new InMemoryEmailSender();
   return {
     orgRepo: new DrizzleOrganizationRepository(db),
     userRepo: new DrizzleUserRepository(db),
@@ -28,6 +30,7 @@ export async function createInMemoryIO(): Promise<AppIO> {
     deviceRepo: new DrizzleDeviceRepository(db),
     telemetryRepo: new DrizzleTelemetryRepository(db),
     commandRepo: new DrizzleCommandRepository(db),
-    auth: new BetterAuthProvider(await createTestAuth())
+    auth: new BetterAuthProvider(createAuth({ db, emailSender, apiUrl: 'http://localhost:8080' })),
+    emailSender
   };
 }

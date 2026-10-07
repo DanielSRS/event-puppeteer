@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { registerVerified } from '../test-support.ts';
 import { createInMemoryIO } from '../io/in-memory.ts';
 import { reportEventHandler, listReportsHandler, hideEventHandler, unhideEventHandler, listShadowBansHandler, liftShadowBanHandler, promoteTagHandler, listAuditTrailHandler } from './moderation.ts';
 import { createEventHandler, listEventsHandler, getEventHandler } from './events.ts';
-import { registerHandler } from './auth.ts';
 import { createTagHandler } from './system.ts';
 
 async function setup() {
@@ -12,15 +12,15 @@ async function setup() {
   const orgId = org.id;
 
   // Create users
-  const { token: adminToken, user: admin } = await registerHandler({ firstName: 'Admin', lastName: 'X', email: 'admin@a.com', password: '123' }, orgId, io);
+  const { token: adminToken, user: admin } = await registerVerified({ firstName: 'Admin', lastName: 'X', email: 'admin@a.com', password: 'password123' }, orgId, io);
   await io.userRepo.update(admin.id, { role: 'Admin' });
 
-  const { token: modToken, user: mod } = await registerHandler({ firstName: 'Mod', lastName: 'X', email: 'mod@a.com', password: '123' }, orgId, io);
+  const { token: modToken, user: mod } = await registerVerified({ firstName: 'Mod', lastName: 'X', email: 'mod@a.com', password: 'password123' }, orgId, io);
   await io.userRepo.update(mod.id, { role: 'Moderator' });
 
-  const { token: user1Token, user: user1 } = await registerHandler({ firstName: 'U1', lastName: 'X', email: 'u1@a.com', password: '123' }, orgId, io);
-  const { token: user2Token, user: user2 } = await registerHandler({ firstName: 'U2', lastName: 'X', email: 'u2@a.com', password: '123' }, orgId, io);
-  const { token: user3Token, user: user3 } = await registerHandler({ firstName: 'U3', lastName: 'X', email: 'u3@a.com', password: '123' }, orgId, io);
+  const { token: user1Token, user: user1 } = await registerVerified({ firstName: 'U1', lastName: 'X', email: 'u1@a.com', password: 'password123' }, orgId, io);
+  const { token: user2Token, user: user2 } = await registerVerified({ firstName: 'U2', lastName: 'X', email: 'u2@a.com', password: 'password123' }, orgId, io);
+  const { token: user3Token, user: user3 } = await registerVerified({ firstName: 'U3', lastName: 'X', email: 'u3@a.com', password: 'password123' }, orgId, io);
 
   const adminReq = new Request('http://localhost/', { headers: { authorization: `Bearer ${adminToken}` } });
   const modReq = new Request('http://localhost/', { headers: { authorization: `Bearer ${modToken}` } });

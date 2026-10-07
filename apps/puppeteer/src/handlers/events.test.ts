@@ -1,14 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createEventHandler, listEventsHandler, getEventHandler, deleteEventHandler } from './events.ts';
-import { registerHandler } from './auth.ts';
+import { registerVerified } from '../test-support.ts';
 import { createInMemoryIO } from '../io/in-memory.ts';
 
 test('Event Handlers', async (t) => {
   await t.test('create event with all properties', async () => {
     const io = await createInMemoryIO();
     const org = await io.orgRepo.create({ name: 'Org', slug: 'org-1', shadowBanThreshold: 5, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
-    const { token, user } = await registerHandler({ firstName: 'Creator', lastName: 'X', email: 'c@a.com', password: '123' }, org.id, io);
+    const { token, user } = await registerVerified({ firstName: 'Creator', lastName: 'X', email: 'c@a.com', password: 'password123' }, org.id, io);
 
     const req = new Request('http://localhost/', { headers: { authorization: `Bearer ${token}` } });
     
@@ -36,7 +36,7 @@ test('Event Handlers', async (t) => {
   await t.test('create event with multi-day schedule', async () => {
     const io = await createInMemoryIO();
     const org = await io.orgRepo.create({ name: 'Org', slug: 'org-1', shadowBanThreshold: 5, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
-    const { token } = await registerHandler({ firstName: 'Creator', lastName: 'X', email: 'c@a.com', password: '123' }, org.id, io);
+    const { token } = await registerVerified({ firstName: 'Creator', lastName: 'X', email: 'c@a.com', password: 'password123' }, org.id, io);
     const req = new Request('http://localhost/', { headers: { authorization: `Bearer ${token}` } });
     
     const event = await createEventHandler(req, org.id, {
@@ -59,7 +59,7 @@ test('Event Handlers', async (t) => {
   await t.test('DayEntry with end time but no start time is rejected', async () => {
     const io = await createInMemoryIO();
     const org = await io.orgRepo.create({ name: 'Org', slug: 'org-1', shadowBanThreshold: 5, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
-    const { token } = await registerHandler({ firstName: 'Creator', lastName: 'X', email: 'c@a.com', password: '123' }, org.id, io);
+    const { token } = await registerVerified({ firstName: 'Creator', lastName: 'X', email: 'c@a.com', password: 'password123' }, org.id, io);
     const req = new Request('http://localhost/', { headers: { authorization: `Bearer ${token}` } });
     
     await assert.rejects(createEventHandler(req, org.id, {
@@ -76,7 +76,7 @@ test('Event Handlers', async (t) => {
   await t.test('list events excludes soft-deleted events', async () => {
     const io = await createInMemoryIO();
     const org = await io.orgRepo.create({ name: 'Org', slug: 'org-1', shadowBanThreshold: 5, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
-    const { token } = await registerHandler({ firstName: 'Creator', lastName: 'X', email: 'c@a.com', password: '123' }, org.id, io);
+    const { token } = await registerVerified({ firstName: 'Creator', lastName: 'X', email: 'c@a.com', password: 'password123' }, org.id, io);
     const req = new Request('http://localhost/', { headers: { authorization: `Bearer ${token}` } });
     
     const e1 = await createEventHandler(req, org.id, {
@@ -99,7 +99,7 @@ test('Event Handlers', async (t) => {
   await t.test('list events excludes hidden events', async () => {
     const io = await createInMemoryIO();
     const org = await io.orgRepo.create({ name: 'Org', slug: 'org-1', shadowBanThreshold: 5, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
-    const { token } = await registerHandler({ firstName: 'Creator', lastName: 'X', email: 'c@a.com', password: '123' }, org.id, io);
+    const { token } = await registerVerified({ firstName: 'Creator', lastName: 'X', email: 'c@a.com', password: 'password123' }, org.id, io);
     const req = new Request('http://localhost/', { headers: { authorization: `Bearer ${token}` } });
     
     await createEventHandler(req, org.id, {
@@ -114,7 +114,7 @@ test('Event Handlers', async (t) => {
   await t.test('list events excludes events past their last date', async () => {
     const io = await createInMemoryIO();
     const org = await io.orgRepo.create({ name: 'Org', slug: 'org-1', shadowBanThreshold: 5, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
-    const { token } = await registerHandler({ firstName: 'Creator', lastName: 'X', email: 'c@a.com', password: '123' }, org.id, io);
+    const { token } = await registerVerified({ firstName: 'Creator', lastName: 'X', email: 'c@a.com', password: 'password123' }, org.id, io);
     const req = new Request('http://localhost/', { headers: { authorization: `Bearer ${token}` } });
     
     await createEventHandler(req, org.id, {
@@ -129,7 +129,7 @@ test('Event Handlers', async (t) => {
   await t.test('list events shows only predefined tags, not free-form ones', async () => {
     const io = await createInMemoryIO();
     const org = await io.orgRepo.create({ name: 'Org', slug: 'org-1', shadowBanThreshold: 5, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
-    const { token } = await registerHandler({ firstName: 'Creator', lastName: 'X', email: 'c@a.com', password: '123' }, org.id, io);
+    const { token } = await registerVerified({ firstName: 'Creator', lastName: 'X', email: 'c@a.com', password: 'password123' }, org.id, io);
     const req = new Request('http://localhost/', { headers: { authorization: `Bearer ${token}` } });
     
     await createEventHandler(req, org.id, {
@@ -150,8 +150,8 @@ test('Event Handlers', async (t) => {
   await t.test('only the creator can soft-delete their own event', async () => {
     const io = await createInMemoryIO();
     const org = await io.orgRepo.create({ name: 'Org', slug: 'org-1', shadowBanThreshold: 5, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
-    const { token: cToken } = await registerHandler({ firstName: 'Creator', lastName: 'X', email: 'c@a.com', password: '123' }, org.id, io);
-    const { token: mToken } = await registerHandler({ firstName: 'Member', lastName: 'Y', email: 'm@a.com', password: '123' }, org.id, io);
+    const { token: cToken } = await registerVerified({ firstName: 'Creator', lastName: 'X', email: 'c@a.com', password: 'password123' }, org.id, io);
+    const { token: mToken } = await registerVerified({ firstName: 'Member', lastName: 'Y', email: 'm@a.com', password: 'password123' }, org.id, io);
     
     const cReq = new Request('http://localhost/', { headers: { authorization: `Bearer ${cToken}` } });
     const mReq = new Request('http://localhost/', { headers: { authorization: `Bearer ${mToken}` } });
@@ -173,7 +173,7 @@ test('Event Handlers', async (t) => {
   await t.test('event model supports editing (fields are mutable) but no edit handler is exposed yet', async () => {
     const io = await createInMemoryIO();
     const org = await io.orgRepo.create({ name: 'Org', slug: 'org-1', shadowBanThreshold: 5, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
-    const { token } = await registerHandler({ firstName: 'Creator', lastName: 'X', email: 'c@a.com', password: '123' }, org.id, io);
+    const { token } = await registerVerified({ firstName: 'Creator', lastName: 'X', email: 'c@a.com', password: 'password123' }, org.id, io);
     const req = new Request('http://localhost/', { headers: { authorization: `Bearer ${token}` } });
     
     const e1 = await createEventHandler(req, org.id, {

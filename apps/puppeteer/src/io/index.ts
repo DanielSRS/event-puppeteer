@@ -107,10 +107,28 @@ export interface AuthSession {
 
 export interface AuthProvider {
   // Creates the auth account and the User row in one insert, so the row is never
-  // left without its role and Organization (the database rejects that)
-  signUp(password: string, user: NewUser): Promise<AuthSession>;
+  // left without its role and Organization (the database rejects that).
+  // No session: the email must be verified before signing in.
+  signUp(password: string, user: NewUser): Promise<{ userId: string }>;
+  // Throws INVALID_CREDENTIALS, or EMAIL_NOT_VERIFIED for an unverified account
   signIn(email: string, password: string): Promise<AuthSession>;
   getSessionUserId(request: Request): Promise<string | null>;
+  // No-op for unknown or already verified emails (does not reveal which)
+  sendVerificationEmail(email: string): Promise<void>;
+  // false when the token is invalid or expired
+  verifyEmail(token: string): Promise<boolean>;
+  markEmailVerified(email: string): Promise<void>;
+}
+
+export interface EmailMessage {
+  to: { email: string; name?: string };
+  subject: string;
+  html: string;
+  text: string;
+}
+
+export interface EmailSender {
+  send(message: EmailMessage): Promise<void>;
 }
 
 export interface AppIO {
@@ -126,15 +144,13 @@ export interface AppIO {
   telemetryRepo: TelemetryRepository;
   commandRepo: CommandRepository;
   auth: AuthProvider;
+  emailSender: EmailSender;
 }
 
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import * as schema from '../db/schema.ts';
 import { env } from '../env.ts';
-import { betterAuth } from "better-auth";
-import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { bearer } from "better-auth/plugins";
 
 import { DrizzleOrganizationRepository } from './drizzle/organization-repository.ts';
 import { DrizzleUserRepository } from './drizzle/user-repository.ts';
@@ -148,37 +164,25 @@ import { DrizzleDeviceRepository } from './drizzle/device-repository.ts';
 import { DrizzleTelemetryRepository } from './drizzle/telemetry-repository.ts';
 import { DrizzleCommandRepository } from './drizzle/command-repository.ts';
 import { BetterAuthProvider } from './better-auth-adapter.ts';
+import { createAuth } from '../auth.ts';
+import { BrevoEmailSender } from './email/brevo.ts';
+import { ConsoleEmailSender } from './email/console.ts';
 
 export function createRealIO(): AppIO {
   // prepare: false — Supabase's transaction pooler (what serverless should use) rejects prepared statements
   const queryClient = postgres(env.DATABASE_URL, { prepare: false });
   const db = drizzle(queryClient, { schema });
 
-  const authInstance = betterAuth({
+  const emailSender: EmailSender = env.BREVO_API_KEY
+    ? new BrevoEmailSender(env.BREVO_API_KEY, { email: env.EMAIL_FROM!, name: env.EMAIL_FROM_NAME })
+    : new ConsoleEmailSender();
+
+  const authInstance = createAuth({
+    db,
+    emailSender,
+    apiUrl: env.BETTER_AUTH_URL,
     secret: env.BETTER_AUTH_SECRET,
-    baseURL: env.BETTER_AUTH_URL,
-    user: {
-      additionalFields: {
-        firstName: { type: "string", required: false },
-        lastName: { type: "string", required: false },
-        normalizedName: { type: "string", required: false },
-        organizationId: { type: "string", required: false },
-        role: { type: "string", required: false },
-        isShadowBanned: { type: "boolean", required: false }
-      }
-    },
-    database: drizzleAdapter(db, {
-      provider: "pg",
-      schema
-    }),
-    emailAndPassword: {
-      enabled: true,
-      minPasswordLength: 3
-    },
-    advanced: {
-      useSecureCookies: env.NODE_ENV === "production"
-    },
-    plugins: [bearer()]
+    useSecureCookies: env.NODE_ENV === "production"
   });
 
   return {
@@ -193,6 +197,7 @@ export function createRealIO(): AppIO {
     deviceRepo: new DrizzleDeviceRepository(db),
     telemetryRepo: new DrizzleTelemetryRepository(db),
     commandRepo: new DrizzleCommandRepository(db),
-    auth: new BetterAuthProvider(authInstance)
+    auth: new BetterAuthProvider(authInstance),
+    emailSender
   };
 }

@@ -55,9 +55,14 @@ export const RegisterBody = t.Object({
   firstName: t.String(),
   lastName: t.String(),
   email: t.String({ format: 'email' }),
-  password: t.String({ minLength: 8 })
+  password: t.String({ minLength: 8, description: 'At least 8 characters' })
 });
 export type RegisterInput = Static<typeof RegisterBody>;
+
+export const ResendVerificationBody = t.Object({
+  email: t.String({ format: 'email' })
+});
+export type ResendVerificationInput = Static<typeof ResendVerificationBody>;
 
 export const LoginBody = t.Object({
   email: t.String({ format: 'email' }),

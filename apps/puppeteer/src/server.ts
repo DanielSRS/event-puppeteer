@@ -13,8 +13,8 @@ import {
   UpdateOrganizationBody,
   OrganizationSchema
 } from './types/organization.ts';
-import { UserSchema, RegisterBody, LoginBody, ChangeRoleBody } from './types/user.ts';
-import { registerHandler, loginHandler, meHandler } from './handlers/auth.ts';
+import { UserSchema, RegisterBody, LoginBody, ChangeRoleBody, ResendVerificationBody } from './types/user.ts';
+import { registerHandler, loginHandler, meHandler, verifyEmailHandler, resendVerificationHandler } from './handlers/auth.ts';
 import { listOrgUsersHandler, assignRoleHandler, removeUserHandler } from './handlers/users.ts';
 import { TagSchema, CreateTagBody, LinkLabelSchema, CreateLinkLabelBody } from './types/tag.ts';
 import { EventSchema, CreateEventBody, FeedEventSchema } from './types/event.ts';
@@ -71,8 +71,14 @@ const docs = openapi({
 });
 
 // Wire the imperative shell: the HTTP layer assembles real IO and passes it to handlers
-// Adapter defaults to Web Standard (what Vercel runs); local Node passes node()
-export function createServer(io: AppIO, adapter?: ElysiaAdapter) {
+interface ServerOptions {
+  // Defaults to Web Standard (what Vercel runs); local Node passes node()
+  adapter?: ElysiaAdapter;
+  // Public URL of the frontend, where the email verification link redirects to
+  appUrl?: string;
+}
+
+export function createServer(io: AppIO, { adapter, appUrl = 'http://localhost:3000' }: ServerOptions = {}) {
   return new Elysia(adapter ? { adapter } : {})
     .use(docs)
     // Not .decorate(): Elysia deep-merges decorators into every group, and walking the
@@ -91,6 +97,22 @@ export function createServer(io: AppIO, adapter?: ElysiaAdapter) {
       if (message === 'NOT_FOUND' || message === 'USER_NOT_FOUND') {
         set.status = 404;
         return { error: 'Not Found' };
+      }
+      if (message === 'INVALID_CREDENTIALS') {
+        set.status = 401;
+        return { error: 'Invalid email or password' };
+      }
+      if (message === 'EMAIL_NOT_VERIFIED') {
+        set.status = 403;
+        return { error: 'Email not verified' };
+      }
+      if (message.startsWith('SIGNUP_FAILED')) {
+        set.status = 400;
+        return { error: 'Sign-up failed' };
+      }
+      if (message.startsWith('EMAIL_DELIVERY_FAILED')) {
+        set.status = 502;
+        return { error: 'Verification email could not be sent; request a new one' };
       }
       if (message === 'EMAIL_EXISTS') {
         set.status = 400;
@@ -271,11 +293,42 @@ export function createServer(io: AppIO, adapter?: ElysiaAdapter) {
           {
             body: RegisterBody,
             query: t.Object({ orgId: t.Optional(t.String()) }),
-            response: t.Object({
-              user: UserSchema,
-              token: t.String()
-            }),
-            detail: { tags: ['Auth'], summary: 'Register a User as Member of an Organization' }
+            response: t.Object({ user: UserSchema }),
+            detail: {
+              tags: ['Auth'],
+              summary: 'Register a User as Member of an Organization',
+              description: 'Sends a verification email. No session is returned: login is refused (403) until the link in the email is opened.'
+            }
+          }
+        )
+        .get(
+          '/verify-email',
+          async ({ query: { token }, io, redirect }) => {
+            const { verified } = await verifyEmailHandler(token, io);
+            return redirect(`${appUrl.replace(/\/$/, '')}/login?emailVerified=${verified ? 1 : 0}`);
+          },
+          {
+            query: t.Object({ token: t.String() }),
+            detail: {
+              tags: ['Auth'],
+              summary: 'Verify an email (link sent by email)',
+              description: 'Redirects to the frontend login page with emailVerified=1, or emailVerified=0 when the token is invalid or expired.'
+            }
+          }
+        )
+        .post(
+          '/resend-verification',
+          async ({ body, io }) => {
+            return await resendVerificationHandler(body, io);
+          },
+          {
+            body: ResendVerificationBody,
+            response: t.Object({ success: t.Literal(true) }),
+            detail: {
+              tags: ['Auth'],
+              summary: 'Send a new verification email',
+              description: 'Always answers success, whether or not the email exists or is already verified.'
+            }
           }
         )
         .post(
@@ -289,7 +342,7 @@ export function createServer(io: AppIO, adapter?: ElysiaAdapter) {
               userId: t.String(),
               token: t.String()
             }),
-            detail: { tags: ['Auth'], summary: 'Log in with email and password' }
+            detail: { tags: ['Auth'], summary: 'Log in with email and password', description: '401 for wrong credentials, 403 while the email is not verified.' }
           }
         )
         .get(

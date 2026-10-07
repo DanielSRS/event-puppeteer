@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { registerVerified } from '../test-support.ts';
 import { createInMemoryIO } from '../io/in-memory.ts';
 import { connectDeviceHandler, listPendingDevicesGlobalHandler, listPendingDevicesOrgHandler, listActiveDevicesOrgHandler, getDeviceHandler, approveDeviceHandler, rejectDeviceHandler, getCurrentDeviceHandler } from './devices.ts';
-import { registerHandler } from './auth.ts';
 
 async function setup() {
   const io = await createInMemoryIO();
@@ -10,16 +10,16 @@ async function setup() {
   const org1 = await io.orgRepo.create({ name: 'Org 1', slug: 'org1', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), shadowBanThreshold: 5 });
   const org2 = await io.orgRepo.create({ name: 'Org 2', slug: 'org2', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), shadowBanThreshold: 5 });
 
-  const { token: superToken, user: superadmin } = await registerHandler({ firstName: 'Super', lastName: 'X', email: 's@a.com', password: '123' }, org1.id, io);
+  const { token: superToken, user: superadmin } = await registerVerified({ firstName: 'Super', lastName: 'X', email: 's@a.com', password: 'password123' }, org1.id, io);
   await io.userRepo.update(superadmin.id, { role: 'Superadmin' });
 
-  const { token: admin1Token, user: admin1 } = await registerHandler({ firstName: 'A1', lastName: 'X', email: 'a1@a.com', password: '123' }, org1.id, io);
+  const { token: admin1Token, user: admin1 } = await registerVerified({ firstName: 'A1', lastName: 'X', email: 'a1@a.com', password: 'password123' }, org1.id, io);
   await io.userRepo.update(admin1.id, { role: 'Admin' });
 
-  const { token: admin2Token, user: admin2 } = await registerHandler({ firstName: 'A2', lastName: 'X', email: 'a2@a.com', password: '123' }, org2.id, io);
+  const { token: admin2Token, user: admin2 } = await registerVerified({ firstName: 'A2', lastName: 'X', email: 'a2@a.com', password: 'password123' }, org2.id, io);
   await io.userRepo.update(admin2.id, { role: 'Admin' });
 
-  const { token: memberToken, user: member } = await registerHandler({ firstName: 'M', lastName: 'X', email: 'm@a.com', password: '123' }, org1.id, io);
+  const { token: memberToken, user: member } = await registerVerified({ firstName: 'M', lastName: 'X', email: 'm@a.com', password: 'password123' }, org1.id, io);
 
   const req = (token: string) => new Request('http://localhost/', { headers: { authorization: `Bearer ${token}` } });
 

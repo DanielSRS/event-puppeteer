@@ -1,5 +1,5 @@
 import type { AppIO } from '../io/index.ts';
-import type { RegisterInput, LoginInput, NewUser, User } from '../types/user.ts';
+import type { RegisterInput, LoginInput, NewUser, User, ResendVerificationInput } from '../types/user.ts';
 import { normalizeName } from '../utils/normalize.ts';
 
 export async function registerHandler(body: RegisterInput, orgId: string, io: AppIO) {
@@ -15,10 +15,22 @@ export async function registerHandler(body: RegisterInput, orgId: string, io: Ap
     role: 'Member',
     isShadowBanned: false
   };
-  const { token, userId } = await io.auth.signUp(body.password, newUser);
+  const { userId } = await io.auth.signUp(body.password, newUser);
+  // The account stays unusable until the link in this email is opened
+  await io.auth.sendVerificationEmail(body.email);
 
   const user: User = { ...newUser, id: userId };
-  return { user, token };
+  return { user };
+}
+
+export async function verifyEmailHandler(token: string, io: AppIO) {
+  return { verified: await io.auth.verifyEmail(token) };
+}
+
+export async function resendVerificationHandler(body: ResendVerificationInput, io: AppIO) {
+  // Same answer whether or not the email exists or is already verified
+  await io.auth.sendVerificationEmail(body.email);
+  return { success: true as const };
 }
 
 export async function loginHandler(body: LoginInput, io: AppIO) {

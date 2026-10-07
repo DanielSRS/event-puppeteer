@@ -1,18 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { registerVerified } from '../test-support.ts';
 import { createInMemoryIO } from '../io/in-memory.ts';
 import { connectDeviceHandler, approveDeviceHandler } from './devices.ts';
-import { registerHandler } from './auth.ts';
 import { heartbeatHandler, postLogHandler, postTelemetryHandler, ackCommandHandler, completeCommandHandler, getDeviceStatusHandler, getDeviceLogsHandler, getDetailedTelemetryHandler, sendCommandHandler, requestTelemetryHandler, listCommandsHandler, pullPendingCommandsHandler } from './telemetry.ts';
 
 async function setup() {
   const io = await createInMemoryIO();
   const org = await io.orgRepo.create({ name: 'Org', slug: 'org', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), shadowBanThreshold: 5 });
   
-  const { token: adminToken, user: admin } = await registerHandler({ firstName: 'A', lastName: 'X', email: 'a@a.com', password: '123' }, org.id, io);
+  const { token: adminToken, user: admin } = await registerVerified({ firstName: 'A', lastName: 'X', email: 'a@a.com', password: 'password123' }, org.id, io);
   await io.userRepo.update(admin.id, { role: 'Admin' });
 
-  const { token: memberToken, user: member } = await registerHandler({ firstName: 'M', lastName: 'X', email: 'm@a.com', password: '123' }, org.id, io);
+  const { token: memberToken, user: member } = await registerVerified({ firstName: 'M', lastName: 'X', email: 'm@a.com', password: 'password123' }, org.id, io);
 
   const adminReq = new Request('http://localhost/', { headers: { authorization: `Bearer ${adminToken}` } });
   const memberReq = new Request('http://localhost/', { headers: { authorization: `Bearer ${memberToken}` } });

@@ -3,15 +3,15 @@ import assert from 'node:assert/strict';
 import { voteHandler, getVoteStatusHandler } from './votes.ts';
 import { eventFeedHandler } from './feed.ts';
 import { createEventHandler, deleteEventHandler } from './events.ts';
-import { registerHandler } from './auth.ts';
+import { registerVerified } from '../test-support.ts';
 import { createInMemoryIO } from '../io/in-memory.ts';
 
 test('Votes & Feed Handlers', async (t) => {
   await t.test('voting toggles and feed calculates weights correctly', async () => {
     const io = await createInMemoryIO();
     const org = await io.orgRepo.create({ name: 'Org', slug: 'org-1', shadowBanThreshold: 5, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
-    const { token, user } = await registerHandler({ firstName: 'Creator', lastName: 'X', email: 'c@a.com', password: '123' }, org.id, io);
-    const { token: user2Token } = await registerHandler({ firstName: 'Voter', lastName: 'Y', email: 'v@a.com', password: '123' }, org.id, io);
+    const { token, user } = await registerVerified({ firstName: 'Creator', lastName: 'X', email: 'c@a.com', password: 'password123' }, org.id, io);
+    const { token: user2Token } = await registerVerified({ firstName: 'Voter', lastName: 'Y', email: 'v@a.com', password: 'password123' }, org.id, io);
 
     const req = new Request('http://localhost/', { headers: { authorization: `Bearer ${token}` } });
     const reqVoter = new Request('http://localhost/', { headers: { authorization: `Bearer ${user2Token}` } });
@@ -64,7 +64,7 @@ test('Votes & Feed Handlers', async (t) => {
   await t.test('feed excludes hidden, deleted, and expired events', async () => {
     const io = await createInMemoryIO();
     const org = await io.orgRepo.create({ name: 'Org', slug: 'org-1', shadowBanThreshold: 5, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
-    const { token } = await registerHandler({ firstName: 'Creator', lastName: 'X', email: 'c@a.com', password: '123' }, org.id, io);
+    const { token } = await registerVerified({ firstName: 'Creator', lastName: 'X', email: 'c@a.com', password: 'password123' }, org.id, io);
     const req = new Request('http://localhost/', { headers: { authorization: `Bearer ${token}` } });
     
     const todayStr = new Date().toISOString().split('T')[0]!;
@@ -102,7 +102,7 @@ test('Votes & Feed Handlers', async (t) => {
   await t.test('one vote per user per event enforced at IO level', async () => {
     const io = await createInMemoryIO();
     const org = await io.orgRepo.create({ name: 'Org', slug: 'org-1', shadowBanThreshold: 5, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
-    const { token, user } = await registerHandler({ firstName: 'C', lastName: 'X', email: 'c@a.com', password: '123' }, org.id, io);
+    const { token, user } = await registerVerified({ firstName: 'C', lastName: 'X', email: 'c@a.com', password: 'password123' }, org.id, io);
     const req = new Request('http://localhost/', { headers: { authorization: `Bearer ${token}` } });
     
     const tmrStr = new Date(Date.now() + 86400000).toISOString().split('T')[0]!;

@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { registerVerified, verificationTokenFor } from './test-support.ts';
 import { createInMemoryIO } from './io/in-memory.ts';
 import { createServer } from './server.ts';
-import { registerHandler, loginHandler } from './handlers/auth.ts';
+import { loginHandler } from './handlers/auth.ts';
 import { seedSuperadminHandler } from './handlers/seed.ts';
 
 // Handler tests bypass Elysia; these go through the HTTP layer so response
@@ -11,7 +12,7 @@ async function setup() {
   const io = await createInMemoryIO();
   const app = createServer(io);
   const org = await io.orgRepo.create({ name: 'Org', slug: 'org', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), shadowBanThreshold: 5 });
-  const { token: adminToken, user: admin } = await registerHandler({ firstName: 'A', lastName: 'X', email: 'a@a.com', password: '123' }, org.id, io);
+  const { token: adminToken, user: admin } = await registerVerified({ firstName: 'A', lastName: 'X', email: 'a@a.com', password: 'password123' }, org.id, io);
   await io.userRepo.update(admin.id, { role: 'Admin' });
 
   const call = async (method: string, path: string, token?: string, body?: unknown) => {
@@ -77,6 +78,34 @@ test('HTTP layer', async (t) => {
     assert.equal((await call('POST', `/organizations/${orgId}/devices/${device.id}/commands`, adminToken, { type: 'custom', payload: { anything: 1 } })).status, 200);
   });
 
+  await t.test('a new account logs in only after opening the emailed link', async () => {
+    const { io, orgId, call } = await setup();
+    const account = { firstName: 'N', lastName: 'U', email: 'new@a.com', password: 'password123' };
+
+    const registered = await call('POST', `/auth/register?orgId=${orgId}`, undefined, account);
+    assert.equal(registered.status, 200);
+    assert.equal(registered.body.token, undefined);
+    assert.equal((await call('POST', '/auth/register', undefined, { ...account, email: 'short@a.com', password: '1234567' })).status, 422);
+
+    const blocked = await call('POST', '/auth/login', undefined, { email: account.email, password: account.password });
+    assert.equal(blocked.status, 403);
+    assert.equal(blocked.body.error, 'Email not verified');
+
+    const app = createServer(io, { appUrl: 'https://app.example.com/' });
+    const invalid = await app.handle(new Request('http://localhost/auth/verify-email?token=nope'));
+    assert.equal(invalid.headers.get('location'), 'https://app.example.com/login?emailVerified=0');
+
+    const token = encodeURIComponent(verificationTokenFor(io, account.email));
+    const verified = await app.handle(new Request(`http://localhost/auth/verify-email?token=${token}`));
+    assert.equal(verified.status, 302);
+    assert.equal(verified.headers.get('location'), 'https://app.example.com/login?emailVerified=1');
+
+    const login = await call('POST', '/auth/login', undefined, { email: account.email, password: account.password });
+    assert.equal(login.status, 200);
+    assert.ok(login.body.token);
+    assert.equal((await call('POST', '/auth/login', undefined, { email: account.email, password: 'wrong-password' })).status, 401);
+  });
+
   await t.test('GET /auth/me returns each User variant', async () => {
     const { io, orgId, adminToken, call } = await setup();
     await seedSuperadminHandler({ email: 'root@a.com', password: 'secret-123', firstName: 'S', lastName: 'A' }, io);
@@ -101,6 +130,8 @@ test('HTTP layer', async (t) => {
       'GET /health',
       'POST /auth/register',
       'POST /auth/login',
+      'GET /auth/verify-email',
+      'POST /auth/resend-verification',
       'POST /devices/connect',
       'GET /organizations/{id}',
       'GET /organizations/{id}/feed',

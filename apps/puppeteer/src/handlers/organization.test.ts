@@ -6,9 +6,10 @@ import {
   listOrganizationsHandler,
   updateOrganizationHandler
 } from './organization.ts';
+import { registerVerified } from '../test-support.ts';
 import { createInMemoryIO } from '../io/in-memory.ts';
 import { seedSuperadminHandler } from './seed.ts';
-import { registerHandler, loginHandler } from './auth.ts';
+import { loginHandler } from './auth.ts';
 
 const asToken = (token: string) => new Request('http://localhost/', { headers: { authorization: `Bearer ${token}` } });
 
@@ -20,7 +21,7 @@ async function setup() {
 }
 
 async function userOf(io: Awaited<ReturnType<typeof createInMemoryIO>>, orgId: string, email: string, role: 'Admin' | 'Member') {
-  const { token, user } = await registerHandler({ firstName: 'U', lastName: 'X', email, password: '123' }, orgId, io);
+  const { token, user } = await registerVerified({ firstName: 'U', lastName: 'X', email, password: 'password123' }, orgId, io);
   await io.userRepo.update(user.id, { role });
   return asToken(token);
 }

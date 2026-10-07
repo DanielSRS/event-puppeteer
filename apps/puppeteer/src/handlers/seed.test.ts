@@ -34,7 +34,7 @@ test('Superadmin seed', async (t) => {
   await t.test('promotes an existing user with that email', async () => {
     const io = await createInMemoryIO();
     const org = await io.orgRepo.create({ name: 'Org', slug: 'org', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), shadowBanThreshold: 5 });
-    const { user } = await registerHandler({ firstName: 'M', lastName: 'X', email: input.email, password: '123' }, org.id, io);
+    const { user } = await registerHandler({ firstName: 'M', lastName: 'X', email: input.email, password: 'password123' }, org.id, io);
 
     const result = await seedSuperadminHandler(input, io);
 

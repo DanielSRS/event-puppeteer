@@ -5,7 +5,8 @@
 import type { Elysia } from 'elysia';
 import { createServer } from './server.ts';
 import { createRealIO } from './io/index.ts';
+import { env } from './env.ts';
 
-const app: Elysia<any, any, any, any, any, any, any> = createServer(createRealIO());
+const app: Elysia<any, any, any, any, any, any, any> = createServer(createRealIO(), { appUrl: env.APP_URL });
 
 export default app;
