@@ -1,1 +1,3 @@
-console.log("Hello from puppeteer");
+import { startServer } from './src/server.ts';
+
+startServer();
