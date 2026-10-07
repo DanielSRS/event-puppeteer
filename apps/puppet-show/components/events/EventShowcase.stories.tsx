@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from '@storybook/nextjs-vite';
 import { EventShowcase } from './EventShowcase';
 
 const meta = {
@@ -15,7 +15,7 @@ type Story = StoryObj<typeof meta>;
 
 const mockEvents = [
   {
-    id: 1,
+    id: "1",
     title: 'Feira de Tecnologia',
     description: 'Venha conhecer as novidades.',
     location: 'Centro de Convenções',
@@ -29,7 +29,7 @@ const mockEvents = [
     subscribed: false,
   },
   {
-    id: 2,
+    id: "2",
     title: 'Workshop de React',
     description: 'Aprenda React.',
     location: 'Auditório',

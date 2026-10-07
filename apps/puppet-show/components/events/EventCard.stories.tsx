@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from '@storybook/nextjs-vite';
 import { EventCard } from './EventCard';
 
 const meta = {
@@ -14,7 +14,7 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 const mockEvent = {
-  id: 1,
+  id: "1",
   title: 'Feira de Tecnologia',
   description: 'Venha conhecer as novidades do mundo da tecnologia. Teremos palestras e workshops sobre diversos temas.',
   location: 'Centro de Convenções',

@@ -1,26 +1,14 @@
 /* app/eventos/novo/page.tsx */
 
-import Link from "next/link";
-import { EventForm } from "@/components/forms/EventForm";
+import { EventFormContainer } from "@/components/forms/containers/EventFormContainer";
 
 export default function NewEventPage() {
   return (
-    <main className="column gap-4 p-4 max-w-2xl w-full mx-auto">
-      <div className="column gap-1">
-        <Link href="/" className="text-sm text-main underline w-fit">
-          Voltar para os eventos
-        </Link>
-
-        <h1 className="title">
-          Publicar evento
-        </h1>
-
-        <p className="text-sm opacity-60">
-          Ele entra na lista assim que você publicar, e sobe conforme recebe curtidas.
-        </p>
+    <main className="center flex-1 p-4">
+      <div className="w-full max-w-xl">
+        <h1 className="title mb-4">Novo Evento</h1>
+        <EventFormContainer />
       </div>
-
-      <EventForm />
     </main>
   );
 };

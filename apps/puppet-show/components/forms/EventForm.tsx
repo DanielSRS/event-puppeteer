@@ -1,9 +1,6 @@
 /* components/forms/EventForm.tsx */
 
-"use client";
-
 import { SyntheticEvent, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   HasEventErrors,
   ValidateEvent,
@@ -12,7 +9,7 @@ import {
 } from "@/utils/validation/EventValidation";
 import { TodayInBrazil } from "@/utils/date";
 
-const EMPTY_EVENT: EventFormData = {
+export const EMPTY_EVENT: EventFormData = {
   title: "",
   description: "",
   location: "",
@@ -20,13 +17,15 @@ const EMPTY_EVENT: EventFormData = {
   time: "",
 };
 
-export function EventForm() {
-  const router = useRouter();
+export type EventFormProps = {
+  loading?: boolean;
+  generalError?: string;
+  onSubmit: (data: EventFormData) => Promise<void> | void;
+};
 
+export function EventForm({ loading = false, generalError = "", onSubmit }: EventFormProps) {
   const [event, setEvent] = useState<EventFormData>(EMPTY_EVENT);
   const [errors, setErrors] = useState<EventFormErrors>({});
-  const [generalError, setGeneralError] = useState("");
-  const [loading, setLoading] = useState(false);
 
   function update(field: keyof EventFormData, value: string) {
     setEvent((current) => ({ ...current, [field]: value }));
@@ -37,7 +36,6 @@ export function EventForm() {
 
   async function handleSubmit(submitEvent: SyntheticEvent) {
     submitEvent.preventDefault();
-    setGeneralError("");
 
     const newErrors = ValidateEvent(event);
     setErrors(newErrors);
@@ -45,34 +43,7 @@ export function EventForm() {
     if (HasEventErrors(newErrors))
       return;
 
-    setLoading(true);
-
-    try {
-      const response = await fetch("/api/events", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify(event),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        setGeneralError(data.error || "Não foi possível publicar o evento.");
-        return;
-      };
-
-      router.push("/");
-      router.refresh();
-    }
-
-    catch {
-      setGeneralError("Erro de conexão com o servidor.");
-    }
-
-    finally {
-      setLoading(false);
-    };
+    await onSubmit(event);
   };
 
   return (

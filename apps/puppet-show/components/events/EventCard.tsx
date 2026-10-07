@@ -12,8 +12,8 @@ type EventCardProps = {
   /* THE BIG SCREEN ONLY SHOWS THE EVENT, WITHOUT BUTTONS */
   showcase?: boolean;
   pending?: boolean;
-  onToggleLike?: (id: number) => void;
-  onToggleSubscription?: (id: number) => void;
+  onToggleLike?: (id: string) => void;
+  onToggleSubscription?: (id: string) => void;
 };
 
 export function EventCard({

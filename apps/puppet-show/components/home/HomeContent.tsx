@@ -5,13 +5,13 @@
 import { EventList } from "@/components/events/EventList";
 import { EventShowcase } from "@/components/events/EventShowcase";
 import { QrCodePanel } from "@/components/qrcode/QrCodePanel";
-import type { EventRecord } from "@/utils/events";
+import type { EventItem } from "@/hooks/useEvents";
 
 export type HomeContentProps = {
   qrSvg: string;
-  events: EventRecord[];
+  events: EventItem[];
   loaded: boolean;
-  error: Error | null;
+  error: string;
   pendingId: string | null;
   onToggleLike: (id: string) => void;
   onToggleSubscription: (id: string) => void;

@@ -11,9 +11,9 @@ type EventListProps = {
   events: EventItem[];
   loaded: boolean;
   error: string;
-  pendingId: number | null;
-  onToggleLike: (id: number) => void;
-  onToggleSubscription: (id: number) => void;
+  pendingId: string | null;
+  onToggleLike: (id: string) => void;
+  onToggleSubscription: (id: string) => void;
 };
 
 /* THE LIST PEOPLE USE ON THE PHONE: LIKE AND SUBSCRIBE */

@@ -1,4 +1,5 @@
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from '@storybook/nextjs-vite';
+import { fn } from 'storybook/test';
 import { AuthForm } from './AuthForm';
 
 const meta = {
@@ -6,6 +7,9 @@ const meta = {
   component: AuthForm,
   parameters: {
     layout: 'centered',
+  },
+  args: {
+    onSubmit: fn(),
   },
   tags: ['autodocs'],
 } satisfies Meta<typeof AuthForm>;
@@ -22,5 +26,19 @@ export const Login: Story = {
 export const Register: Story = {
   args: {
     mode: 'register',
+  },
+};
+
+export const Loading: Story = {
+  args: {
+    mode: 'login',
+    loading: true,
+  },
+};
+
+export const WithError: Story = {
+  args: {
+    mode: 'login',
+    generalError: 'E-mail ou senha incorretos.',
   },
 };

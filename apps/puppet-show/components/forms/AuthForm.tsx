@@ -1,15 +1,21 @@
 /* components/forms/AuthForm.tsx */
 
-"use client";
-
 import { SyntheticEvent, useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
-import { NotifyAuthChange } from "@/hooks/useAuth";
 import { MIN_PASSWORD_LENGTH } from "@/utils/validation/UserValidation";
+
+export type AuthFormData = {
+  name?: string;
+  email: string;
+  password: string;
+};
 
 type AuthFormProps = {
   mode: "login" | "register";
+  loading?: boolean;
+  generalError?: string;
+  redirectPath?: string;
+  onSubmit: (data: AuthFormData) => Promise<void> | void;
 };
 
 type FormErrors = {
@@ -19,21 +25,13 @@ type FormErrors = {
 };
 
 /* ONE FORM FOR THE TWO SCREENS: THE ONLY DIFFERENCE IS THE NAME FIELD */
-export function AuthForm({ mode }: AuthFormProps) {
+export function AuthForm({ mode, loading = false, generalError = "", redirectPath = "/", onSubmit }: AuthFormProps) {
   const isRegister = mode === "register";
-  const router = useRouter();
-  const searchParams = useSearchParams();
-
-  /* ONLY INTERNAL ADDRESSES, SO NOBODY USES THE LINK TO SEND PEOPLE TO ANOTHER SITE */
-  const rawRedirect = searchParams.get("redirect") ?? "";
-  const redirect = rawRedirect.startsWith("/") && !rawRedirect.startsWith("//") ? rawRedirect : "/";
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [errors, setErrors] = useState<FormErrors>({});
-  const [generalError, setGeneralError] = useState("");
-  const [loading, setLoading] = useState(false);
 
   function validate(): FormErrors {
     const newErrors: FormErrors = {};
@@ -52,7 +50,6 @@ export function AuthForm({ mode }: AuthFormProps) {
 
   async function handleSubmit(event: SyntheticEvent) {
     event.preventDefault();
-    setGeneralError("");
 
     const newErrors = validate();
     setErrors(newErrors);
@@ -60,35 +57,7 @@ export function AuthForm({ mode }: AuthFormProps) {
     if (Object.values(newErrors).some(Boolean))
       return;
 
-    setLoading(true);
-
-    try {
-      const response = await fetch(isRegister ? "/api/users/register" : "/api/users/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify(isRegister ? { name, email, password } : { email, password }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        setGeneralError(data.error || "Não foi possível continuar.");
-        return;
-      };
-
-      NotifyAuthChange();
-      router.push(redirect);
-      router.refresh();
-    }
-
-    catch {
-      setGeneralError("Erro de conexão com o servidor.");
-    }
-
-    finally {
-      setLoading(false);
-    };
+    await onSubmit({ name, email, password });
   };
 
   return (
@@ -100,7 +69,7 @@ export function AuthForm({ mode }: AuthFormProps) {
       <p className="text-sm text-center opacity-70">
         {isRegister ? "Já tem conta?" : "Ainda não tem conta?"}{" "}
         <Link
-          href={`${isRegister ? "/entrar" : "/cadastro"}${redirect !== "/" ? `?redirect=${encodeURIComponent(redirect)}` : ""}`}
+          href={`${isRegister ? "/entrar" : "/cadastro"}${redirectPath !== "/" ? `?redirect=${encodeURIComponent(redirectPath)}` : ""}`}
           className="text-main underline"
         >
           {isRegister ? "Entrar" : "Criar conta"}

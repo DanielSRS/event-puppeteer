@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 export type EventItem = {
-  id: number;
+  id: string;
   title: string;
   description: string;
   location: string;
@@ -27,7 +27,7 @@ export function useEvents({ refreshInterval }: UseEventsOptions = {}) {
   const [events, setEvents] = useState<EventItem[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState("");
-  const [pendingId, setPendingId] = useState<number | null>(null);
+  const [pendingId, setPendingId] = useState<string | null>(null);
 
   const loadEvents = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -70,7 +70,7 @@ export function useEvents({ refreshInterval }: UseEventsOptions = {}) {
   }, [loadEvents, refreshInterval]);
 
   /* LIKE AND SUBSCRIBE SHARE THE SAME FLOW: THE SERVER ANSWERS WITH THE NEW TOTALS */
-  const toggle = useCallback(async (eventId: number, action: "like" | "subscribe") => {
+  const toggle = useCallback(async (eventId: string, action: "like" | "subscribe") => {
     setPendingId(eventId);
     setError("");
 
@@ -116,8 +116,8 @@ export function useEvents({ refreshInterval }: UseEventsOptions = {}) {
     loaded,
     error,
     pendingId,
-    toggleLike: (id: number) => toggle(id, "like"),
-    toggleSubscription: (id: number) => toggle(id, "subscribe"),
+    toggleLike: (id: string) => toggle(id, "like"),
+    toggleSubscription: (id: string) => toggle(id, "subscribe"),
     reload: () => loadEvents(),
   };
 };
