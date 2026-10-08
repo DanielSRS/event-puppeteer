@@ -1,11 +1,26 @@
-/* e2e/server.ts */
-
-/* TEST-ONLY STACK: THE REAL PUPPETEER API (IN-MEMORY POSTGRES, REAL BETTER-AUTH) SEEDED WITH EVERY ROLE,
-   THEN `next dev` POINTED AT IT. NOTHING HERE IS SIMULATED: EVERY CALL GOES THROUGH THE API'S HTTP LAYER.
-
-   RUN FROM apps/puppeteer (ITS MIGRATIONS FOLDER IS RELATIVE TO THE CWD) WITH nub:
-     cd ../puppeteer && nub ../puppet-show/e2e/server.ts
-   PLAYWRIGHT DOES THIS THROUGH playwright.config.ts. */
+/**
+ * Test-only stack for the end-to-end suite.
+ *
+ * Starts the real Puppeteer API (in-memory Postgres via PGlite, real
+ * better-auth) and seeds it through its own HTTP layer with every role:
+ * - superadmin; orgA "Universidade Estadual" with admin, moderador, membro and
+ *   relator; orgB "Outra Organização" with outro;
+ * - tags Tecnologia/Cultura (system) and robotica (free-form), link label Inscrição;
+ * - events in both orgs (one with two days, a tag, a link, a vote and a report);
+ * - devices: one orphan (Superadmin queue), one pending in orgA, one active in
+ *   orgA with heartbeat, telemetry and a log.
+ *
+ * Accounts register through the real flow (sign-up, open the emailed link, log
+ * in). The seeded ids are written to `.state.json` and served at
+ * `/__e2e/state`; the email outbox at `/__e2e/emails`. After seeding, it starts
+ * `next dev` pointed at the API: the frontend needs the public organization id
+ * at build time, so it can only start once the seed exists.
+ *
+ * Run from apps/puppeteer (its migrations folder is relative to the cwd) with
+ * nub; `run.ts` does this for the suite.
+ *
+ * @module
+ */
 
 import { createServer as createHttpServer, type IncomingMessage } from "node:http";
 import { spawn } from "node:child_process";
@@ -24,6 +39,7 @@ const app = createServer(io, { appUrl: `http://localhost:${E2E.webPort}` });
 
 type Json = Record<string, unknown> | unknown[];
 
+/** Calls the API in-process through its HTTP layer; any non-2xx answer aborts the seed. */
 async function call(method: string, path: string, token?: string, body?: Json) {
   const headers: Record<string, string> = {};
   if (token) headers.authorization = `Bearer ${token}`;
@@ -39,12 +55,13 @@ async function call(method: string, path: string, token?: string, body?: Json) {
   return text ? JSON.parse(text) : null;
 }
 
+/** Logs a seeded account in and returns its session token. */
 async function login(email: string) {
   const { token } = await call("POST", "/auth/login", undefined, { email, password: E2E.password });
   return token as string;
 }
 
-/* REGISTRATION THROUGH THE REAL FLOW: SIGN-UP, OPEN THE LINK FROM THE EMAIL, LOG IN */
+/** Registers through the real flow (sign-up, open the emailed link, log in) and returns the id and session token. */
 async function registerVerified(orgId: string, firstName: string, lastName: string, email: string) {
   const { user } = await call("POST", `/auth/register?orgId=${orgId}`, undefined, { firstName, lastName, email, password: E2E.password });
   const message = io.emailSender.sent.findLast((m) => m.to.email === email);
@@ -54,13 +71,12 @@ async function registerVerified(orgId: string, firstName: string, lastName: stri
   return { id: user.id as string, token: await login(email) };
 }
 
+/** `YYYY-MM-DD`, `days` from today (UTC, like the API). */
 function DaysFromToday(days: number) {
   const date = new Date();
   date.setUTCDate(date.getUTCDate() + days);
   return date.toISOString().slice(0, 10);
 }
-
-/* ── SEED ─────────────────────────────────────────────────────────────────── */
 
 await seedSuperadminHandler({ firstName: "Sara", lastName: "Super", email: E2E.users.superadmin, password: E2E.password }, io);
 const superToken = await login(E2E.users.superadmin);
@@ -82,6 +98,7 @@ await call("POST", "/tags", superToken, { name: "Cultura", isSystemDefined: true
 await call("POST", "/tags", superToken, { name: "robotica", isSystemDefined: false });
 const signup = await call("POST", "/link-labels", superToken, { name: "Inscrição" });
 
+/** Body of an event happening on the given days from today, 14:00–16:00. */
 const event = (title: string, days: number[], extra: Json = {}) => ({
   title,
   description: `Descrição completa do evento ${title}.`,
@@ -104,7 +121,6 @@ await call("POST", `/organizations/${orgB.id}/events`, outsider.token, event("Ev
 await call("POST", `/organizations/${orgA.id}/events/${fair.id}/vote`, reporter.token);
 await call("POST", `/organizations/${orgA.id}/events/${fair.id}/report`, reporter.token, { reason: "spam", comment: "Parece propaganda" });
 
-/* DEVICES: ONE ORPHAN (SUPERADMIN QUEUE), ONE PENDING IN ORG A, ONE ACTIVE IN ORG A WITH TELEMETRY */
 await call("POST", "/devices/connect", undefined, { identifier: "orphan-mac-01" });
 await call("POST", "/devices/connect", undefined, { identifier: "pending-mac-02", organizationId: orgA.id });
 const active = await call("POST", "/devices/connect", undefined, { identifier: "active-mac-03", organizationId: orgA.id });
@@ -124,15 +140,14 @@ const state: E2EState = {
 };
 writeFileSync(join(here, ".state.json"), JSON.stringify(state, null, 2));
 
-/* ── HTTP BRIDGE ──────────────────────────────────────────────────────────── */
-
-/* TEST-ONLY EXTRAS: THE OUTBOX (TO OPEN VERIFICATION LINKS) AND THE SEEDED IDS */
+/** Test-only routes: the email outbox and the seeded ids; `null` for every other path. */
 function TestRoute(path: string) {
   if (path === "/__e2e/emails") return io.emailSender.sent;
   if (path === "/__e2e/state") return state;
   return null;
 }
 
+/** Reads a Node request body into a buffer (`undefined` when empty). */
 async function ReadBody(req: IncomingMessage) {
   const chunks: Buffer[] = [];
   for await (const chunk of req) chunks.push(chunk as Buffer);
@@ -160,7 +175,6 @@ createHttpServer(async (req, res) => {
 }).listen(E2E.apiPort, () => {
   console.log(`[e2e] API on http://localhost:${E2E.apiPort} (org A ${orgA.id})`);
 
-  /* THE FRONTEND NEEDS THE PUBLIC ORGANIZATION AT BUILD TIME, SO IT STARTS AFTER THE SEED */
   const next = spawn("npx", ["next", "dev", "-p", String(E2E.webPort)], {
     cwd: join(here, ".."),
     stdio: "inherit",
