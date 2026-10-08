@@ -1,19 +1,22 @@
-import React from 'react';
-import { DashboardUsersContainer } from '@/components/dashboard/users/DashboardUsersContainer';
+/**
+ * Organization users page (Admin+).
+ *
+ * @module
+ */
 
-export const metadata = {
-  title: 'Diretório de Usuários - Dashboard',
-};
+import type { Metadata } from "next";
+import { DashboardUsersContainer } from "@/components/dashboard/users/DashboardUsersContainer";
 
-export default function UsersPage() {
+export const metadata: Metadata = { title: "Usuários - Painel" };
+
+/** Heading and description; the client container does the rest. */
+export default function Page() {
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="title">Usuários da Organização</h1>
-        <p className="mt-1 text-sm opacity-60">
-          Gerencie os membros e seus níveis de acesso no sistema.
-        </p>
-      </div>
+    <div className="column gap-6">
+      <header>
+        <h1 className="title">Usuários</h1>
+        <p className="mt-1 text-sm text-foreground/70">Pessoas da organização: busque, altere papéis e remova contas.</p>
+      </header>
 
       <DashboardUsersContainer />
     </div>
