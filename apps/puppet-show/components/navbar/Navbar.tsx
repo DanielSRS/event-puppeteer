@@ -146,11 +146,11 @@ export function Navbar({ auth, brand, brandError, pathname, logoutError, onLogou
           className="button clean touch lg:hidden"
           aria-expanded={open}
           aria-controls={menuId}
-          aria-label={open ? "Fechar menu" : "Abrir menu"}
+          aria-label={open ? "Fechar navegação" : "Abrir navegação"}
           onClick={() => setOpen((value) => !value)}
         >
           {open ? <MdClose aria-hidden className="icon" /> : <MdMenu aria-hidden className="icon" />}
-          <span aria-hidden>Menu</span>
+          <span aria-hidden>Navegação</span>
         </button>
       </nav>
 
