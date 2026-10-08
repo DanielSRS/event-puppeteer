@@ -1,19 +1,22 @@
-import React from 'react';
-import { DashboardAuditContainer } from '@/components/dashboard/audit/DashboardAuditContainer';
+/**
+ * Audit trail page (Admin+).
+ *
+ * @module
+ */
 
-export const metadata = {
-  title: 'Auditoria - Dashboard',
-};
+import type { Metadata } from "next";
+import { DashboardAuditContainer } from "@/components/dashboard/audit/DashboardAuditContainer";
 
-export default function AuditPage() {
+export const metadata: Metadata = { title: "Auditoria - Painel" };
+
+/** Heading and description; the client container does the rest. */
+export default function Page() {
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="title">Registro de Auditoria</h1>
-        <p className="mt-1 text-sm opacity-60">
-          Log imutável de todas as ações de moderação e administração.
-        </p>
-      </div>
+    <div className="column gap-6">
+      <header>
+        <h1 className="title">Auditoria</h1>
+        <p className="mt-1 text-sm text-foreground/70">Todas as ações de moderação e administração desta organização, incluindo as automáticas.</p>
+      </header>
 
       <DashboardAuditContainer />
     </div>

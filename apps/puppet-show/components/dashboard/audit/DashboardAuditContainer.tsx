@@ -1,70 +1,127 @@
-'use client';
+/**
+ * Audit trail page (Admin+): loads the entries and everything needed to name
+ * their actors and targets (organization users, the events and tags they
+ * mention), then shows them as sentences.
+ *
+ * A lookup that fails is shown as a failure on the entry it affects, and a
+ * list that couldn't be loaded at all is also reported above the table.
+ *
+ * @module
+ */
 
-import React, { useState, useEffect } from 'react';
-import { AuditList, AuditLog } from './AuditList';
-import { api } from '@/lib/api/client';
-import type { AuditAction, User } from '@/lib/api/types';
-import { useDashboard, SelectOrgNotice } from '../DashboardContext';
+"use client";
 
-const ACTIONS: Record<AuditAction, string> = {
-  hide_event: 'Evento Ocultado',
-  unhide_event: 'Evento Reexibido',
-  apply_shadow_ban: 'Shadow Ban Aplicado',
-  lift_shadow_ban: 'Banimento Removido',
-  promote_tag: 'Tag Promovida',
-  update_org_threshold: 'Limite de Denúncias Alterado',
-};
+import { useEffect, useState } from "react";
+import { api, ApiErrorMessage } from "@/lib/api/client";
+import type { AuditEntry, User } from "@/lib/api/schemas";
+import { Err, Ok, type Result } from "@/lib/result";
+import { ErrorAlert, LoadingMessage } from "@/components/ui/Feedback";
+import { SectionDenialFor, SelectOrgNotice, useDashboard } from "../DashboardContext";
+import { AccessNotice } from "../global/AccessNotice";
+import { NewestFirst, ToAuditRow, type AuditLookups, type AuditRow, type Lookup } from "./auditFormat";
+import { AuditList } from "./AuditList";
 
-function FormatDetails(details?: Record<string, unknown>) {
-  if (!details) return undefined;
-  return Object.entries(details).map(([key, value]) => `${key}: ${String(value)}`).join(' • ');
+/** What the page shows once loaded. */
+type AuditPage = { rows: AuditRow[]; problems: string[] };
+
+/** `"Ana Admin (admin@x.org)"`. */
+function PersonName(user: User): string {
+  return `${user.firstName} ${user.lastName} (${user.email})`;
 }
 
+/** Event ids an entry mentions, as target or in its details. */
+function MentionedEvents(entry: AuditEntry): string[] {
+  const ids: string[] = [];
+  if (entry.targetType === "event") ids.push(entry.targetId);
+  const fromDetails = entry.details === undefined ? undefined : entry.details.eventId;
+  if (typeof fromDetails === "string") ids.push(fromDetails);
+  return ids;
+}
+
+/** Builds a lookup from a map of loaded names, or from the error that prevented loading them. */
+function MapLookup(names: Result<Map<string, string>, string>, missing: (id: string) => string): (id: string) => Lookup {
+  return (id) => {
+    if (!names.ok) return Err(`não identificado (${names.error})`);
+    const name = names.value.get(id);
+    return name === undefined ? Err(missing(id)) : Ok(name);
+  };
+}
+
+/**
+ * Loads the trail of `orgId` and resolves its names. The logged-in person is
+ * named too (a Superadmin isn't in the organization's user list).
+ */
+async function LoadAudit(orgId: string, meId: string, meName: string): Promise<Result<AuditPage, string>> {
+  const entries = await api.moderation.listAudit(orgId);
+  if (!entries.ok) return Err(`Não foi possível carregar a auditoria. ${ApiErrorMessage(entries.error)}`);
+
+  const eventIds = [...new Set(entries.value.flatMap(MentionedEvents))];
+  const [users, tags, events] = await Promise.all([
+    api.users.list(orgId),
+    api.tags.list(),
+    Promise.all(eventIds.map((id) => api.events.get(orgId, id))),
+  ]);
+
+  const problems: string[] = [];
+
+  const userNames = new Map<string, string>([[meId, meName]]);
+  if (users.ok) for (const user of users.value) userNames.set(user.id, PersonName(user));
+  else problems.push(`Não foi possível carregar as pessoas da organização, então os nomes não aparecem. ${ApiErrorMessage(users.error)}`);
+
+  if (!tags.ok) problems.push(`Não foi possível carregar as tags, então os nomes das tags não aparecem. ${ApiErrorMessage(tags.error)}`);
+
+  const eventTitles = new Map<string, Lookup>();
+  eventIds.forEach((id, index) => {
+    const event = events[index];
+    eventTitles.set(id, event.ok
+      ? Ok(`“${event.value.title}”`)
+      : Err(`não carregado (${ApiErrorMessage(event.error)})`));
+  });
+
+  const lookups: AuditLookups = {
+    user: MapLookup(
+      users.ok ? Ok(userNames) : Err(ApiErrorMessage(users.error)),
+      () => "não encontrado entre as pessoas ativas da organização (conta removida ou de um Superadmin)",
+    ),
+    tag: MapLookup(
+      tags.ok ? Ok(new Map(tags.value.map((tag) => [tag.id, `“${tag.name}”`]))) : Err(ApiErrorMessage(tags.error)),
+      () => "não encontrada na lista de tags",
+    ),
+    event: (id) => {
+      const title = eventTitles.get(id);
+      return title === undefined ? Err("não carregado") : title;
+    },
+  };
+
+  return Ok({ rows: NewestFirst(entries.value).map((entry) => ToAuditRow(entry, lookups)), problems });
+}
+
+/** The page, guarded by the section rules. */
 export function DashboardAuditContainer() {
-  const { orgId } = useDashboard();
-  const [logs, setLogs] = useState<AuditLog[]>([]);
-  const [loadedOrgId, setLoadedOrgId] = useState<string | null>(null);
-  const [error, setError] = useState('');
+  const { user, orgId } = useDashboard();
+  const denial = SectionDenialFor("audit", user, orgId);
+  if (denial !== null) return <AccessNotice denial={denial} />;
+  if (orgId === null) return <SelectOrgNotice />;
+  return <AuditTrail key={orgId} orgId={orgId} meId={user.id} meName={PersonName(user)} />;
+}
+
+/** The trail of one organization; remounted when the organization changes. */
+function AuditTrail({ orgId, meId, meName }: { orgId: string; meId: string; meName: string }) {
+  const [page, setPage] = useState<Result<AuditPage, string> | null>(null);
 
   useEffect(() => {
-    if (!orgId) return;
-    // Entries only carry the actor id; the user directory (when allowed) gives names
-    Promise.all([
-      api.moderation.listAudit(orgId),
-      api.users.list(orgId).catch(() => [] as User[]),
-    ])
-      .then(([entries, users]) => {
-        const byId = new Map(users.map(u => [u.id, u]));
-        setLogs(entries.map(e => {
-          const actor = byId.get(e.actorId);
-          return {
-            id: e.id,
-            action: ACTIONS[e.action] ?? e.action,
-            actorName: actor ? `${actor.firstName} ${actor.lastName}`.trim() : e.actorId,
-            actorEmail: actor?.email ?? '',
-            targetId: e.targetId,
-            timestamp: e.createdAt,
-            details: FormatDetails(e.details),
-          };
-        }));
-        setError('');
-      })
-      .catch(() => setError('Erro ao carregar logs de auditoria.'))
-      .finally(() => setLoadedOrgId(orgId));
-  }, [orgId]);
+    let active = true;
+    LoadAudit(orgId, meId, meName).then((result) => { if (active) setPage(result); });
+    return () => { active = false; };
+  }, [orgId, meId, meName]);
 
-  if (!orgId) return <SelectOrgNotice />;
-
-  const isLoading = loadedOrgId !== orgId;
-
-  if (isLoading) {
-    return <div className="p-8 text-center text-foreground/60 animate-pulse">Carregando logs de auditoria...</div>;
-  }
+  if (page === null) return <LoadingMessage>Carregando auditoria...</LoadingMessage>;
+  if (!page.ok) return <ErrorAlert>{page.error}</ErrorAlert>;
 
   return (
-    <>
-      {error && <p className="mb-4 text-sm text-danger">{error}</p>}
-      <AuditList logs={logs} />
-    </>
+    <div className="column gap-4">
+      {page.value.problems.map((problem) => <ErrorAlert key={problem}>{problem}</ErrorAlert>)}
+      <AuditList rows={page.value.rows} />
+    </div>
   );
 }
