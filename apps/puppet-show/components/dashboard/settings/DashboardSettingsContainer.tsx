@@ -1,57 +1,87 @@
-'use client';
+/**
+ * Organization settings page (Admin+, and a Superadmin inside an
+ * organization): edits the organization's profile and its report threshold.
+ * Only changed fields are sent, so the threshold change is audited only when
+ * it really changed.
+ *
+ * @module
+ */
 
-import React, { useState, useEffect } from 'react';
-import { SettingsForm, OrgSettingsData } from './SettingsForm';
-import { api } from '@/lib/api/client';
-import { useDashboard, SelectOrgNotice } from '../DashboardContext';
+"use client";
 
+import { useEffect, useState } from "react";
+import { api, ApiErrorMessage } from "@/lib/api/client";
+import type { Organization, OrganizationInput } from "@/lib/api/schemas";
+import { Err, Ok, type Result } from "@/lib/result";
+import { ErrorAlert, LoadingMessage, StatusMessage } from "@/components/ui/Feedback";
+import { SectionDenialFor, SelectOrgNotice, useDashboard } from "../DashboardContext";
+import { AccessNotice } from "../global/AccessNotice";
+import { OrganizationForm } from "./OrganizationForm";
+
+/** Loads the organization being managed. */
+async function LoadOrganization(orgId: string): Promise<Result<Organization, string>> {
+  const org = await api.organizations.get(orgId);
+  if (!org.ok) return Err(`Não foi possível carregar a organização. ${ApiErrorMessage(org.error)}`);
+  return Ok(org.value);
+}
+
+/** The page, guarded by the section rules. */
 export function DashboardSettingsContainer() {
-  const { orgId } = useDashboard();
-  const [loaded, setLoaded] = useState<{ orgId: string; data: OrgSettingsData } | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
-  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const { user, orgId } = useDashboard();
+  const denial = SectionDenialFor("settings", user, orgId);
+  if (denial !== null) return <AccessNotice denial={denial} />;
+  if (orgId === null) return <SelectOrgNotice />;
+  return <Settings key={orgId} orgId={orgId} />;
+}
+
+/** The settings of one organization; remounted when the organization changes. */
+function Settings({ orgId }: { orgId: string }) {
+  const [org, setOrg] = useState<Result<Organization, string> | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const [saved, setSaved] = useState("");
 
   useEffect(() => {
-    if (!orgId) return;
-    api.organizations.get(orgId)
-      .then(org => setLoaded({ orgId, data: { shadowBanThreshold: org.shadowBanThreshold } }))
-      .catch(() => setMessage({ ok: false, text: 'Erro ao carregar configurações.' }));
+    let active = true;
+    LoadOrganization(orgId).then((result) => { if (active) setOrg(result); });
+    return () => { active = false; };
   }, [orgId]);
 
-  const handleSave = async (newData: OrgSettingsData) => {
-    if (!orgId) return;
-    setIsSaving(true);
-    setMessage(null);
-    try {
-      const org = await api.organizations.update(orgId, { shadowBanThreshold: newData.shadowBanThreshold });
-      setLoaded({ orgId, data: { shadowBanThreshold: org.shadowBanThreshold } });
-      setMessage({ ok: true, text: 'Configurações salvas com sucesso!' });
-    } catch {
-      setMessage({ ok: false, text: 'Não foi possível salvar as configurações.' });
-    } finally {
-      setIsSaving(false);
+  const handleUpdate = async (changes: Partial<OrganizationInput>) => {
+    setSaving(true);
+    setSaveError("");
+    setSaved("");
+    const updated = await api.organizations.update(orgId, changes);
+    setSaving(false);
+
+    if (!updated.ok) {
+      setSaveError(`Não foi possível salvar. ${ApiErrorMessage(updated.error)}`);
+      return;
     }
+    setOrg(Ok(updated.value));
+    setSaved(changes.shadowBanThreshold === undefined
+      ? "Configurações salvas."
+      : `Configurações salvas. Novo limite: ${updated.value.shadowBanThreshold} ${updated.value.shadowBanThreshold === 1 ? "denúncia" : "denúncias"}.`);
   };
 
-  if (!orgId) return <SelectOrgNotice />;
-
-  const data = loaded?.orgId === orgId ? loaded.data : null;
-
-  const feedback = message && (
-    <p className={`mb-4 text-sm ${message.ok ? 'text-success' : 'text-danger'}`}>{message.text}</p>
-  );
-
-  if (!data) return feedback || <div className="p-8 text-center text-foreground/60 animate-pulse">Carregando configurações...</div>;
+  if (org === null) return <LoadingMessage>Carregando configurações...</LoadingMessage>;
+  if (!org.ok) return <ErrorAlert>{org.error}</ErrorAlert>;
 
   return (
-    <>
-      {feedback}
-      <SettingsForm 
-        key={orgId}
-        initialData={data} 
-        onSave={handleSave} 
-        isSaving={isSaving} 
-      />
-    </>
+    <div className="column gap-4 max-w-2xl">
+      <StatusMessage>{saved}</StatusMessage>
+      <div className="card">
+        <OrganizationForm
+          key={org.value.updatedAt}
+          mode="edit"
+          original={org.value}
+          slugEditable={false}
+          takenSlugs={[]}
+          saving={saving}
+          error={saveError}
+          onUpdate={handleUpdate}
+        />
+      </div>
+    </div>
   );
 }
