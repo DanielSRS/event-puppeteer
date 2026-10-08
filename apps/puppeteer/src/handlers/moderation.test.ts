@@ -2,8 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { registerVerified } from '../test-support.ts';
 import { createInMemoryIO } from '../io/in-memory.ts';
-import { reportEventHandler, listReportsHandler, hideEventHandler, unhideEventHandler, listShadowBansHandler, liftShadowBanHandler, promoteTagHandler, listAuditTrailHandler } from './moderation.ts';
+import { reportEventHandler, getReportStatusHandler, listReportsHandler, hideEventHandler, unhideEventHandler, listShadowBansHandler, liftShadowBanHandler, promoteTagHandler, listAuditTrailHandler } from './moderation.ts';
 import { createEventHandler, listEventsHandler, getEventHandler } from './events.ts';
+import { voteHandler } from './votes.ts';
 import { createTagHandler } from './system.ts';
 
 async function setup() {
@@ -175,5 +176,30 @@ test('Moderation Handlers', async (t) => {
   await t.test('RBAC - Moderator cannot view audit trail', async () => {
     const { io, orgId, modReq } = await setup();
     await assert.rejects(listAuditTrailHandler(modReq, orgId, io), /FORBIDDEN/);
+  });
+
+  await t.test('an Event opened by id carries its vote count', async () => {
+    const { io, orgId, u1Req, u2Req, u3Req } = await setup();
+    const event = await createEventHandler(u1Req, orgId, {
+      title: 'Ev1', description: '...', location: '...', isHidden: false, schedule: [{ date: '2100-01-01' }], tags: [], links: []
+    }, io);
+    await voteHandler(u2Req, orgId, event.id, io);
+    await voteHandler(u3Req, orgId, event.id, io);
+
+    assert.equal((await getEventHandler(u1Req, orgId, event.id, io)).voteCount, 2);
+  });
+
+  await t.test('a User can tell whether they already reported an Event', async () => {
+    const { io, orgId, u1Req, u2Req } = await setup();
+    const event = await createEventHandler(u1Req, orgId, {
+      title: 'Ev1', description: '...', location: '...', isHidden: false, schedule: [{ date: '2100-01-01' }], tags: [], links: []
+    }, io);
+
+    assert.deepEqual(await getReportStatusHandler(u2Req, orgId, event.id, io), { reported: false });
+    await reportEventHandler(u2Req, orgId, event.id, { reason: 'spam' }, io);
+    assert.deepEqual(await getReportStatusHandler(u2Req, orgId, event.id, io), { reported: true });
+    assert.deepEqual(await getReportStatusHandler(u1Req, orgId, event.id, io), { reported: false });
+    await assert.rejects(getReportStatusHandler(new Request('http://localhost/'), orgId, event.id, io), /UNAUTHORIZED/);
+    await assert.rejects(getReportStatusHandler(u2Req, orgId, 'missing', io), /NOT_FOUND/);
   });
 });

@@ -65,6 +65,13 @@ export const CreateEventBody = t.Object({
 });
 export type CreateEventInput = Static<typeof CreateEventBody>;
 
+/** An Event opened by id, with its Vote count. */
+export const EventWithVotesSchema = t.Object({
+  ...EventSchema.properties,
+  voteCount: t.Number()
+});
+export type EventWithVotes = Static<typeof EventWithVotesSchema>;
+
 /**
  * An Event as shown in the kiosk feed, with its Vote count and computed weight.
  * A single flat object: response validation of a `t.Intersect` rejects the extra

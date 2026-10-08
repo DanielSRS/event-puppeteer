@@ -92,7 +92,7 @@ export async function listMyEventsHandler(request: Request, orgId: string, io: A
 }
 
 /**
- * Gets one Event of an Organization.
+ * Gets one Event of an Organization, with its Vote count.
  *
  * Everyone sees an Event that is neither hidden nor authored by a shadow-banned User.
  * Its creator always sees it (a shadow-banned author must not notice the ban), and so do
@@ -109,16 +109,16 @@ export async function getEventHandler(request: Request, orgId: string, eventId: 
 
   const viewerId = await io.auth.getSessionUserId(request);
   const viewer = viewerId ? await io.userRepo.getById(viewerId) : null;
-  if (viewer && (viewer.id === event.creatorId || canModerate(viewer, orgId))) {
-    return event;
+  const privileged = viewer !== null && (viewer.id === event.creatorId || canModerate(viewer, orgId));
+
+  if (!privileged) {
+    const creator = await io.userRepo.getById(event.creatorId);
+    if (event.isHidden || !creator || creator.isShadowBanned) {
+      throw new Error('NOT_FOUND');
+    }
   }
 
-  const creator = await io.userRepo.getById(event.creatorId);
-  if (event.isHidden || !creator || creator.isShadowBanned) {
-    throw new Error('NOT_FOUND');
-  }
-
-  return event;
+  return { ...event, voteCount: await io.voteRepo.countByEvent(event.id) };
 }
 
 /** Whether `user` moderates `orgId`: a Moderator+ of it, or a Superadmin. */

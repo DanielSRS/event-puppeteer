@@ -144,6 +144,24 @@ test('HTTP layer', async (t) => {
     assert.equal(typeof feed.body[0].weight, 'number');
   });
 
+  await t.test('GET an Event answers its voteCount, and GET .../report tells whether the viewer reported it', async () => {
+    const { orgId, adminToken, call } = await setup();
+    const created = await call('POST', `/organizations/${orgId}/events/`, adminToken, {
+      title: 'Detail event', description: 'd', location: 'l', isHidden: false,
+      schedule: [{ date: '2100-01-01' }], tags: [], links: []
+    });
+    const eventPath = `/organizations/${orgId}/events/${created.body.id}`;
+    assert.equal((await call('POST', `${eventPath}/vote`, adminToken)).status, 200);
+
+    const detail = await call('GET', eventPath);
+    assert.equal(detail.status, 200);
+    assert.equal(detail.body.voteCount, 1);
+
+    assert.deepEqual((await call('GET', `${eventPath}/report`, adminToken)).body, { reported: false });
+    assert.equal((await call('POST', `${eventPath}/report`, adminToken, { reason: 'spam' })).status, 200);
+    assert.deepEqual((await call('GET', `${eventPath}/report`, adminToken)).body, { reported: true });
+  });
+
   await t.test('POST /tags lets a Member create a free-form Tag and answers 409 for a duplicate name', async () => {
     const { io, orgId, call } = await setup();
     const { token } = await registerVerified({ firstName: 'M', lastName: 'Y', email: 'm@a.com', password: 'password123' }, orgId, io);

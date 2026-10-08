@@ -17,7 +17,7 @@ import { UserSchema, RegisterBody, LoginBody, ChangeRoleBody, ResendVerification
 import { registerHandler, loginHandler, meHandler, verifyEmailHandler, resendVerificationHandler } from './handlers/auth.ts';
 import { listOrgUsersHandler, assignRoleHandler, removeUserHandler } from './handlers/users.ts';
 import { TagSchema, CreateTagBody, LinkLabelSchema, CreateLinkLabelBody } from './types/tag.ts';
-import { EventSchema, CreateEventBody, FeedEventSchema } from './types/event.ts';
+import { EventSchema, CreateEventBody, FeedEventSchema, EventWithVotesSchema } from './types/event.ts';
 import { connectDeviceHandler, getCurrentDeviceHandler, listPendingDevicesGlobalHandler, listPendingDevicesOrgHandler, listActiveDevicesOrgHandler, getDeviceHandler, approveDeviceHandler, rejectDeviceHandler } from './handlers/devices.ts';
 import { PublicDeviceSchema, ConnectDeviceBody, ApproveDeviceBody } from './types/device.ts';
 import { heartbeatHandler, postLogHandler, postTelemetryHandler, pullPendingCommandsHandler, ackCommandHandler, completeCommandHandler, getDeviceStatusHandler, getDeviceLogsHandler, getDetailedTelemetryHandler, sendCommandHandler, requestTelemetryHandler, listCommandsHandler } from './handlers/telemetry.ts';
@@ -28,7 +28,7 @@ import { createEventHandler, listEventsHandler, listMyEventsHandler, getEventHan
 import { voteHandler, getVoteStatusHandler } from './handlers/votes.ts';
 import { eventFeedHandler } from './handlers/feed.ts';
 import { ReportSchema, CreateReportBody, AuditEntrySchema } from './types/moderation.ts';
-import { reportEventHandler, listReportsHandler, hideEventHandler, unhideEventHandler, listShadowBansHandler, liftShadowBanHandler, promoteTagHandler, listAuditTrailHandler } from './handlers/moderation.ts';
+import { reportEventHandler, getReportStatusHandler, listReportsHandler, hideEventHandler, unhideEventHandler, listShadowBansHandler, liftShadowBanHandler, promoteTagHandler, listAuditTrailHandler } from './handlers/moderation.ts';
 
 // Security requirements referenced by route docs (schemes declared in the openapi plugin below)
 const asUser = [{ userToken: [] }];
@@ -651,8 +651,8 @@ export function createServer(io: AppIO, { adapter, appUrl = 'http://localhost:30
               return await getEventHandler(request, id, eventId, io);
             }, {
               params: t.Object({ id: t.String(), eventId: t.String() }),
-              response: EventSchema,
-              detail: { tags: ['Events'], summary: 'Get an Event', description: 'Hidden Events and Events by shadow-banned Users answer 404, except to their creator and to Moderators+ of the Organization or Superadmins.', security: asUser }
+              response: EventWithVotesSchema,
+              detail: { tags: ['Events'], summary: 'Get an Event with its Vote count', description: 'Hidden Events and Events by shadow-banned Users answer 404, except to their creator and to Moderators+ of the Organization or Superadmins.', security: asUser }
             })
             .delete('/:eventId', async ({ request, params: { id, eventId }, io }) => {
               await deleteEventHandler(request, id, eventId, io);
@@ -675,6 +675,13 @@ export function createServer(io: AppIO, { adapter, appUrl = 'http://localhost:30
               params: t.Object({ id: t.String(), eventId: t.String() }),
               response: t.Object({ voted: t.Boolean() }),
               detail: { tags: ['Votes'], summary: 'Check whether the logged-in User voted', security: asUser }
+            })
+            .get('/:eventId/report', async ({ request, params: { id, eventId }, io }) => {
+              return await getReportStatusHandler(request, id, eventId, io);
+            }, {
+              params: t.Object({ id: t.String(), eventId: t.String() }),
+              response: t.Object({ reported: t.Boolean() }),
+              detail: { tags: ['Moderation'], summary: 'Whether the logged-in User already reported an Event', security: asUser }
             })
             .post('/:eventId/report', async ({ request, params: { id, eventId }, body, io }) => {
               return await reportEventHandler(request, id, eventId, body, io);

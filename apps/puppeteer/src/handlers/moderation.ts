@@ -60,6 +60,23 @@ export async function reportEventHandler(request: Request, orgId: string, eventI
   return report;
 }
 
+/**
+ * Whether the logged-in User already reported an Event (one Report per User per Event),
+ * so the UI can show the report action as done.
+ * @throws UNAUTHORIZED without a valid session.
+ * @throws NOT_FOUND when the Event doesn't exist, belongs to another Organization or is deleted.
+ */
+export async function getReportStatusHandler(request: Request, orgId: string, eventId: string, io: AppIO) {
+  const actor = await requireAuth(request, io);
+
+  const event = await io.eventRepo.getById(eventId);
+  if (!event || event.organizationId !== orgId || event.isDeleted) {
+    throw new Error('NOT_FOUND');
+  }
+
+  return { reported: await io.reportRepo.existsByUserAndEvent(actor.id, eventId) };
+}
+
 export async function listReportsHandler(request: Request, orgId: string, io: AppIO) {
   const actor = await requireAuth(request, io);
   assertCanManageOrg(actor, orgId, 'Moderator');
