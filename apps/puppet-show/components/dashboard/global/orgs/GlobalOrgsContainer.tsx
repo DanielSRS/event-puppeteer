@@ -1,108 +1,130 @@
-'use client';
+/**
+ * Organizations page (Superadmin, global context): lists every organization
+ * and creates or edits them in a side panel with every field the API accepts.
+ *
+ * @module
+ */
 
-import React, { useState, useEffect } from 'react';
-import { OrgManager, Tenant } from './OrgManager';
-import { OrgForm, OrgFormData } from './OrgForm';
-import { Drawer } from '@/components/ui/Drawer';
-import { api } from '@/lib/api/client';
-import type { Organization } from '@/lib/api/types';
+"use client";
 
-const DEFAULT_COLOR = '#2563eb';
+import { useEffect, useState } from "react";
+import { api, ApiErrorMessage, type ApiError } from "@/lib/api/client";
+import type { Organization, OrganizationInput } from "@/lib/api/schemas";
+import { Err, Ok, type Result } from "@/lib/result";
+import { Drawer } from "@/components/ui/Drawer";
+import { ErrorAlert, LoadingMessage, StatusMessage } from "@/components/ui/Feedback";
+import { SectionDenialFor, useDashboard } from "../../DashboardContext";
+import { AccessNotice } from "../AccessNotice";
+import { OrganizationForm } from "../../settings/OrganizationForm";
+import { OrgManager } from "./OrgManager";
 
-function ToTenant(org: Organization): Tenant {
-  return {
-    id: org.id,
-    name: org.name,
-    acronym: org.slug.slice(0, 4).toUpperCase(),
-    domain: org.url ?? org.slug,
-    primaryColor: org.colorScheme ?? DEFAULT_COLOR,
-  };
+/** What the side panel is doing. */
+type Editing = { kind: "closed" } | { kind: "create" } | { kind: "edit"; org: Organization };
+
+/** Loads every organization. */
+async function LoadOrganizations(): Promise<Result<Organization[], string>> {
+  const orgs = await api.organizations.list();
+  if (!orgs.ok) return Err(`Não foi possível carregar as organizações. ${ApiErrorMessage(orgs.error)}`);
+  return Ok(orgs.value);
 }
 
-// Empty optional fields are left out instead of being saved as ""
-function ToInput(data: OrgFormData) {
-  return {
-    name: data.name,
-    slug: data.slug,
-    colorScheme: data.colorScheme,
-    ...(data.url ? { url: data.url } : {}),
-    ...(data.logo ? { logo: data.logo } : {}),
-  };
+/** Message for a failed save; a 409 means the slug is taken. */
+function SaveErrorMessage(error: ApiError): string {
+  if (error.kind === "http" && error.status === 409) return "Já existe uma organização com esse identificador.";
+  return `Não foi possível salvar a organização. ${ApiErrorMessage(error)}`;
 }
 
+/** The page, guarded by the section rules. */
 export function GlobalOrgsContainer() {
-  const [orgs, setOrgs] = useState<Organization[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState('');
-  // undefined = drawer closed, null = creating, string = editing that org
-  const [editingId, setEditingId] = useState<string | null | undefined>(undefined);
-  const [isSaving, setIsSaving] = useState(false);
-  const [formError, setFormError] = useState('');
+  const { user, orgId } = useDashboard();
+  const denial = SectionDenialFor("global-orgs", user, orgId);
+  if (denial !== null) return <AccessNotice denial={denial} />;
+  return <Organizations />;
+}
+
+/** List and editor of organizations. */
+function Organizations() {
+  const [orgs, setOrgs] = useState<Result<Organization[], string> | null>(null);
+  const [editing, setEditing] = useState<Editing>({ kind: "closed" });
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const [status, setStatus] = useState("");
 
   useEffect(() => {
-    api.organizations.list()
-      .then(data => { setOrgs(data); setError(''); })
-      .catch(() => setError('Erro ao carregar organizações.'))
-      .finally(() => setIsLoading(false));
+    let active = true;
+    LoadOrganizations().then((result) => { if (active) setOrgs(result); });
+    return () => { active = false; };
   }, []);
 
-  const editing = editingId ? orgs.find(o => o.id === editingId) : undefined;
+  const open = (next: Editing) => { setSaveError(""); setStatus(""); setEditing(next); };
 
-  const openDrawer = (id: string | null) => {
-    setFormError('');
-    setEditingId(id);
+  /** Applies a save result to the list. */
+  const finish = (result: Awaited<ReturnType<typeof api.organizations.create>>, verb: string) => {
+    setSaving(false);
+    if (!result.ok) { setSaveError(SaveErrorMessage(result.error)); return; }
+    const saved = result.value;
+    setOrgs((current) => current !== null && current.ok
+      ? Ok(current.value.some((o) => o.id === saved.id) ? current.value.map((o) => o.id === saved.id ? saved : o) : [...current.value, saved])
+      : current);
+    setStatus(`Organização “${saved.name}” ${verb}.`);
+    setEditing({ kind: "closed" });
   };
 
-  const handleSubmit = async (data: OrgFormData) => {
-    setIsSaving(true);
-    setFormError('');
-    try {
-      if (editingId) {
-        const updated = await api.organizations.update(editingId, ToInput(data));
-        setOrgs(prev => prev.map(o => o.id === updated.id ? updated : o));
-      } else {
-        const created = await api.organizations.create(ToInput(data));
-        setOrgs(prev => [...prev, created]);
-      }
-      setEditingId(undefined);
-    } catch {
-      setFormError('Não foi possível salvar a organização.');
-    } finally {
-      setIsSaving(false);
-    }
+  const handleCreate = async (body: OrganizationInput) => {
+    setSaving(true);
+    setSaveError("");
+    finish(await api.organizations.create(body), "criada");
   };
 
-  if (isLoading) return <div className="p-8 text-center text-foreground/60 animate-pulse">Carregando tenants...</div>;
+  const handleUpdate = async (id: string, changes: Partial<OrganizationInput>) => {
+    setSaving(true);
+    setSaveError("");
+    finish(await api.organizations.update(id, changes), "atualizada");
+  };
+
+  if (orgs === null) return <LoadingMessage>Carregando organizações...</LoadingMessage>;
+  if (!orgs.ok) return <ErrorAlert>{orgs.error}</ErrorAlert>;
+
+  const editingId = editing.kind === "edit" ? editing.org.id : null;
+  const takenSlugs = orgs.value.filter((o) => o.id !== editingId).map((o) => o.slug);
+  const close = () => { if (!saving) setEditing({ kind: "closed" }); };
 
   return (
-    <>
-      {error && <p className="mb-4 text-sm text-danger">{error}</p>}
-      <OrgManager 
-        organizations={orgs.map(ToTenant)}
-        onEditOrg={openDrawer}
-        onCreateOrg={() => openDrawer(null)}
-      />
+    <div className="column gap-4">
+      <StatusMessage>{status}</StatusMessage>
+      <OrgManager organizations={orgs.value} onCreate={() => open({ kind: "create" })} onEdit={(org) => open({ kind: "edit", org })} />
 
       <Drawer
-        isOpen={editingId !== undefined}
-        onClose={() => !isSaving && setEditingId(undefined)}
-        title={editing ? 'Editar organização' : 'Nova organização'}
+        isOpen={editing.kind !== "closed"}
+        onClose={close}
+        title={editing.kind === "edit" ? `Editar ${editing.org.name}` : "Nova organização"}
+        width="lg"
       >
-        <OrgForm
-          key={editingId ?? 'new'}
-          initialData={editing && {
-            name: editing.name,
-            slug: editing.slug,
-            url: editing.url ?? '',
-            logo: editing.logo ?? '',
-            colorScheme: editing.colorScheme ?? DEFAULT_COLOR,
-          }}
-          isSaving={isSaving}
-          error={formError}
-          onSubmit={handleSubmit}
-          onCancel={() => setEditingId(undefined)}
-        />
+        {editing.kind === "create" && (
+          <OrganizationForm
+            mode="create"
+            slugEditable
+            takenSlugs={takenSlugs}
+            saving={saving}
+            error={saveError}
+            onCreate={handleCreate}
+            onCancel={close}
+          />
+        )}
+        {editing.kind === "edit" && (
+          <OrganizationForm
+            key={editing.org.id}
+            mode="edit"
+            original={editing.org}
+            slugEditable
+            takenSlugs={takenSlugs}
+            saving={saving}
+            error={saveError}
+            onUpdate={(changes) => handleUpdate(editing.org.id, changes)}
+            onCancel={close}
+          />
+        )}
       </Drawer>
-    </>
+    </div>
   );
 }

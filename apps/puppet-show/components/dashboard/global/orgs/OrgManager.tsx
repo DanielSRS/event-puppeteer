@@ -1,68 +1,73 @@
-import React from 'react';
-import { MdDomain, MdColorLens, MdEdit } from 'react-icons/md';
+/**
+ * The Superadmin's list of organizations: one card per organization with its
+ * identifier, location, colour and report threshold, and an edit button.
+ *
+ * @module
+ */
 
-export interface Tenant {
-  id: string;
-  name: string;
-  acronym: string;
-  domain: string;
-  primaryColor: string;
-}
+import { MdAdd, MdDomain, MdEdit } from "react-icons/md";
+import type { Organization } from "@/lib/api/schemas";
 
-interface OrgManagerProps {
-  organizations: Tenant[];
-  onEditOrg: (id: string) => void;
-  onCreateOrg: () => void;
-}
+export type OrgManagerProps = {
+  organizations: Organization[];
+  onCreate: () => void;
+  onEdit: (org: Organization) => void;
+};
 
-export function OrgManager({ organizations, onEditOrg, onCreateOrg }: OrgManagerProps) {
+/** The organizations, with create and edit buttons. */
+export function OrgManager({ organizations, onCreate, onEdit }: OrgManagerProps) {
+  const sorted = [...organizations].sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div className="flex items-center gap-2">
-          <MdDomain className="w-6 h-6 text-foreground/60" />
-          <h2 className="text-lg font-medium text-foreground">Tenants do Sistema</h2>
-        </div>
-        <button
-          onClick={onCreateOrg}
-          className="px-4 py-2 bg-main text-background rounded-md text-sm font-medium hover:opacity-90"
-        >
-          Nova Organização
+    <section aria-labelledby="orgs-title" className="column gap-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <h2 id="orgs-title" className="subtitle row gap-2">
+          <MdDomain aria-hidden className="icon" /> Organizações ({organizations.length})
+        </h2>
+        <button type="button" onClick={onCreate} className="button main min-h-10">
+          <MdAdd aria-hidden className="icon" /> Nova organização
         </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {organizations.map(org => (
-          <div key={org.id} className="bg-surface p-6 rounded-lg shadow-sm border border-muted">
-            <div className="flex justify-between items-start mb-4">
-              <div 
-                className="w-12 h-12 rounded-lg flex items-center justify-center text-white font-bold text-xl"
-                style={{ backgroundColor: org.primaryColor }}
-              >
-                {org.acronym}
+      {sorted.length === 0 ? (
+        <p className="rounded-lg border border-dashed border-muted p-6 text-center text-sm text-foreground/70">Nenhuma organização cadastrada.</p>
+      ) : (
+        <ul className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {sorted.map((org) => (
+            <li key={org.id} className="card column gap-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h3 className="font-semibold break-words">{org.name}</h3>
+                  <p className="font-mono text-sm text-foreground/70 break-all">{org.slug}</p>
+                </div>
+                <button type="button" onClick={() => onEdit(org)} className="button clean min-h-10 shrink-0">
+                  <MdEdit aria-hidden className="icon" /> Editar<span className="sr-only"> {org.name}</span>
+                </button>
               </div>
-              <button
-                onClick={() => onEditOrg(org.id)}
-                className="p-1.5 text-foreground/50 hover:text-main rounded-md hover:bg-main/20"
-              >
-                <MdEdit className="w-5 h-5" />
-              </button>
-            </div>
-            
-            <h3 className="font-semibold text-lg text-foreground">{org.name}</h3>
-            <p className="text-sm text-foreground/60">{org.domain}</p>
-            
-            <div className="mt-4 flex items-center gap-2 text-xs text-foreground/60 border-t pt-4 border-muted">
-              <MdColorLens className="w-4 h-4" />
-              <span className="flex items-center gap-1">
-                Cor Principal: 
-                <span className="w-3 h-3 rounded-full border border-muted" style={{ backgroundColor: org.primaryColor }} />
-                <span className="font-mono">{org.primaryColor}</span>
-              </span>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
+              {org.description !== undefined && <p className="text-sm text-foreground/80 break-words">{org.description}</p>}
+              <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
+                <dt className="text-foreground/70">Local</dt>
+                <dd className="break-words">{org.location === undefined ? "Não informado" : org.location}</dd>
+                <dt className="text-foreground/70">Coordenadas</dt>
+                <dd>{org.latitude === undefined || org.longitude === undefined ? "Não informadas" : `${org.latitude}, ${org.longitude}`}</dd>
+                <dt className="text-foreground/70">Site</dt>
+                <dd className="break-all">{org.url === undefined ? "Não informado" : org.url}</dd>
+                <dt className="text-foreground/70">Cor</dt>
+                <dd className="row gap-2">
+                  {org.colorScheme === undefined ? "Não informada" : (
+                    <>
+                      <span aria-hidden className="h-4 w-4 rounded-full border border-muted" style={{ backgroundColor: org.colorScheme }} />
+                      <span className="font-mono">{org.colorScheme}</span>
+                    </>
+                  )}
+                </dd>
+                <dt className="text-foreground/70">Limite de denúncias</dt>
+                <dd>{org.shadowBanThreshold}</dd>
+              </dl>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
