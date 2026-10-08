@@ -1,4 +1,7 @@
-/* app/globals.css */
+/*
+ * Design tokens (dark-only palette) and the small set of utility and
+ * component classes shared by every screen.
+ */
 
 @import "tailwindcss";
 
@@ -13,7 +16,7 @@
 }
 
 @layer base {
-  /* THE APP IS DARK-ONLY: NATIVE CONTROLS (SELECT POPUPS, COLOR PICKERS, SCROLLBARS) FOLLOW IT */
+  /* The app is dark-only: native controls (select popups, color pickers, scrollbars) follow it. */
   html {
     color-scheme: dark;
   }
@@ -151,37 +154,58 @@
   }
 }
 
-/* AUTO SCROLLING LIST OF THE BIG SCREEN: THE CONTENT IS RENDERED TWICE AND SLIDES */
-/* UP BY HALF ITS HEIGHT, SO THE LOOP HAS NO VISIBLE JUMP */
-@keyframes marquee-up {
-  from {
-    transform: translateY(0);
+@layer components {
+  /* Minimum touch target (40 px) for small buttons and links. */
+  .touch {
+    @apply
+      min-h-10
+      min-w-10;
   }
 
-  to {
-    transform: translateY(-50%);
+  /* Visible keyboard focus for custom controls. */
+  .focus-ring {
+    @apply
+      outline-none
+      focus-visible:ring-2
+      focus-visible:ring-main
+      focus-visible:ring-offset-2
+      focus-visible:ring-offset-background;
   }
-}
 
-.marquee {
-  @apply
-    relative
-    overflow-hidden;
+  /* Filter pill (search filters on the feed); pressed state via aria-pressed. */
+  .pill {
+    @apply
+      inline-flex
+      items-center
+      gap-1
+      min-h-10
+      shrink-0
+      rounded-full
+      border
+      border-muted
+      bg-surface
+      px-4
+      text-sm
+      font-medium
+      cursor-pointer
+      transition-colors
+      hover:border-main
+      aria-pressed:bg-main
+      aria-pressed:border-main
+      aria-pressed:text-background;
+  }
 
-  /* FADES THE TOP AND THE BOTTOM OF THE LIST */
-  mask-image: linear-gradient(to bottom, transparent, black 6%, black 94%, transparent);
-}
-
-.marquee-track {
-  animation: marquee-up var(--marquee-duration, 40s) linear infinite;
-}
-
-.marquee:hover .marquee-track {
-  animation-play-state: paused;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .marquee-track {
-    animation: none;
+  /* Small label for an event's tags. */
+  .chip {
+    @apply
+      inline-flex
+      items-center
+      rounded-full
+      bg-main/15
+      px-2.5
+      py-0.5
+      text-xs
+      font-medium
+      text-main;
   }
 }

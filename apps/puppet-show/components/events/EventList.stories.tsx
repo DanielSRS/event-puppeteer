@@ -1,89 +1,85 @@
-import type { Meta, StoryObj } from '@storybook/nextjs-vite';
-import { EventList } from './EventList';
+import type { Meta, StoryObj } from "@storybook/nextjs-vite";
+import { expect, fn, userEvent, waitFor } from "storybook/test";
+import type { FeedCard } from "@/domain/feed";
+import { Err, Ok } from "@/lib/result";
+import { EventList } from "./EventList";
 
+const BASE: FeedCard = {
+  id: "a",
+  title: "Feira de Ciências",
+  description: "Projetos de estudantes.",
+  location: "Pátio",
+  schedule: [{ date: "2026-10-15", startTime: "14:00", endTime: "16:00" }],
+  tags: [],
+  voteCount: 2,
+  voted: false,
+  isOwn: false,
+};
+
+const CARDS: FeedCard[] = [
+  BASE,
+  { ...BASE, id: "b", title: "Palestra de IA", isOwn: true, voteCount: 0 },
+];
+
+/** The feed's cards with the delete confirmation. */
 const meta = {
-  title: 'Components/Events/EventList',
+  title: "Components/Events/EventList",
   component: EventList,
-  parameters: {
-    layout: 'padded',
+  tags: ["autodocs"],
+  parameters: { layout: "padded" },
+  args: {
+    cards: CARDS,
+    today: "2026-10-08",
+    emptyMessage: "Nenhum evento encontrado para os critérios selecionados.",
+    isLikeInFlight: () => false,
+    loginPromptFor: null,
+    loginRedirect: "/",
+    onToggleLike: fn(),
+    onDelete: fn(async () => Ok(undefined)),
   },
-  tags: ['autodocs'],
 } satisfies Meta<typeof EventList>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-const mockEvents = [
-  {
-    id: "1",
-    title: 'Feira de Tecnologia',
-    description: 'Venha conhecer as novidades do mundo da tecnologia.',
-    location: 'Centro de Convenções',
-    date: '2026-10-15',
-    time: '09:00',
-    authorId: 1,
-    authorName: 'João Silva',
-    likes: 42,
-    subscriptions: 150,
-    liked: false,
-    subscribed: false,
-  },
-  {
-    id: "2",
-    title: 'Workshop de React',
-    description: 'Aprenda a criar aplicações modernas com React e Next.js.',
-    location: 'Auditório Principal',
-    date: '2026-10-16',
-    time: '14:00',
-    authorId: 2,
-    authorName: 'Maria Souza',
-    likes: 15,
-    subscriptions: 30,
-    liked: true,
-    subscribed: true,
-  },
-];
-
-export const Loaded: Story = {
-  args: {
-    events: mockEvents,
-    loaded: true,
-    error: '',
-    pendingId: null,
-    onToggleLike: (id) => console.log('Toggle like', id),
-    onToggleSubscription: (id) => console.log('Toggle subscription', id),
+/** Each event once; only the viewer's own card offers "Excluir". */
+export const Default: Story = {
+  play: async ({ canvas }) => {
+    await expect(canvas.getAllByRole("article")).toHaveLength(2);
+    await expect(canvas.getAllByRole("button", { name: /Excluir/ })).toHaveLength(1);
   },
 };
 
-export const Loading: Story = {
-  args: {
-    events: [],
-    loaded: false,
-    error: '',
-    pendingId: null,
-    onToggleLike: () => {},
-    onToggleSubscription: () => {},
+/** Deleting asks for confirmation, then says it worked. */
+export const DeleteConfirmed: Story = {
+  play: async ({ canvas, canvasElement, args }) => {
+    await userEvent.click(canvas.getByRole("button", { name: "Excluir “Palestra de IA”" }));
+    const doc = canvasElement.ownerDocument;
+    const confirm = Array.from(doc.querySelectorAll("dialog button")).find((b) => b.textContent === "Sim, excluir");
+    if (confirm === undefined) throw new Error("confirm button not rendered");
+    await userEvent.click(confirm);
+    await expect(args.onDelete).toHaveBeenCalledWith("b");
+    await waitFor(() => expect(canvas.getByRole("status")).toHaveTextContent("“Palestra de IA” foi excluído."));
   },
 };
 
+/** A failed delete keeps the dialog open with the reason. */
+export const DeleteFailed: Story = {
+  args: { onDelete: fn(async () => Err("Você não tem permissão para fazer isso.")) },
+  play: async ({ canvas, canvasElement }) => {
+    await userEvent.click(canvas.getByRole("button", { name: "Excluir “Palestra de IA”" }));
+    const doc = canvasElement.ownerDocument;
+    const confirm = Array.from(doc.querySelectorAll("dialog button")).find((b) => b.textContent === "Sim, excluir");
+    if (confirm === undefined) throw new Error("confirm button not rendered");
+    await userEvent.click(confirm);
+    await waitFor(() => expect(doc.querySelector("dialog [role=alert]")).toHaveTextContent("Você não tem permissão"));
+  },
+};
+
+/** Nothing matches: the empty message. */
 export const Empty: Story = {
-  args: {
-    events: [],
-    loaded: true,
-    error: '',
-    pendingId: null,
-    onToggleLike: () => {},
-    onToggleSubscription: () => {},
-  },
-};
-
-export const WithError: Story = {
-  args: {
-    events: mockEvents,
-    loaded: true,
-    error: 'Não foi possível carregar alguns eventos.',
-    pendingId: null,
-    onToggleLike: () => {},
-    onToggleSubscription: () => {},
+  args: { cards: [] },
+  play: async ({ canvas }) => {
+    await expect(canvas.getByText("Nenhum evento encontrado para os critérios selecionados.")).toBeInTheDocument();
   },
 };

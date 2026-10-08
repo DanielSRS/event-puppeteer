@@ -1,30 +1,35 @@
-import type { Meta, StoryObj } from '@storybook/nextjs-vite';
-import { QrCodePanel } from './QrCodePanel';
+import type { Meta, StoryObj } from "@storybook/nextjs-vite";
+import { expect } from "storybook/test";
+import { Ok } from "@/lib/result";
+import { QrCodePanel } from "./QrCodePanel";
 
+const SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10" fill="#000"/></svg>';
+
+/** The site's QR code for big screens. */
 const meta = {
-  title: 'Components/QrCode/QrCodePanel',
+  title: "Components/QrCode/QrCodePanel",
   component: QrCodePanel,
-  parameters: {
-    layout: 'centered',
-  },
-  tags: ['autodocs'],
+  tags: ["autodocs"],
+  parameters: { layout: "centered" },
+  args: { qr: Ok({ url: "https://mural.example.org", svg: SVG }) },
 } satisfies Meta<typeof QrCodePanel>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-const mockQrSvg = '<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><rect width="100" height="100" fill="#eee"/><text x="50" y="50" text-anchor="middle" dominant-baseline="middle" font-size="10">QR Code</text></svg>';
-
 export const Side: Story = {
-  args: {
-    svg: mockQrSvg,
-    variant: 'side',
+  play: async ({ canvas }) => {
+    await expect(canvas.getByRole("img", { name: "QR Code para https://mural.example.org" })).toBeInTheDocument();
   },
 };
 
-export const Footer: Story = {
-  args: {
-    svg: mockQrSvg,
-    variant: 'footer',
+export const Tv: Story = { args: { variant: "tv" } };
+
+/** No site address configured: says what to set instead of a made-up code. */
+export const MissingSiteUrl: Story = {
+  args: { qr: { ok: false, error: "Endereço do site não configurado: defina NEXT_PUBLIC_SITE_URL para exibir o QR Code." } },
+  play: async ({ canvas }) => {
+    await expect(canvas.getByRole("alert")).toHaveTextContent("NEXT_PUBLIC_SITE_URL");
+    await expect(canvas.queryByRole("img")).toBeNull();
   },
 };

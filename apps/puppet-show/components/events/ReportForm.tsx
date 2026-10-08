@@ -1,80 +1,101 @@
-import React, { useState } from 'react';
-import type { Report } from '@/lib/api/types';
+/**
+ * Form to report an event to the moderators.
+ *
+ * @module
+ */
 
-export type ReportReason = Report['reason'];
+"use client";
 
-export interface ReportFormData {
+import { useId, useState, type FormEvent } from "react";
+import { ErrorAlert } from "@/components/ui/Feedback";
+import type { ReportReason } from "@/lib/api/schemas";
+
+/** What the form sends. */
+export type ReportFormData = {
   reason: ReportReason;
   comment?: string;
-}
+};
 
-interface ReportFormProps {
+export type ReportFormProps = {
+  /** Reports from different people that hide the event automatically; `null` while unknown. */
+  threshold: number | null;
   isSending: boolean;
+  /** Why the last attempt failed. */
   error?: string;
   onSubmit: (data: ReportFormData) => void;
   onCancel: () => void;
-}
+};
 
-const REASONS: Array<{ value: ReportReason; label: string }> = [
-  { value: 'spam', label: 'Spam' },
-  { value: 'offensive_content', label: 'Conteúdo ofensivo' },
-  { value: 'incorrect_information', label: 'Informação incorreta' },
-  { value: 'duplicate', label: 'Evento duplicado' },
+/** Reasons the API accepts, with their Portuguese labels. */
+const REASONS: ReadonlyArray<{ value: ReportReason; label: string }> = [
+  { value: "spam", label: "Spam" },
+  { value: "offensive_content", label: "Conteúdo ofensivo" },
+  { value: "incorrect_information", label: "Informação incorreta" },
+  { value: "duplicate", label: "Evento duplicado" },
 ];
 
-export function ReportForm({ isSending, error, onSubmit, onCancel }: ReportFormProps) {
-  const [reason, setReason] = useState<ReportReason | ''>('');
-  const [comment, setComment] = useState('');
+/** Comments longer than this are refused by the form. */
+const MAX_COMMENT = 500;
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (reason) onSubmit({ reason, ...(comment.trim() ? { comment: comment.trim() } : {}) });
+/** Pick a reason, optionally explain; explains what happens when enough people report. */
+export function ReportForm({ threshold, isSending, error = "", onSubmit, onCancel }: ReportFormProps) {
+  const [reason, setReason] = useState<ReportReason | null>(null);
+  const [comment, setComment] = useState("");
+  const commentId = useId();
+
+  const handleSubmit = (event: FormEvent) => {
+    event.preventDefault();
+    if (reason === null) return;
+    const trimmed = comment.trim();
+    onSubmit(trimmed === "" ? { reason } : { reason, comment: trimmed });
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <fieldset>
-        <legend className="text-sm font-medium text-foreground mb-2">Motivo da denúncia</legend>
-        <div className="space-y-2">
-          {REASONS.map(option => (
-            <label key={option.value} className="flex items-center gap-2 text-sm text-foreground cursor-pointer">
-              <input
-                type="radio"
-                name="reason"
-                value={option.value}
-                checked={reason === option.value}
-                onChange={() => setReason(option.value)}
-                className="h-4 w-4 text-danger"
-              />
-              {option.label}
-            </label>
-          ))}
-        </div>
+    <form onSubmit={handleSubmit} className="column gap-4">
+      <p className="text-sm text-foreground/80">
+        Cada pessoa pode denunciar um evento uma vez.{" "}
+        {threshold === null
+          ? "Quando um evento recebe denúncias de várias pessoas diferentes, ele é ocultado automaticamente até a moderação revisar."
+          : `Ao chegar a ${threshold} ${threshold === 1 ? "denúncia" : "denúncias"} de pessoas diferentes, o evento é ocultado automaticamente e o autor fica restrito até a moderação revisar.`}
+      </p>
+
+      <fieldset className="column gap-2">
+        <legend className="text-sm font-medium mb-2">Motivo da denúncia</legend>
+        {REASONS.map((option) => (
+          <label key={option.value} className="row gap-2 text-sm opacity-100 mb-0 min-h-10 cursor-pointer">
+            <input
+              type="radio"
+              name="reason"
+              value={option.value}
+              checked={reason === option.value}
+              onChange={() => setReason(option.value)}
+              className="h-4 w-4 accent-main"
+            />
+            {option.label}
+          </label>
+        ))}
       </fieldset>
 
-      <div>
-        <label htmlFor="report-comment" className="block text-sm font-medium text-foreground">Comentário (opcional)</label>
+      <div className="column">
+        <label htmlFor={commentId}>Comentário (opcional)</label>
         <textarea
-          id="report-comment"
+          id={commentId}
           rows={3}
+          maxLength={MAX_COMMENT}
           value={comment}
-          onChange={(e) => setComment(e.target.value)}
-          className="input mt-1"
+          onChange={(event) => setComment(event.target.value)}
+          className="input"
         />
       </div>
 
-      {error && <p className="text-sm text-danger">{error}</p>}
+      <ErrorAlert>{error}</ErrorAlert>
 
-      <div className="flex justify-end gap-2 pt-2">
-        <button type="button" onClick={onCancel} className="px-4 py-2 rounded-md text-sm font-medium text-foreground hover:bg-white/10">
+      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <button type="button" onClick={onCancel} disabled={isSending} className="button clean touch">
           Cancelar
         </button>
-        <button
-          type="submit"
-          disabled={!reason || isSending}
-          className="px-4 py-2 bg-danger text-background rounded-md text-sm font-medium hover:opacity-90 disabled:opacity-50"
-        >
-          {isSending ? 'Enviando...' : 'Enviar denúncia'}
+        <button type="submit" disabled={reason === null || isSending} className="button touch bg-danger text-background hover:opacity-90">
+          {isSending ? "Enviando..." : "Enviar denúncia"}
         </button>
       </div>
     </form>

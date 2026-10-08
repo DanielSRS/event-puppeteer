@@ -1,125 +1,240 @@
-import React from 'react';
-import { MdCalendarToday, MdLocationOn, MdLink, MdShare, MdFlag } from 'react-icons/md';
+/**
+ * Everything about one event: schedule, place and map, tags, links and the
+ * actions people can take (like, share, report; hide for moderators; delete
+ * for the creator).
+ *
+ * @module
+ */
 
-export interface EventDetailData {
-  id: string;
-  title: string;
-  description: string;
-  authorName?: string;
-  schedule: Array<{ date: string; startTime?: string; endTime?: string; activity?: string }>;
-  location: string;
-  mapUrl?: string;
-  links: Array<{ id: string; label: string; url: string }>;
-  tags: string[];
-  bannerUrl?: string;
-}
+import Link from "next/link";
+import type { ReactNode } from "react";
+import type { IconType } from "react-icons";
+import {
+  MdCalendarToday, MdDeleteOutline, MdDescription, MdFlag, MdHowToReg, MdLanguage, MdLink, MdLocationOn, MdMap,
+  MdOndemandVideo, MdPeople, MdShare, MdVisibility, MdVisibilityOff,
+} from "react-icons/md";
+import { ErrorAlert, StatusMessage } from "@/components/ui/Feedback";
+import type { ShownVote } from "@/domain/likes";
+import { IsSafeHttpUrl, LinkKindFor, OsmEmbedUrl, OsmPageUrl, type LinkKind } from "@/domain/links";
+import { FullDate, TimeRange } from "@/domain/schedule";
+import type { DetailLink, EventDetail } from "@/lib/api/mappers";
+import { LikeButton, LikesLabel, TagChips } from "./EventParts";
 
-interface EventDetailsProps {
-  event: EventDetailData;
-  onReport: (eventId: string) => void;
-  onShare: (eventId: string) => void;
-}
+/** Icon per kind of link label. */
+const LINK_ICONS: Record<LinkKind, IconType> = {
+  registration: MdHowToReg,
+  website: MdLanguage,
+  social: MdPeople,
+  video: MdOndemandVideo,
+  document: MdDescription,
+  generic: MdLink,
+};
 
-export function EventDetails({ event, onReport, onShare }: EventDetailsProps) {
+/** Which action asked an anonymous visitor to log in. */
+export type LoginPrompt = "curtir" | "denunciar";
+
+export type EventDetailsProps = {
+  event: EventDetail;
+  /**
+   * The like button's state, or `null` when the event isn't in the public feed
+   * (hidden or already past): the API only counts votes there.
+   */
+  likes: ShownVote | null;
+  likeBusy?: boolean;
+  /** Moderator, Admin of the event's organization, or Superadmin. */
+  canModerate: boolean;
+  /** The viewer created the event. */
+  isCreator: boolean;
+  /** The viewer reported this event already (learned from the server in this visit). */
+  reported: boolean;
+  /** Set after an anonymous visitor tried an action that needs an account. */
+  loginPrompt: LoginPrompt | null;
+  /** Path of this page, to come back after logging in. */
+  loginRedirect: string;
+  /** Confirmation of the last action. */
+  notice: string;
+  /** Why the last action failed. */
+  error: string;
+  onToggleLike: () => void;
+  onShare: () => void;
+  onReport: () => void;
+  onHide: () => void;
+  onUnhide: () => void;
+  onDelete: () => void;
+};
+
+/** A titled block of the page. */
+function Section({ title, icon, children }: { title: string; icon: ReactNode; children: ReactNode }) {
   return (
-    <div className="max-w-4xl mx-auto bg-surface rounded-xl shadow-sm overflow-hidden border border-muted">
-      {/* Banner */}
-      {event.bannerUrl ? (
-        <div className="h-64 w-full bg-cover bg-center" style={{ backgroundImage: `url(${event.bannerUrl})` }} />
-      ) : (
-        <div className="h-48 w-full bg-main/15" />
+    <section className="column gap-3">
+      <h2 className="row gap-2 text-lg font-semibold">
+        {icon}
+        {title}
+      </h2>
+      {children}
+    </section>
+  );
+}
+
+/** One external link as a button with its icon; an address that isn't http(s) is shown, not linked. */
+function LinkButton({ link }: { link: DetailLink }) {
+  const name = link.label === null ? link.url : link.label;
+  const Icon = LINK_ICONS[link.label === null ? "generic" : LinkKindFor(link.label)];
+
+  if (!IsSafeHttpUrl(link.url)) {
+    return <p className="text-sm text-danger break-all">Link inválido ({name}): {link.url}</p>;
+  }
+
+  return (
+    <a
+      href={link.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={`button touch justify-start ${LinkKindFor(name) === "registration" ? "main" : "clean"}`}
+    >
+      <Icon aria-hidden className="icon shrink-0" />
+      <span className="break-all">{name}</span>
+      <span className="sr-only">(abre em nova aba)</span>
+    </a>
+  );
+}
+
+/** The details page body. */
+export function EventDetails({
+  event, likes, likeBusy = false, canModerate, isCreator, reported, loginPrompt, loginRedirect, notice, error,
+  onToggleLike, onShare, onReport, onHide, onUnhide, onDelete,
+}: EventDetailsProps) {
+  return (
+    <article aria-labelledby="event-title" className="w-full max-w-4xl mx-auto bg-surface rounded-xl border border-muted overflow-hidden">
+      {event.bannerImage !== null && (
+        <div
+          role="img"
+          aria-label={`Banner do evento ${event.title}`}
+          className="h-48 sm:h-64 w-full bg-cover bg-center bg-muted"
+          style={{ backgroundImage: `url(${JSON.stringify(event.bannerImage)})` }}
+        />
       )}
 
-      <div className="p-8">
-        <div className="flex justify-between items-start">
-          <div>
-            <div className="flex flex-wrap gap-2 mb-3">
-              {event.tags.map(tag => (
-                <span key={tag} className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-main/10 text-main">
-                  #{tag}
-                </span>
-              ))}
-            </div>
-            <h1 className="text-3xl font-extrabold text-foreground mb-2">{event.title}</h1>
-            {event.authorName && <p className="text-sm text-foreground/60">Organizado por {event.authorName}</p>}
-          </div>
-          <div className="flex gap-2">
-            <button onClick={() => onShare(event.id)} className="p-2 text-foreground/60 hover:text-main rounded-full hover:bg-main/20 transition-colors" title="Compartilhar">
-              <MdShare className="w-6 h-6" />
+      <div className="column gap-6 p-4 sm:p-8">
+        <header className="column gap-3">
+          {event.isHidden && (
+            <p className="row gap-2 text-sm rounded-lg border border-main/40 bg-main/10 p-3">
+              <MdVisibilityOff aria-hidden className="icon shrink-0" />
+              Oculto pela moderação: este evento não aparece no mural nem nos totens. Só você e a moderação conseguem vê-lo.
+            </p>
+          )}
+          <TagChips tags={event.tags} />
+          <h1 id="event-title" className="title break-words">{event.title}</h1>
+        </header>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {likes === null ? (
+            <p className="text-sm text-foreground/80">Curtidas aparecem apenas enquanto o evento está no mural.</p>
+          ) : (
+            <LikeButton title={event.title} voted={likes.voted} count={likes.count} busy={likeBusy} onToggle={onToggleLike} />
+          )}
+          {likes !== null && <span className="sr-only" aria-live="polite">{LikesLabel(likes.count)}</span>}
+
+          <button type="button" onClick={onShare} className="button clean touch">
+            <MdShare aria-hidden className="icon" />
+            Compartilhar
+          </button>
+
+          {!isCreator && (
+            <button type="button" onClick={onReport} disabled={reported} className="button clean touch hover:border-danger">
+              <MdFlag aria-hidden className="icon" />
+              {reported ? "Denunciado" : "Denunciar"}
             </button>
-            <button onClick={() => onReport(event.id)} className="p-2 text-foreground/60 hover:text-danger rounded-full hover:bg-danger/20 transition-colors" title="Denunciar">
-              <MdFlag className="w-6 h-6" />
+          )}
+
+          {canModerate && (event.isHidden ? (
+            <button type="button" onClick={onUnhide} className="button clean touch">
+              <MdVisibility aria-hidden className="icon" />
+              Reexibir evento
             </button>
-          </div>
+          ) : (
+            <button type="button" onClick={onHide} className="button clean touch">
+              <MdVisibilityOff aria-hidden className="icon" />
+              Ocultar evento
+            </button>
+          ))}
+
+          {isCreator && (
+            <button type="button" onClick={onDelete} className="button clean touch text-danger hover:border-danger">
+              <MdDeleteOutline aria-hidden className="icon" />
+              Excluir
+            </button>
+          )}
         </div>
 
-        <div className="mt-8 prose prose-blue max-w-none">
-          <p className="text-foreground whitespace-pre-line">{event.description}</p>
-        </div>
+        {loginPrompt !== null && (
+          <p role="status" className="text-sm rounded-lg border border-main/40 bg-main/10 p-3">
+            Você precisa entrar na sua conta para {loginPrompt} eventos.{" "}
+            <Link href={`/entrar?redirect=${encodeURIComponent(loginRedirect)}`} className="text-main underline font-medium">
+              Entrar
+            </Link>
+          </p>
+        )}
+        <StatusMessage>{notice}</StatusMessage>
+        <ErrorAlert>{error}</ErrorAlert>
 
-        <div className="mt-10 grid grid-cols-1 md:grid-cols-2 gap-8">
-          {/* Schedule */}
-          <div>
-            <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
-              <MdCalendarToday className="text-main" /> Programação
-            </h3>
-            <ul className="space-y-4">
-              {event.schedule.map((slot, index) => (
-                <li key={index} className="flex gap-4 p-3 bg-background rounded-lg border border-muted">
-                  <div className="flex-shrink-0 text-center">
-                    <div className="text-sm font-bold text-main">{new Date(`${slot.date}T00:00:00`).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}</div>
-                    <div className="text-xs text-foreground/60">{slot.startTime}</div>
-                  </div>
-                  <div>
-                    {slot.activity && <div className="font-medium text-foreground">{slot.activity}</div>}
-                    {slot.endTime && <div className="text-sm text-foreground/60">Até {slot.endTime}</div>}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </div>
+        <p className="whitespace-pre-line break-words">{event.description}</p>
 
-          {/* Location & Links */}
-          <div className="space-y-8">
-            <div>
-              <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
-                <MdLocationOn className="text-danger" /> Localização
-              </h3>
-              <p className="text-foreground bg-background p-3 rounded-lg border border-muted">{event.location}</p>
-              {event.mapUrl && (
-                <div className="mt-3 aspect-video w-full rounded-lg bg-muted overflow-hidden relative">
-                  {/* Simplified map placeholder */}
-                  <div className="absolute inset-0 flex items-center justify-center text-foreground/60">
-                    [Mapa Interativo: {event.mapUrl}]
-                  </div>
-                </div>
+        <div className="grid gap-8 md:grid-cols-2">
+          <Section title="Programação" icon={<MdCalendarToday aria-hidden className="text-main" />}>
+            {event.schedule.length === 0 ? (
+              <p className="text-sm text-foreground/80">Sem data definida.</p>
+            ) : (
+              <ol className="column gap-2">
+                {event.schedule.map((day) => (
+                  <li key={day.date} className="column rounded-lg border border-muted bg-background p-3">
+                    <span className="font-medium first-letter:uppercase">{FullDate(day.date)}</span>
+                    <span className="text-sm text-foreground/80">{TimeRange(day)}</span>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </Section>
+
+          <div className="column gap-8 min-w-0">
+            <Section title="Local" icon={<MdLocationOn aria-hidden className="text-main" />}>
+              <p className="rounded-lg border border-muted bg-background p-3 break-words">{event.location}</p>
+              {event.coordinates !== null && (
+                <>
+                  <iframe
+                    title={`Mapa: ${event.location}`}
+                    src={OsmEmbedUrl(event.coordinates)}
+                    loading="lazy"
+                    className="aspect-video w-full rounded-lg border border-muted bg-muted"
+                  />
+                  <a
+                    href={OsmPageUrl(event.coordinates)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="button clean touch self-start"
+                  >
+                    <MdMap aria-hidden className="icon" />
+                    Abrir no mapa
+                    <span className="sr-only">(abre em nova aba)</span>
+                  </a>
+                </>
               )}
-            </div>
+            </Section>
 
             {event.links.length > 0 && (
-              <div>
-                <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
-                  <MdLink className="text-foreground/60" /> Links Úteis
-                </h3>
-                <div className="flex flex-col gap-2">
-                  {event.links.map(link => (
-                    <a
-                      key={link.id}
-                      href={link.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center justify-between p-3 rounded-lg border border-muted hover:border-main/40 hover:bg-main/20 transition-colors text-main font-medium text-sm"
-                    >
-                      {link.label}
-                      <MdLink className="w-4 h-4" />
-                    </a>
+              <Section title="Links" icon={<MdLink aria-hidden className="text-main" />}>
+                <ul className="column gap-2">
+                  {event.links.map((link, index) => (
+                    <li key={`${link.url}-${index}`} className="column">
+                      <LinkButton link={link} />
+                    </li>
                   ))}
-                </div>
-              </div>
+                </ul>
+              </Section>
             )}
           </div>
         </div>
       </div>
-    </div>
+    </article>
   );
 }

@@ -1,24 +1,32 @@
-import React from 'react';
-import { EventDetailsContainer } from '@/components/events/EventDetailsContainer';
-import Link from 'next/link';
-import { MdArrowBack } from 'react-icons/md';
+/**
+ * Details of one event: `/eventos/<id>`.
+ *
+ * @module
+ */
 
-export const metadata = {
-  title: 'Detalhes do Evento',
+import type { Metadata } from "next";
+import Link from "next/link";
+import { MdArrowBack } from "react-icons/md";
+import { EventDetailsContainer } from "@/components/events/EventDetailsContainer";
+
+export const metadata: Metadata = {
+  title: "Evento | Mural de Eventos",
 };
 
-export default async function EventPage({ params }: { params: Promise<{ id: string }> }) {
-  const resolvedParams = await params;
-  
+/** Back link to the feed plus the event, loaded in the browser (it depends on the session). */
+export default async function EventPage(props: PageProps<"/eventos/[id]">) {
+  const { id } = await props.params;
+
   return (
-    <div className="min-h-screen bg-background py-8 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-4xl mx-auto mb-6">
-        <Link href="/" className="inline-flex items-center gap-2 text-foreground/60 hover:text-foreground transition-colors font-medium">
-          <MdArrowBack className="w-5 h-5" /> Voltar para o Mural
+    <main className="w-full py-6 px-4 sm:px-6 lg:px-8 column gap-4">
+      <div className="w-full max-w-4xl mx-auto">
+        <Link href="/" className="button clean touch">
+          <MdArrowBack aria-hidden className="icon" />
+          Voltar para o mural
         </Link>
       </div>
 
-      <EventDetailsContainer eventId={resolvedParams.id} />
-    </div>
+      <EventDetailsContainer eventId={id} />
+    </main>
   );
 }

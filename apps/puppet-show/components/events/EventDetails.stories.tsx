@@ -1,39 +1,152 @@
-import type { Meta, StoryObj } from '@storybook/nextjs-vite';
-import { fn } from 'storybook/test';
-import { EventDetails } from './EventDetails';
+import type { Meta, StoryObj } from "@storybook/nextjs-vite";
+import { expect, fn, userEvent } from "storybook/test";
+import type { EventDetail } from "@/lib/api/mappers";
+import { EventDetails } from "./EventDetails";
 
+const EVENT: EventDetail = {
+  id: "evt-1",
+  organizationId: "org-1",
+  creatorId: "user-9",
+  title: "Semana de Tecnologia",
+  description: "Palestras, minicursos e hackathon.\nAberto a toda a comunidade.",
+  location: "Auditório Central, Módulo 2",
+  coordinates: null,
+  bannerImage: null,
+  isHidden: false,
+  schedule: [
+    { date: "2026-10-15", startTime: "08:00", endTime: "12:00" },
+    { date: "2026-10-16" },
+    { date: "2026-10-17", startTime: "19:00" },
+  ],
+  tags: [{ id: "t1", name: "Tecnologia" }],
+  links: [
+    { label: "Inscrição", url: "https://example.org/inscricao" },
+    { label: "Instagram", url: "https://example.org/insta" },
+    { label: "Mais informações", url: "https://example.org/info" },
+  ],
+};
+
+/** Everything about one event, with the actions people can take. */
 const meta = {
-  title: 'Events/EventDetails',
+  title: "Components/Events/EventDetails",
   component: EventDetails,
-  parameters: { layout: 'padded' },
+  tags: ["autodocs"],
+  parameters: { layout: "padded" },
   args: {
-    onReport: fn(),
+    event: EVENT,
+    likes: { voted: false, count: 3 },
+    canModerate: false,
+    isCreator: false,
+    reported: false,
+    loginPrompt: null,
+    loginRedirect: "/eventos/evt-1",
+    notice: "",
+    error: "",
+    onToggleLike: fn(),
     onShare: fn(),
+    onReport: fn(),
+    onHide: fn(),
+    onUnhide: fn(),
+    onDelete: fn(),
   },
 } satisfies Meta<typeof EventDetails>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-export const Default: Story = {
+/** A member: schedule day by day, links as buttons, like, share and report. */
+export const Member: Story = {
+  play: async ({ canvas, args }) => {
+    await expect(canvas.getByRole("heading", { level: 1, name: "Semana de Tecnologia" })).toBeInTheDocument();
+    await expect(canvas.getByText("08:00 – 12:00")).toBeInTheDocument();
+    await expect(canvas.getByText("Dia todo")).toBeInTheDocument();
+    await expect(canvas.getByText("A partir das 19:00")).toBeInTheDocument();
+    await expect(canvas.getByRole("link", { name: /Inscrição/ })).toHaveAttribute("href", "https://example.org/inscricao");
+    await expect(canvas.queryByRole("button", { name: /Ocultar/ })).toBeNull();
+    await expect(canvas.queryByRole("button", { name: /Excluir/ })).toBeNull();
+
+    await userEvent.click(canvas.getByRole("button", { name: /Curtir/ }));
+    await expect(args.onToggleLike).toHaveBeenCalled();
+    await userEvent.click(canvas.getByRole("button", { name: "Compartilhar" }));
+    await expect(args.onShare).toHaveBeenCalled();
+    await userEvent.click(canvas.getByRole("button", { name: "Denunciar" }));
+    await expect(args.onReport).toHaveBeenCalled();
+  },
+};
+
+/** With coordinates: OpenStreetMap embed and "Abrir no mapa"; with a banner. */
+export const WithMapAndBanner: Story = {
   args: {
     event: {
-      id: 'evt-123',
-      title: 'Semana de Tecnologia UEFS',
-      description: 'Participe da maior semana de tecnologia do interior da Bahia. Palestras, minicursos, hackathons e muito networking!',
-      authorName: 'Centro Acadêmico de Computação',
-      schedule: [
-        { date: '2026-10-15', startTime: '08:00', endTime: '12:00', activity: 'Credenciamento e Abertura' },
-        { date: '2026-10-15', startTime: '14:00', endTime: '18:00', activity: 'Hackathon: Desafios Locais' },
-        { date: '2026-10-16', startTime: '09:00', endTime: '11:00', activity: 'Palestra: Inteligência Artificial' },
-      ],
-      location: 'Auditório Principal - Módulo 2',
-      mapUrl: 'https://maps.example.com/place',
-      links: [
-        { id: 'lnk-1', label: 'Inscrições no Sympla', url: '#' },
-        { id: 'lnk-2', label: 'Instagram Oficial', url: '#' },
-      ],
-      tags: ['tecnologia', 'inovação', 'hackathon'],
+      ...EVENT,
+      coordinates: { latitude: -12.2, longitude: -38.97 },
+      bannerImage: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='4'><rect width='10' height='4' fill='%23f59e0b'/></svg>",
     },
+  },
+  play: async ({ canvasElement, canvas }) => {
+    const frame = canvasElement.querySelector("iframe");
+    await expect(frame).toHaveAttribute("title", "Mapa: Auditório Central, Módulo 2");
+    await expect(frame?.getAttribute("src")).toContain("marker=-12.2,-38.97");
+    await expect(canvas.getByRole("link", { name: /Abrir no mapa/ })).toBeInTheDocument();
+    await expect(canvas.getByRole("img", { name: "Banner do evento Semana de Tecnologia" })).toBeInTheDocument();
+  },
+};
+
+/** The creator: "Excluir", no report. */
+export const Creator: Story = {
+  args: { isCreator: true },
+  play: async ({ canvas, args }) => {
+    await expect(canvas.queryByRole("button", { name: "Denunciar" })).toBeNull();
+    await userEvent.click(canvas.getByRole("button", { name: "Excluir" }));
+    await expect(args.onDelete).toHaveBeenCalled();
+  },
+};
+
+/** A moderator can hide it. */
+export const Moderator: Story = {
+  args: { canModerate: true },
+  play: async ({ canvas, args }) => {
+    await userEvent.click(canvas.getByRole("button", { name: "Ocultar evento" }));
+    await expect(args.onHide).toHaveBeenCalled();
+  },
+};
+
+/** Hidden by moderation, seen by a moderator: notice and "Reexibir". */
+export const HiddenForModerator: Story = {
+  args: { canModerate: true, likes: null, event: { ...EVENT, isHidden: true } },
+  play: async ({ canvas, args }) => {
+    await expect(canvas.getByText(/Oculto pela moderação/)).toBeInTheDocument();
+    await expect(canvas.getByText("Curtidas aparecem apenas enquanto o evento está no mural.")).toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Reexibir evento" }));
+    await expect(args.onUnhide).toHaveBeenCalled();
+  },
+};
+
+/** Anonymous visitor tried to like. */
+export const LoginPrompt: Story = {
+  args: { loginPrompt: "curtir" },
+  play: async ({ canvas }) => {
+    await expect(canvas.getByRole("link", { name: "Entrar" })).toHaveAttribute("href", "/entrar?redirect=%2Feventos%2Fevt-1");
+  },
+};
+
+/** Already reported, with the API's refusal shown. */
+export const AlreadyReported: Story = {
+  args: { reported: true, error: "Você já denunciou este evento." },
+  play: async ({ canvas }) => {
+    await expect(canvas.getByRole("button", { name: "Denunciado" })).toBeDisabled();
+    await expect(canvas.getByRole("alert")).toHaveTextContent("Você já denunciou este evento.");
+  },
+};
+
+/** A confirmation after an action, and a link whose label isn't in the catalog. */
+export const NoticeAndUnknownLabel: Story = {
+  args: {
+    notice: "Link do evento copiado para a área de transferência.",
+    event: { ...EVENT, links: [{ label: null, url: "https://example.org/x" }] },
+  },
+  play: async ({ canvas }) => {
+    await expect(canvas.getByRole("status")).toHaveTextContent("Link do evento copiado");
+    await expect(canvas.getByRole("link", { name: /https:\/\/example.org\/x/ })).toBeInTheDocument();
   },
 };

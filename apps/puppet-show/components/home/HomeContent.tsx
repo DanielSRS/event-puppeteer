@@ -1,73 +1,90 @@
-/* components/home/HomeContent.tsx */
+/**
+ * The home page: the public feed people browse, like and filter.
+ *
+ * @module
+ */
 
 "use client";
 
+import { useMemo, useState } from "react";
 import { EventList } from "@/components/events/EventList";
-import { EventShowcase } from "@/components/events/EventShowcase";
+import { FeedToolbar } from "@/components/events/FeedToolbar";
 import { QrCodePanel } from "@/components/qrcode/QrCodePanel";
-import type { EventItem } from "@/hooks/useEvents";
+import type { SiteQr } from "@/components/qrcode/siteQrCode";
+import { ErrorAlert, LoadingMessage } from "@/components/ui/Feedback";
+import { ApplyFeedView, TagPills, type FeedCard, type FeedFilter } from "@/domain/feed";
+import type { FeedStatus } from "@/hooks/useEvents";
+import type { Result } from "@/lib/result";
+import { UpdatedAgo } from "./UpdatedAgo";
+
+/** Said when a search or filter leaves nothing to show. */
+export const NO_MATCH_MESSAGE = "Nenhum evento encontrado para os critérios selecionados.";
+
+/** Said when the organization has no upcoming events at all. */
+export const EMPTY_FEED_MESSAGE = "Nenhum evento programado por enquanto.";
 
 export type HomeContentProps = {
-  qrSvg: string;
-  events: EventItem[];
-  loaded: boolean;
-  error: string;
-  pendingId: string | null;
-  onToggleLike: (id: string) => void;
-  onToggleSubscription: (id: string) => void;
+  /** QR code to the site, shown beside the feed on large screens. */
+  qr: SiteQr;
+  status: FeedStatus;
+  /** Every card of the feed, in the API's ranking. */
+  cards: FeedCard[];
+  /** `YYYY-MM-DD` in Brazil. */
+  today: string;
+  /** When the feed was last fetched (ms since epoch). */
+  updatedAt: number | null;
+  /** Problems to show above the list (failed refresh, tags, likes). Empty entries are skipped. */
+  errors: Array<string | null>;
+  loginPromptFor: string | null;
+  isLikeInFlight: (eventId: string) => boolean;
+  onToggleLike: (eventId: string) => void;
+  onDelete: (eventId: string) => Promise<Result<void, string>>;
 };
 
-export function HomeContent({ 
-  qrSvg, 
-  events, 
-  loaded, 
-  error, 
-  pendingId, 
-  onToggleLike, 
-  onToggleSubscription 
+/** Search, filter pills and the cards; the QR code sits beside them on large screens. */
+export function HomeContent({
+  qr, status, cards, today, updatedAt, errors, loginPromptFor, isLikeInFlight, onToggleLike, onDelete,
 }: HomeContentProps) {
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<FeedFilter>({ kind: "all" });
+
+  const tags = useMemo(() => TagPills(cards), [cards]);
+  const shown = useMemo(() => ApplyFeedView(cards, { filter, query, today }), [cards, filter, query, today]);
+  const filtering = filter.kind !== "all" || query.trim() !== "";
 
   return (
-    <>
-      {/* BIG SCREEN: THE LIST SCROLLS BY ITSELF AND THE QR CODE INVITES PEOPLE IN. */}
-      {/* landscape: QR CODE ON THE SIDE. portrait: QR CODE AS A FOOTER */}
-      <main className="hidden lg:flex flex-1 min-h-0 flex-col gap-4 p-6 max-w-7xl w-full mx-auto">
+    <main className="w-full max-w-6xl mx-auto p-4 lg:p-6 flex flex-col gap-6 lg:flex-row lg:items-start">
+      <div className="column gap-4 flex-1 min-w-0">
         <header className="column gap-1">
-          <h1 className="title">
-            Eventos em destaque
-          </h1>
+          <h1 className="title">Mural de Eventos</h1>
+          {status.kind === "ready" && updatedAt !== null && <UpdatedAgo updatedAt={updatedAt} />}
         </header>
 
-        <div className="flex-1 min-h-0 flex gap-6 portrait:flex-col">
-          <EventShowcase events={events} loaded={loaded} />
+        {errors.map((error) => error !== null && error !== "" && <ErrorAlert key={error}>{error}</ErrorAlert>)}
 
-          <div className="hidden landscape:block">
-            <QrCodePanel svg={qrSvg} />
-          </div>
+        {status.kind === "loading" && <LoadingMessage>Carregando eventos...</LoadingMessage>}
+        {status.kind === "error" && <ErrorAlert>{status.message}</ErrorAlert>}
 
-          <div className="hidden portrait:block">
-            <QrCodePanel svg={qrSvg} variant="footer" />
-          </div>
-        </div>
-      </main>
+        {status.kind === "ready" && (
+          <>
+            <FeedToolbar query={query} filter={filter} tags={tags} onQueryChange={setQuery} onFilterChange={setFilter} />
+            <EventList
+              cards={shown}
+              today={today}
+              emptyMessage={filtering || cards.length > 0 ? NO_MATCH_MESSAGE : EMPTY_FEED_MESSAGE}
+              isLikeInFlight={isLikeInFlight}
+              loginPromptFor={loginPromptFor}
+              loginRedirect="/"
+              onToggleLike={onToggleLike}
+              onDelete={onDelete}
+            />
+          </>
+        )}
+      </div>
 
-      {/* PHONE AND SMALL WINDOWS: THE LIST PEOPLE INTERACT WITH. */}
-      <main className="lg:hidden flex flex-col gap-4 p-4 max-w-2xl w-full mx-auto">
-        <header className="column gap-1">
-          <h1 className="title">
-            Mural de Eventos
-          </h1>
-        </header>
-
-        <EventList
-          events={events}
-          loaded={loaded}
-          error={error}
-          pendingId={pendingId}
-          onToggleLike={onToggleLike}
-          onToggleSubscription={onToggleSubscription}
-        />
-      </main>
-    </>
+      <aside aria-label="Acesse pelo celular" className="hidden lg:block w-72 shrink-0 lg:sticky lg:top-20">
+        <QrCodePanel qr={qr} />
+      </aside>
+    </main>
   );
-};
+}

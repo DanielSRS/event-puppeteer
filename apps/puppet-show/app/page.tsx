@@ -1,21 +1,16 @@
-/* app/page.tsx */
+/**
+ * Home page: the public feed of events.
+ *
+ * @module
+ */
 
-import QRCode from "qrcode";
 import { HomeContainer } from "@/components/home/containers/HomeContainer";
+import { SiteQrCode } from "@/components/qrcode/siteQrCode";
 
-/* READS THE SITE ADDRESS ON EVERY REQUEST, SO THE QR CODE IS ALWAYS CURRENT */
+/** Reads the site address on every request, so the QR code follows the configuration. */
 export const dynamic = "force-dynamic";
 
+/** Builds the QR code on the server and hands it to the live feed. */
 export default async function HomePage() {
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
-
-  /* THE QR CODE IS GENERATED ON THE SERVER AND SENT AS SVG, SO NOTHING IS LOADED FROM OUTSIDE */
-  const qrSvg = await QRCode.toString(siteUrl, {
-    type: "svg",
-    margin: 0,
-    errorCorrectionLevel: "M",
-    color: { dark: "#0b0b0f", light: "#ffffff" },
-  });
-
-  return <HomeContainer qrSvg={qrSvg} />;
-};
+  return <HomeContainer qr={await SiteQrCode(process.env.NEXT_PUBLIC_SITE_URL)} />;
+}

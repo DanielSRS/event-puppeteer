@@ -1,101 +1,109 @@
-/* components/events/EventCard.tsx */
+/**
+ * One event in the public feed.
+ *
+ * @module
+ */
 
-"use client";
+import Link from "next/link";
+import { MdAccessTime, MdDateRange, MdDeleteOutline, MdLocationOn } from "react-icons/md";
+import type { FeedCard } from "@/domain/feed";
+import { FeaturedDay, MultiDayLabel, TimeRange } from "@/domain/schedule";
+import { DateBadge, LikeButton, TagChips } from "./EventParts";
 
-import { MdFavorite, MdFavoriteBorder, MdCheckCircle, MdEventAvailable } from "react-icons/md";
-import type { EventItem } from "@/hooks/useEvents";
-import { FromISODate, LongDate } from "@/utils/date";
-
-type EventCardProps = {
-  event: EventItem;
-  position: number;
-  /* THE BIG SCREEN ONLY SHOWS THE EVENT, WITHOUT BUTTONS */
-  showcase?: boolean;
-  pending?: boolean;
-  onToggleLike?: (id: string) => void;
-  onToggleSubscription?: (id: string) => void;
+export type EventCardProps = {
+  card: FeedCard;
+  /** `YYYY-MM-DD`; decides which day the badge features. */
+  today: string;
+  /** While the like request for this card runs. */
+  likeBusy?: boolean;
+  /** Shown under the actions after an anonymous visitor tried to like this event. */
+  loginPrompt?: boolean;
+  /** Path to come back to after logging in. */
+  loginRedirect?: string;
+  onToggleLike: (eventId: string) => void;
+  /** Asks to delete the event; only offered on the viewer's own events. */
+  onDelete: (eventId: string) => void;
 };
 
+/**
+ * Calendar badge, title (linking to the details page), time, multi-day hint,
+ * place, tags, like button and, on the viewer's own events, "Excluir".
+ */
 export function EventCard({
-  event,
-  position,
-  showcase = false,
-  pending = false,
-  onToggleLike,
-  onToggleSubscription,
+  card, today, likeBusy = false, loginPrompt = false, loginRedirect = "/", onToggleLike, onDelete,
 }: EventCardProps) {
+  const day = FeaturedDay(card.schedule, today);
+  const multiDay = MultiDayLabel(card.schedule);
+
   return (
-    <article className="card column gap-3">
-      <div className="between gap-3">
-        <div className="column min-w-0">
-          <span className="text-xs opacity-60">
-            #{position}{event.authorName && ` • ${event.authorName}`}
-          </span>
+    <article aria-labelledby={`event-${card.id}-title`} className="card column gap-3">
+      <div className="flex gap-3">
+        <DateBadge date={day === null ? null : day.date} />
 
-          <h3 className={`${showcase ? "text-xl" : "subtitle"} truncate`} title={event.title}>
-            {event.title}
-          </h3>
-        </div>
+        <div className="column gap-1 min-w-0 flex-1">
+          <h2 id={`event-${card.id}-title`} className="text-lg font-semibold leading-snug break-words">
+            <Link href={`/eventos/${card.id}`} className="hover:text-main hover:underline focus-ring rounded">
+              {card.title}
+            </Link>
+          </h2>
 
-        <div className="column items-end shrink-0">
-          <span className="text-main text-lg font-semibold">
-            {event.likes}
-          </span>
+          <p className="row gap-1.5 text-sm text-foreground/80">
+            <MdAccessTime aria-hidden className="w-4 h-4 shrink-0" />
+            <span>{day === null ? "Sem data definida" : TimeRange(day)}</span>
+          </p>
 
-          <span className="text-xs opacity-60">
-            {event.likes === 1 ? "curtida" : "curtidas"}
-          </span>
+          {multiDay !== null && (
+            <p className="row gap-1.5 text-sm text-foreground/80">
+              <MdDateRange aria-hidden className="w-4 h-4 shrink-0" />
+              <span>{multiDay}</span>
+            </p>
+          )}
+
+          <p className="row gap-1.5 text-sm text-foreground/80 min-w-0">
+            <MdLocationOn aria-hidden className="w-4 h-4 shrink-0" />
+            <span className="truncate">{card.location}</span>
+          </p>
         </div>
       </div>
 
-      <p className={`text-sm opacity-80 ${showcase ? "line-clamp-2" : "whitespace-pre-line"}`}>
-        {event.description}
-      </p>
+      <p className="text-sm text-foreground/80 line-clamp-3 whitespace-pre-line">{card.description}</p>
 
-      <div className="column gap-1 text-sm">
-        <span>
-          <span className="opacity-60">Quando: </span>
-          <span className="hidden sm:inline">{LongDate(event.date)}</span>
-          <span className="sm:hidden">{FromISODate(event.date)}</span>
-          {" às "}
-          {event.time}
-        </span>
+      <TagChips tags={card.tags} />
 
-        <span className="truncate">
-          <span className="opacity-60">Onde: </span>
-          {event.location}
-        </span>
+      <div className="flex flex-wrap items-center gap-2">
+        <LikeButton
+          title={card.title}
+          voted={card.voted}
+          count={card.voteCount}
+          busy={likeBusy}
+          onToggle={() => onToggleLike(card.id)}
+        />
 
-        <span className="text-xs opacity-60">
-          {event.subscriptions} inscrito{event.subscriptions === 1 ? "" : "s"}
-        </span>
+        <Link href={`/eventos/${card.id}`} className="button clean touch" aria-label={`Ver detalhes de “${card.title}”`}>
+          Ver detalhes
+        </Link>
+
+        {card.isOwn && (
+          <button
+            type="button"
+            onClick={() => onDelete(card.id)}
+            className="button clean touch ml-auto text-danger hover:border-danger"
+            aria-label={`Excluir “${card.title}”`}
+          >
+            <MdDeleteOutline aria-hidden className="icon" />
+            Excluir
+          </button>
+        )}
       </div>
 
-      {!showcase && (
-        <div className="row gap-2">
-          <button
-            type="button"
-            disabled={pending}
-            onClick={() => onToggleLike?.(event.id)}
-            className={`button clean flex-1 ${event.liked ? "text-main border-main" : ""}`}
-            aria-pressed={event.liked}
-          >
-            {event.liked ? <MdFavorite className="icon" /> : <MdFavoriteBorder className="icon" />}
-            {event.liked ? "Curtido" : "Curtir"}
-          </button>
-
-          <button
-            type="button"
-            disabled={pending}
-            onClick={() => onToggleSubscription?.(event.id)}
-            className={`button flex-1 ${event.subscribed ? "clean text-success border-success" : "main"}`}
-            aria-pressed={event.subscribed}
-          >
-            {event.subscribed ? <MdCheckCircle className="icon" /> : <MdEventAvailable className="icon" />}
-            {event.subscribed ? "Inscrito" : "Inscrever"}
-          </button>
-        </div>
+      {loginPrompt && (
+        <p role="status" className="text-sm rounded-lg border border-main/40 bg-main/10 p-3">
+          Você precisa entrar na sua conta para curtir eventos.{" "}
+          <Link href={`/entrar?redirect=${encodeURIComponent(loginRedirect)}`} className="text-main underline font-medium">
+            Entrar
+          </Link>
+        </p>
       )}
     </article>
   );
-};
+}

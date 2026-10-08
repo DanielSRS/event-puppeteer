@@ -1,28 +1,37 @@
+/**
+ * Connects the home page to the API through {@link useEvents}.
+ *
+ * @module
+ */
+
 "use client";
 
+import type { SiteQr } from "@/components/qrcode/siteQrCode";
 import { useEvents } from "@/hooks/useEvents";
+import { TodayInBrazil } from "@/utils/date";
 import { HomeContent } from "../HomeContent";
 
-type HomeContainerProps = {
-  qrSvg: string;
+export type HomeContainerProps = {
+  /** QR code built on the server (see `app/page.tsx`). */
+  qr: SiteQr;
 };
 
-const REFRESH_INTERVAL = 15000;
-
-export function HomeContainer({ qrSvg }: HomeContainerProps) {
-  const { events, loaded, error, pendingId, toggleLike, toggleSubscription } = useEvents({
-    refreshInterval: REFRESH_INTERVAL,
-  });
+/** The live feed for the home page. */
+export function HomeContainer({ qr }: HomeContainerProps) {
+  const feed = useEvents();
 
   return (
     <HomeContent
-      qrSvg={qrSvg}
-      events={events}
-      loaded={loaded}
-      error={error}
-      pendingId={pendingId}
-      onToggleLike={toggleLike}
-      onToggleSubscription={toggleSubscription}
+      qr={qr}
+      status={feed.status}
+      cards={feed.cards}
+      today={TodayInBrazil()}
+      updatedAt={feed.updatedAt}
+      errors={[feed.refreshError, feed.tagsError, feed.likeError]}
+      loginPromptFor={feed.loginPromptFor}
+      isLikeInFlight={feed.isLikeInFlight}
+      onToggleLike={(id) => void feed.toggleLike(id)}
+      onDelete={feed.deleteEvent}
     />
   );
 }
