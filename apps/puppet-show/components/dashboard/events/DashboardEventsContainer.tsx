@@ -1,110 +1,125 @@
-'use client';
+/**
+ * "Meus Eventos": the logged-in person's events in the managed organization
+ * (`GET .../events/mine`, so hidden and past ones too), creating new ones with
+ * the event editor and deleting with confirmation.
+ *
+ * A Superadmin inside an organization sees the events they created there.
+ *
+ * @module
+ */
 
-import React, { useState, useEffect, useTransition } from 'react';
-import { UserEventList, type UserEventItem } from './UserEventList';
-import { Drawer } from '@/components/ui/Drawer';
-import { EventWizard } from './EventWizard';
-import { api } from '@/lib/api/client';
-import { ToCreateEventInput, ToEventItem } from '@/lib/api/mappers';
-import type { EventFormData } from '@/utils/validation/EventValidation';
-import { useDashboard, SelectOrgNotice } from '../DashboardContext';
+"use client";
 
+import { useEffect, useState } from "react";
+import { MdAdd } from "react-icons/md";
+import { EventFormContainer } from "@/components/forms/containers/EventFormContainer";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { Drawer } from "@/components/ui/Drawer";
+import { StatusMessage } from "@/components/ui/Feedback";
+import { api, ApiErrorMessage } from "@/lib/api/client";
+import { TodayInBrazil } from "@/utils/date";
+import { SelectOrgNotice, useDashboard } from "../DashboardContext";
+import { ToOwnEvent, type OwnEvent } from "./OwnEvents";
+import { UserEventList, type UserEventListState } from "./UserEventList";
+
+/** The list state together with the organization it was loaded for. */
+type Loaded = { orgId: string; state: UserEventListState };
+
+/** Loads the person's events in `orgId`. */
+async function LoadOwnEvents(orgId: string): Promise<UserEventListState> {
+  const mine = await api.events.mine(orgId);
+  if (!mine.ok) return { status: "error", message: `Não foi possível carregar seus eventos. ${ApiErrorMessage(mine.error)}` };
+  const today = TodayInBrazil();
+  return { status: "ready", events: mine.value.map((event) => ToOwnEvent(event, today)) };
+}
+
+/** The "Meus Eventos" page. */
 export function DashboardEventsContainer() {
-  // The selected organization: a member's own, or the one a Superadmin picked
-  const { user, orgId } = useDashboard();
-  const authorName = `${user.firstName} ${user.lastName}`.trim();
+  const { orgId } = useDashboard();
 
-  const [events, setEvents] = useState<UserEventItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [isWizardOpen, setIsWizardOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState('');
-  const [isPending, startTransition] = useTransition();
-
-  // Bumping this asks the effect below to fetch the list again (e.g. after creating an event)
+  const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [creating, setCreating] = useState(false);
+  const [notice, setNotice] = useState("");
+  const [deleting, setDeleting] = useState<OwnEvent | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
 
   useEffect(() => {
-    if (!orgId) return;
-    const today = new Date().toISOString().slice(0, 10);
-    api.events.list(orgId)
-      .then(data => {
-        setEvents(data
-          .filter(e => e.creatorId === user.id && !e.isDeleted)
-          .map(e => {
-            const isPast = e.schedule.every(day => day.date < today);
-            return {
-              ...ToEventItem(e),
-              authorName,
-              status: e.isHidden ? 'HIDDEN' : isPast ? 'PAST' : 'ACTIVE',
-            };
-          }));
-        setError('');
-      })
-      .catch(() => setError('Erro ao carregar seus eventos.'))
-      .finally(() => setLoading(false));
-  }, [orgId, user.id, authorName, reloadKey]);
+    if (orgId === null) return;
+    let active = true;
+    LoadOwnEvents(orgId).then((state) => { if (active) setLoaded({ orgId, state }); });
+    return () => { active = false; };
+  }, [orgId, reloadKey]);
 
-  const handleDelete = (id: string) => {
-    if (!orgId) return;
-    if (!confirm('Tem certeza que deseja excluir este evento?')) return;
-    startTransition(async () => {
-      try {
-        await api.events.delete(orgId, id);
-        setEvents(prev => prev.filter(e => e.id !== id));
-      } catch {
-        setError('Não foi possível excluir o evento.');
-      }
-    });
-  };
+  if (orgId === null) return <SelectOrgNotice />;
 
-  const handleSaveEvent = async (data: EventFormData) => {
-    if (!orgId) return;
-    setSaving(true);
-    setSaveError('');
-    try {
-      await api.events.create(orgId, ToCreateEventInput(data));
-      setReloadKey(k => k + 1);
-      setIsWizardOpen(false);
-    } catch {
-      setSaveError('Erro ao salvar o evento.');
-    } finally {
-      setSaving(false);
+  const state: UserEventListState = loaded !== null && loaded.orgId === orgId ? loaded.state : { status: "loading" };
+
+  function reload() {
+    setLoaded(null);
+    setReloadKey((key) => key + 1);
+  }
+
+  async function confirmDelete() {
+    if (deleting === null || orgId === null) return;
+    setDeleteBusy(true);
+    setDeleteError("");
+    const removed = await api.events.delete(orgId, deleting.id);
+    setDeleteBusy(false);
+    if (!removed.ok) {
+      setDeleteError(`Não foi possível excluir o evento. ${ApiErrorMessage(removed.error)}`);
+      return;
     }
-  };
-
-  if (!orgId) return <SelectOrgNotice />;
+    const { id, title } = deleting;
+    setDeleting(null);
+    setNotice(`Evento "${title}" excluído.`);
+    setLoaded((current) => current !== null && current.state.status === "ready"
+      ? { ...current, state: { status: "ready", events: current.state.events.filter((event) => event.id !== id) } }
+      : current);
+  }
 
   return (
-    <div className="column gap-6">
-      <div className="between items-center">
+    <>
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="title">Meus Eventos</h1>
-        <button className="button main" onClick={() => { setSaveError(''); setIsWizardOpen(true); }}>Novo Evento</button>
+        <button type="button" onClick={() => { setNotice(""); setCreating(true); }} className="button main min-h-10">
+          <MdAdd aria-hidden className="icon" /> Novo evento
+        </button>
       </div>
 
-      {error && <p className="text-sm text-danger">{error}</p>}
+      <StatusMessage>{notice}</StatusMessage>
 
       <UserEventList
-        events={events}
-        loading={loading || isPending}
-        onEdit={() => {}}
-        onDelete={handleDelete}
+        state={state}
+        onDelete={(event) => { setNotice(""); setDeleteError(""); setDeleting(event); }}
+        onRetry={reload}
       />
 
-      <Drawer
-        isOpen={isWizardOpen}
-        onClose={() => !saving && setIsWizardOpen(false)}
-        title="Criar Novo Evento"
-        width="lg"
-      >
-        <EventWizard
-          loading={saving}
-          generalError={saveError}
-          onSave={handleSaveEvent}
-          onCancel={() => setIsWizardOpen(false)}
+      <Drawer isOpen={creating} onClose={() => setCreating(false)} title="Novo evento" width="lg">
+        <EventFormContainer
+          orgId={orgId}
+          onCancel={() => setCreating(false)}
+          onCreated={(event) => {
+            setCreating(false);
+            setNotice(`Evento "${event.title}" publicado.`);
+            reload();
+          }}
         />
       </Drawer>
-    </div>
+
+      <ConfirmDialog
+        isOpen={deleting !== null}
+        title="Excluir este evento?"
+        confirmLabel="Sim, excluir"
+        danger
+        busy={deleteBusy}
+        error={deleteError}
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleting(null)}
+      >
+        {deleting === null ? null : <>&quot;{deleting.title}&quot; sai do mural e da sua lista. Essa ação não pode ser desfeita.</>}
+      </ConfirmDialog>
+    </>
   );
 }

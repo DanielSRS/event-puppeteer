@@ -1,147 +1,105 @@
-import React from "react";
-import { MdEdit, MdDelete, MdVisibility, MdVisibilityOff } from "react-icons/md";
-import type { EventItem } from "@/hooks/useEvents";
+/**
+ * The person's own events in the managed organization ("Meus Eventos"),
+ * including hidden and past ones, as cards that stack on phones.
+ *
+ * Editing isn't offered: the spec blocks event editing (issue #1), so there is
+ * no button for it. Vote counts aren't shown because `GET .../events/mine`
+ * doesn't return them.
+ *
+ * @module
+ */
+
+import Link from "next/link";
+import { MdDelete, MdOpenInNew, MdPlace, MdSchedule } from "react-icons/md";
+import { ErrorAlert, LoadingMessage } from "@/components/ui/Feedback";
 import { FromISODate } from "@/utils/date";
+import type { OwnEvent, OwnEventStatus } from "./OwnEvents";
 
-export type UserEventItem = EventItem & {
-  status: "ACTIVE" | "HIDDEN" | "PAST";
-};
+/** What the list has to show. */
+export type UserEventListState =
+  | { status: "loading" }
+  | { status: "error"; message: string }
+  | { status: "ready"; events: OwnEvent[] };
 
+/** Props of {@link UserEventList}. */
 export type UserEventListProps = {
-  events: UserEventItem[];
-  loading: boolean;
-  onEdit: (id: string) => void;
-  onDelete: (id: string) => void;
+  state: UserEventListState;
+  /** Asks to delete an event (the caller confirms first). */
+  onDelete: (event: OwnEvent) => void;
+  /** Loads the list again after an error. */
+  onRetry: () => void;
 };
 
-export function UserEventList({ events, loading, onEdit, onDelete }: UserEventListProps) {
-  if (loading) {
-    return (
-      <div className="card center py-12 opacity-60">
-        <p>Carregando seus eventos...</p>
-      </div>
-    );
-  }
+/** Text and colours of each status badge. */
+const BADGES: Record<OwnEventStatus, { label: string; className: string }> = {
+  active: { label: "Ativo", className: "border-success/40 bg-success/10 text-success" },
+  hidden: { label: "Oculto pela moderação", className: "border-danger/40 bg-danger/10 text-danger" },
+  past: { label: "Encerrado", className: "border-muted bg-white/5 text-foreground/80" },
+};
 
-  if (events.length === 0) {
-    return (
-      <div className="card center py-12 opacity-60">
-        <p>Você ainda não criou nenhum evento.</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="column gap-4">
-      {/* Desktop Table View */}
-      <div className="hidden sm:block card overflow-x-auto">
-        <table className="w-full text-sm text-left">
-          <thead className="border-b border-muted text-xs uppercase opacity-80">
-            <tr>
-              <th className="px-4 py-3">Evento</th>
-              <th className="px-4 py-3">Data</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">Interações</th>
-              <th className="px-4 py-3 text-right">Ações</th>
-            </tr>
-          </thead>
-          <tbody>
-            {events.map((event) => (
-              <tr key={event.id} className="border-b border-muted/50 hover:bg-white/5 transition-colors">
-                <td className="px-4 py-3 font-semibold min-w-48">{event.title}</td>
-                <td className="px-4 py-3 whitespace-nowrap">
-                  {FromISODate(event.date)} às {event.time}
-                </td>
-                <td className="px-4 py-3">
-                  <EventStatusBadge status={event.status} />
-                </td>
-                <td className="px-4 py-3 opacity-80">
-                  {event.likes} curtidas • {event.subscriptions} inscritos
-                </td>
-                <td className="px-4 py-3 text-right">
-                  <div className="row gap-2 justify-end">
-                    <button
-                      type="button"
-                      onClick={() => onEdit(event.id)}
-                      className="p-2 rounded hover:bg-white/10 text-main"
-                      title="Editar evento"
-                    >
-                      <MdEdit className="icon" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onDelete(event.id)}
-                      className="p-2 rounded hover:bg-white/10 text-danger"
-                      title="Excluir evento"
-                    >
-                      <MdDelete className="icon" />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Mobile Card View */}
-      <div className="sm:hidden column gap-4">
-        {events.map((event) => (
-          <div key={event.id} className="card column gap-3">
-            <div className="between items-start gap-2">
-              <h3 className="font-semibold text-base">{event.title}</h3>
-              <EventStatusBadge status={event.status} />
-            </div>
-            <div className="text-sm opacity-80 column gap-1">
-              <span>{FromISODate(event.date)} às {event.time}</span>
-              <span>{event.likes} curtidas • {event.subscriptions} inscritos</span>
-            </div>
-            <div className="row gap-2 pt-2 border-t border-muted">
-              <button
-                type="button"
-                onClick={() => onEdit(event.id)}
-                className="button clean flex-1 text-main"
-              >
-                <MdEdit className="icon" /> Editar
-              </button>
-              <button
-                type="button"
-                onClick={() => onDelete(event.id)}
-                className="button clean flex-1 text-danger"
-              >
-                <MdDelete className="icon" /> Excluir
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
+/** One day of the schedule as text, e.g. "10/10/2026, 14:00–16:00". */
+function DayLabel(day: OwnEvent["days"][number]): string {
+  const date = FromISODate(day.date);
+  if (day.startTime === undefined) return `${date}, dia todo`;
+  if (day.endTime === undefined) return `${date}, a partir de ${day.startTime}`;
+  return `${date}, ${day.startTime}–${day.endTime}`;
 }
 
-function EventStatusBadge({ status }: { status: UserEventItem["status"] }) {
-  const styles = {
-    ACTIVE: "bg-success/10 text-success border-success/20",
-    HIDDEN: "bg-danger/10 text-danger border-danger/20",
-    PAST: "bg-muted text-foreground/60 border-muted",
-  };
+/** List of own events with loading, error and empty states. */
+export function UserEventList({ state, onDelete, onRetry }: UserEventListProps) {
+  if (state.status === "loading") return <LoadingMessage>Carregando seus eventos...</LoadingMessage>;
 
-  const labels = {
-    ACTIVE: "Ativo",
-    HIDDEN: "Oculto",
-    PAST: "Passado",
-  };
+  if (state.status === "error") {
+    return (
+      <div className="column gap-3">
+        <ErrorAlert>{state.message}</ErrorAlert>
+        <button type="button" onClick={onRetry} className="button clean min-h-10 self-start">Tentar de novo</button>
+      </div>
+    );
+  }
 
-  const icons = {
-    ACTIVE: <MdVisibility className="icon text-sm" />,
-    HIDDEN: <MdVisibilityOff className="icon text-sm" />,
-    PAST: <MdVisibility className="icon text-sm" />,
-  };
+  if (state.events.length === 0)
+    return <p className="card text-center text-foreground/80">Você ainda não criou nenhum evento nesta organização.</p>;
 
   return (
-    <span className={`row gap-1 w-fit px-2 py-1 rounded-full text-xs font-semibold border ${styles[status]}`}>
-      {icons[status]}
-      {labels[status]}
-    </span>
+    <ul className="grid grid-cols-1 gap-4 lg:grid-cols-2" aria-label="Seus eventos">
+      {state.events.map((event) => {
+        const badge = BADGES[event.status];
+        return (
+          <li key={event.id}>
+            <article className="card column h-full gap-3" aria-labelledby={`own-event-${event.id}`}>
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <h2 id={`own-event-${event.id}`} className="min-w-0 break-words text-base font-semibold">{event.title}</h2>
+                <span className={`shrink-0 rounded-full border px-2 py-1 text-xs font-semibold ${badge.className}`}>
+                  {badge.label}
+                </span>
+              </div>
+
+              <div className="column gap-1 text-sm text-foreground/80">
+                <p className="row items-start gap-2">
+                  <MdPlace aria-hidden className="icon shrink-0" />
+                  <span className="min-w-0 break-words">{event.location}</span>
+                </p>
+                <div className="row items-start gap-2">
+                  <MdSchedule aria-hidden className="icon shrink-0" />
+                  <ul className="column min-w-0" aria-label="Dias">
+                    {event.days.map((day) => <li key={day.date}>{DayLabel(day)}</li>)}
+                  </ul>
+                </div>
+              </div>
+
+              <div className="mt-auto flex flex-col gap-2 border-t border-muted pt-3 sm:flex-row">
+                <Link href={`/eventos/${event.id}`} className="button clean min-h-10">
+                  <MdOpenInNew aria-hidden className="icon" /> Ver página<span className="sr-only"> de {event.title}</span>
+                </Link>
+                <button type="button" onClick={() => onDelete(event)} className="button clean min-h-10 text-danger">
+                  <MdDelete aria-hidden className="icon" /> Excluir<span className="sr-only"> {event.title}</span>
+                </button>
+              </div>
+            </article>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
