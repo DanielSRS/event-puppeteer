@@ -176,7 +176,7 @@ export const api = {
       Request(EventSchema, "POST", `/organizations/${seg(orgId)}/events`, body),
     /** Soft delete; creator or Superadmin. */
     delete: (orgId: string, eventId: string) =>
-      Request(EventSchema, "DELETE", `/organizations/${seg(orgId)}/events/${seg(eventId)}`),
+      Request(SuccessSchema, "DELETE", `/organizations/${seg(orgId)}/events/${seg(eventId)}`),
     /** Toggles the logged-in user's vote. */
     vote: (orgId: string, eventId: string) =>
       Request(VoteResponseSchema, "POST", `/organizations/${seg(orgId)}/events/${seg(eventId)}/vote`),
