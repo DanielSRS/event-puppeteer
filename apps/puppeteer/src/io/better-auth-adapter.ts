@@ -1,6 +1,16 @@
 import type { AuthProvider, AuthSession } from './index.ts';
 import type { NewUser } from '../types/user.ts';
 
+// Better-auth errors carry status/body.code; anything else (DB, crypto, config) is unexpected.
+// Logged so the real cause shows up in the server logs instead of a generic 401/400.
+function describe(e: any) {
+  const code = e?.body?.code ?? e?.code;
+  const cause = e?.cause?.message ? ` (cause: ${e.cause.message})` : '';
+  return `${e?.status ?? e?.name ?? 'Error'}${code ? ` ${code}` : ''}: ${e?.message ?? e}${cause}`;
+}
+
+const isExpected = (e: any, ...codes: string[]) => codes.includes(e?.body?.code);
+
 export class BetterAuthProvider implements AuthProvider {
   constructor(private authInstance: any) {}
 
@@ -13,6 +23,7 @@ export class BetterAuthProvider implements AuthProvider {
       });
       return { userId: data.user.id };
     } catch (e: any) {
+      console.error(`[auth] signUp ${user.email} failed → ${describe(e)}`, isExpected(e) ? '' : e?.stack ?? '');
       throw new Error('SIGNUP_FAILED: ' + e.message);
     }
   }
@@ -27,6 +38,11 @@ export class BetterAuthProvider implements AuthProvider {
         userId: data.user.id
       };
     } catch (e: any) {
+      if (isExpected(e, 'INVALID_EMAIL_OR_PASSWORD', 'EMAIL_NOT_VERIFIED')) {
+        console.warn(`[auth] signIn ${email} refused → ${describe(e)}`);
+      } else {
+        console.error(`[auth] signIn ${email} failed unexpectedly → ${describe(e)}`, e?.stack ?? '');
+      }
       if (e?.body?.code === 'EMAIL_NOT_VERIFIED') throw new Error('EMAIL_NOT_VERIFIED');
       throw new Error('INVALID_CREDENTIALS');
     }
@@ -36,6 +52,7 @@ export class BetterAuthProvider implements AuthProvider {
     try {
       await this.authInstance.api.sendVerificationEmail({ body: { email } });
     } catch (e: any) {
+      console.error(`[auth] sendVerificationEmail ${email} failed → ${describe(e)}`);
       throw new Error('EMAIL_DELIVERY_FAILED: ' + e.message);
     }
   }
@@ -44,7 +61,8 @@ export class BetterAuthProvider implements AuthProvider {
     try {
       await this.authInstance.api.verifyEmail({ query: { token } });
       return true;
-    } catch {
+    } catch (e: any) {
+      console.warn(`[auth] verifyEmail refused → ${describe(e)}`);
       return false;
     }
   }
@@ -61,7 +79,8 @@ export class BetterAuthProvider implements AuthProvider {
       });
       if (!session) return null;
       return session.user.id;
-    } catch {
+    } catch (e: any) {
+      console.error(`[auth] getSession failed → ${describe(e)}`);
       return null;
     }
   }
