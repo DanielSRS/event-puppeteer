@@ -1,41 +1,50 @@
-/* utils/validation/UserValidation.ts */
+/**
+ * Rules for the login and sign-up forms (the API enforces them too).
+ *
+ * @module
+ */
 
-import { FormatPersonName } from "@/utils/text";
-
+/** Shortest password the API accepts. */
 export const MIN_PASSWORD_LENGTH = 8;
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+/** What the forms collect. `name` is only used on sign-up. */
 export type UserFormData = {
   name: string;
   email: string;
   password: string;
 };
 
-export type UserFormErrors = Partial<Record<keyof UserFormData | "confirmPassword", string>>;
+/** Error message per field; a missing key means the field is fine. */
+export type UserFormErrors = Partial<Record<keyof UserFormData, string>>;
 
-export function NormalizeUser(raw: unknown): UserFormData {
-  const body = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
-
-  return {
-    /* THE NAME IS ALWAYS SAVED AS "Maria Da Silva" */
-    name: typeof body.name === "string" ? FormatPersonName(body.name) : "",
-    email: typeof body.email === "string" ? body.email.trim().toLowerCase() : "",
-    password: typeof body.password === "string" ? body.password : "",
-  };
-};
-
+/**
+ * Checks the fields. Sign-up (`requireName`) needs a first and a last name,
+ * since the API stores them separately.
+ */
 export function ValidateUser(data: UserFormData, { requireName }: { requireName: boolean }): UserFormErrors {
   const errors: UserFormErrors = {};
 
-  if (requireName && data.name.length < 3)
-    errors.name = "Informe seu nome completo";
+  if (requireName) {
+    const words = data.name.trim().split(/\s+/).filter((word) => word.length > 0);
+    if (words.length < 2) errors.name = "Informe seu nome e sobrenome.";
+  }
 
-  if (!EMAIL_REGEX.test(data.email))
-    errors.email = "E-mail inválido";
+  if (!EMAIL_REGEX.test(data.email.trim())) errors.email = "Informe um e-mail válido.";
 
   if (data.password.length < MIN_PASSWORD_LENGTH)
-    errors.password = `A senha precisa ter pelo menos ${MIN_PASSWORD_LENGTH} caracteres`;
+    errors.password = `A senha precisa ter pelo menos ${MIN_PASSWORD_LENGTH} caracteres.`;
 
   return errors;
-};
+}
+
+/**
+ * Where to go after logging in. Only internal paths are accepted as
+ * `?redirect=`, so a crafted link can't send people to another site; anything
+ * else (or nothing) means the home page.
+ */
+export function SafeRedirect(raw: string | null): string {
+  if (raw === null) return "/";
+  return raw.startsWith("/") && !raw.startsWith("//") && !raw.startsWith("/\\") ? raw : "/";
+}

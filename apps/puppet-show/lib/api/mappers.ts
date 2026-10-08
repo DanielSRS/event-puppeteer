@@ -1,46 +1,132 @@
-/* lib/api/mappers.ts */
+/**
+ * Turns API records into the shapes the public screens draw: feed cards, the
+ * event details page and the TV display.
+ *
+ * Events only carry tag and link-label ids; the public catalogs
+ * (`GET /tags`, `GET /link-labels`) give their names. Only system-defined tags
+ * are public, so free-form ones never reach a public screen.
+ *
+ * @module
+ */
 
-/* TURNS API RECORDS INTO THE SHAPES THE COMPONENTS DRAW */
+import type { Event, FeedEvent, LinkLabel, Tag } from "./schemas";
+import type { CardTag, FeedCard } from "@/domain/feed";
+import { ShownVoteFor, type PendingVote } from "@/domain/likes";
+import { SortedDays, type ScheduleDay } from "@/domain/schedule";
+import type { Coordinates } from "@/domain/links";
 
-import type { CreateEventInput, Event, FeedEvent } from "./types";
-import type { EventItem } from "@/hooks/useEvents";
-import type { EventFormData } from "@/utils/validation/EventValidation";
+/** The event's public tags, by name, in the order the event lists them. */
+export function PublicTags(event: Pick<Event, "tags">, catalog: readonly Tag[]): CardTag[] {
+  const publicById = new Map(catalog.filter((tag) => tag.isSystemDefined).map((tag) => [tag.id, tag.name]));
+  const tags: CardTag[] = [];
+  for (const { tagId } of event.tags) {
+    const name = publicById.get(tagId);
+    if (name !== undefined) tags.push({ id: tagId, name });
+  }
+  return tags;
+}
 
-/* THE FIRST UPCOMING DAY IS THE ONE WE SHOW ON CARDS; FALLS BACK TO THE FIRST ONE */
-export function NextDay(event: Event) {
-  const today = new Date().toISOString().slice(0, 10);
-  const days = [...event.schedule].sort((a, b) => a.date.localeCompare(b.date));
-  return days.find((day) => day.date >= today) ?? days[0];
+/** Only the date and times of each day, in calendar order. */
+function Schedule(event: Pick<Event, "schedule">): ScheduleDay[] {
+  return SortedDays(event.schedule).map(({ date, startTime, endTime }) => ({
+    date,
+    ...(startTime !== undefined ? { startTime } : {}),
+    ...(endTime !== undefined ? { endTime } : {}),
+  }));
+}
+
+/** What the viewer knows about their own relation to the feed. */
+export type ViewerContext = {
+  /** Logged-in user's id, `null` for anonymous visitors. */
+  viewerId: string | null;
+  /** The viewer's confirmed vote for this event. */
+  viewerVoted: boolean;
+  /** The viewer's click not counted by the server yet, if any. */
+  pending: PendingVote | undefined;
 };
 
-export function ToEventItem(event: Event | FeedEvent): EventItem {
-  const day = NextDay(event);
-
+/** A feed event as a card, with the viewer's vote merged into the count. */
+export function ToFeedCard(event: FeedEvent, catalog: readonly Tag[], viewer: ViewerContext): FeedCard {
+  const vote = ShownVoteFor(event.voteCount, viewer.viewerVoted, viewer.pending);
   return {
     id: event.id,
     title: event.title,
     description: event.description,
     location: event.location,
-    date: day?.date ?? "",
-    time: day?.startTime ?? "",
-    /* THE API DOESN'T SEND THE AUTHOR'S NAME YET */
-    authorName: "",
-    likes: "voteCount" in event ? event.voteCount : 0,
-    subscriptions: 0,
-    liked: false,
-    subscribed: false,
+    schedule: Schedule(event),
+    tags: PublicTags(event, catalog),
+    voteCount: vote.count,
+    voted: vote.voted,
+    isOwn: viewer.viewerId !== null && event.creatorId === viewer.viewerId,
   };
+}
+
+/** One external link of an event. */
+export type DetailLink = {
+  /** The label's name, e.g. "Inscrição"; `null` when the label isn't in the public catalog. */
+  label: string | null;
+  url: string;
 };
 
-/* THE SIMPLE FORM HAS ONE DAY AND NO TAGS/LINKS; THE API WANTS THE FULL SHAPE */
-export function ToCreateEventInput(data: EventFormData): CreateEventInput {
-  return {
-    title: data.title,
-    description: data.description,
-    location: data.location,
-    isHidden: false,
-    schedule: [{ date: data.date, startTime: data.time }],
-    tags: [],
-    links: [],
-  };
+/** An event as the details page draws it. */
+export type EventDetail = {
+  id: string;
+  organizationId: string;
+  creatorId: string;
+  title: string;
+  description: string;
+  location: string;
+  /** Present only when the event has both latitude and longitude. */
+  coordinates: Coordinates | null;
+  bannerImage: string | null;
+  isHidden: boolean;
+  schedule: ScheduleDay[];
+  tags: CardTag[];
+  links: DetailLink[];
 };
+
+/** An event with its tag and link-label names resolved. */
+export function ToEventDetail(event: Event, tags: readonly Tag[], labels: readonly LinkLabel[]): EventDetail {
+  const labelNames = new Map(labels.map((label) => [label.id, label.name]));
+  const coordinates = event.latitude !== undefined && event.longitude !== undefined
+    ? { latitude: event.latitude, longitude: event.longitude }
+    : null;
+
+  return {
+    id: event.id,
+    organizationId: event.organizationId,
+    creatorId: event.creatorId,
+    title: event.title,
+    description: event.description,
+    location: event.location,
+    coordinates,
+    bannerImage: event.bannerImage === undefined || event.bannerImage === "" ? null : event.bannerImage,
+    isHidden: event.isHidden,
+    schedule: Schedule(event),
+    tags: PublicTags(event, tags),
+    links: event.links.map((link) => {
+      const label = labelNames.get(link.labelId);
+      return { label: label === undefined ? null : label, url: link.url };
+    }),
+  };
+}
+
+/** An event on the TV display. */
+export type TvEvent = {
+  id: string;
+  title: string;
+  location: string;
+  schedule: ScheduleDay[];
+  voteCount: number;
+};
+
+/** A feed event as the TV display draws it. */
+export function ToTvEvent(event: FeedEvent): TvEvent {
+  return {
+    id: event.id,
+    title: event.title,
+    location: event.location,
+    schedule: Schedule(event),
+    voteCount: event.voteCount,
+  };
+}
