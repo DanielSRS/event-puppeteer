@@ -1,10 +1,30 @@
+/**
+ * Next.js configuration.
+ *
+ * The browser talks to `/api` on the same origin and Next forwards it to
+ * Puppeteer (`PUPPETEER_URL`), so no CORS is needed. `PUPPETEER_URL` is
+ * required: without it the build stops with an explanation instead of
+ * proxying somewhere unintended.
+ *
+ * `NEXT_DIST_DIR` is only set by the end-to-end runner, so parallel test stacks
+ * don't share a build directory.
+ *
+ * @module
+ */
+
 import type { NextConfig } from "next";
 
-/* THE BROWSER TALKS TO /api ON THE SAME ORIGIN, AND NEXT FORWARDS IT TO PUPPETEER (NO CORS NEEDED) */
-const PUPPETEER_URL = process.env.PUPPETEER_URL ?? "http://localhost:8080";
+const PUPPETEER_URL = process.env.PUPPETEER_URL;
+
+if (!PUPPETEER_URL) {
+  console.error("PUPPETEER_URL não definida. Defina a URL da API Puppeteer (veja .env.example).");
+  process.exit(1);
+}
 
 const nextConfig: NextConfig = {
-  /* THE API'S EMAIL-VERIFICATION LINK LANDS ON /login?emailVerified=..., OUR LOGIN PAGE IS /entrar */
+  ...(process.env.NEXT_DIST_DIR ? { distDir: process.env.NEXT_DIST_DIR } : {}),
+
+  /** The API's email-verification link lands on /login?emailVerified=…; our login page is /entrar. */
   async redirects() {
     return [{ source: "/login", destination: "/entrar", permanent: false }];
   },

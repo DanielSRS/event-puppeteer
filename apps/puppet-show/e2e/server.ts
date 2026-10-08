@@ -169,6 +169,7 @@ createHttpServer(async (req, res) => {
       PUPPETEER_URL: `http://localhost:${E2E.apiPort}`,
       NEXT_PUBLIC_ORG_ID: orgA.id,
       NEXT_PUBLIC_SITE_URL: `http://localhost:${E2E.webPort}`,
+      NEXT_DIST_DIR: `.next-e2e-${E2E.webPort}`,
     },
   });
 
