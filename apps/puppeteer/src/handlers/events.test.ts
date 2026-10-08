@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createEventHandler, listEventsHandler, getEventHandler, deleteEventHandler } from './events.ts';
+import { createEventHandler, listEventsHandler, getEventHandler, deleteEventHandler, listMyEventsHandler } from './events.ts';
 import { registerVerified } from '../test-support.ts';
 import { createInMemoryIO } from '../io/in-memory.ts';
 
@@ -183,5 +183,69 @@ test('Event Handlers', async (t) => {
 
     const updated = await io.eventRepo.update(e1.id, { title: 'Updated Ev' });
     assert.equal(updated?.title, 'Updated Ev');
+  });
+  await t.test('my events include my hidden, expired and free-form-tagged events, but not deleted ones nor other Users\' events', async () => {
+    const io = await createInMemoryIO();
+    const org = await io.orgRepo.create({ name: 'Org', slug: 'org-1', shadowBanThreshold: 5, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+    const { token: cToken, user: creator } = await registerVerified({ firstName: 'Creator', lastName: 'X', email: 'c@a.com', password: 'password123' }, org.id, io);
+    const { token: oToken } = await registerVerified({ firstName: 'Other', lastName: 'Y', email: 'o@a.com', password: 'password123' }, org.id, io);
+    const cReq = new Request('http://localhost/', { headers: { authorization: `Bearer ${cToken}` } });
+    const oReq = new Request('http://localhost/', { headers: { authorization: `Bearer ${oToken}` } });
+
+    const hidden = await createEventHandler(cReq, org.id, {
+      title: 'Hidden', description: '...', location: '...', isHidden: true,
+      schedule: [{ date: '2100-10-01' }], tags: [], links: []
+    }, io);
+    const expired = await createEventHandler(cReq, org.id, {
+      title: 'Expired', description: '...', location: '...', isHidden: false,
+      schedule: [{ date: '1990-01-01' }], tags: [], links: []
+    }, io);
+    const tagged = await createEventHandler(cReq, org.id, {
+      title: 'Tagged', description: '...', location: '...', isHidden: false,
+      schedule: [{ date: '2100-10-01' }],
+      tags: [{ tagId: 't1', isFreeForm: false }, { tagId: 't2', isFreeForm: true }],
+      links: []
+    }, io);
+    const deleted = await createEventHandler(cReq, org.id, {
+      title: 'Deleted', description: '...', location: '...', isHidden: false,
+      schedule: [{ date: '2100-10-01' }], tags: [], links: []
+    }, io);
+    await deleteEventHandler(cReq, org.id, deleted.id, io);
+    await createEventHandler(oReq, org.id, {
+      title: 'Not mine', description: '...', location: '...', isHidden: false,
+      schedule: [{ date: '2100-10-01' }], tags: [], links: []
+    }, io);
+
+    const mine = await listMyEventsHandler(cReq, org.id, io);
+    assert.deepEqual(mine.map(e => e.id).sort(), [hidden.id, expired.id, tagged.id].sort());
+    assert.ok(mine.every(e => e.creatorId === creator.id));
+    assert.deepEqual(mine.find(e => e.id === tagged.id)?.tags, tagged.tags);
+  });
+
+  await t.test('my events require a session and membership of the Organization', async () => {
+    const io = await createInMemoryIO();
+    const org = await io.orgRepo.create({ name: 'Org', slug: 'org-1', shadowBanThreshold: 5, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+    const other = await io.orgRepo.create({ name: 'Other', slug: 'org-2', shadowBanThreshold: 5, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+    const { token } = await registerVerified({ firstName: 'Outsider', lastName: 'X', email: 'x@a.com', password: 'password123' }, other.id, io);
+
+    await assert.rejects(listMyEventsHandler(new Request('http://localhost/'), org.id, io), /UNAUTHORIZED/);
+    await assert.rejects(
+      listMyEventsHandler(new Request('http://localhost/', { headers: { authorization: `Bearer ${token}` } }), org.id, io),
+      /FORBIDDEN/
+    );
+  });
+
+  await t.test('a Superadmin may list their own events in any Organization', async () => {
+    const io = await createInMemoryIO();
+    const org = await io.orgRepo.create({ name: 'Org', slug: 'org-1', shadowBanThreshold: 5, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+    const { token, user } = await registerVerified({ firstName: 'Super', lastName: 'X', email: 's@a.com', password: 'password123' }, org.id, io);
+    await io.userRepo.update(user.id, { role: 'Superadmin' });
+    const req = new Request('http://localhost/', { headers: { authorization: `Bearer ${token}` } });
+    const event = await createEventHandler(req, org.id, {
+      title: 'Ev', description: '...', location: '...', isHidden: false,
+      schedule: [{ date: '2100-10-01' }], tags: [], links: []
+    }, io);
+
+    assert.deepEqual((await listMyEventsHandler(req, org.id, io)).map(e => e.id), [event.id]);
   });
 });

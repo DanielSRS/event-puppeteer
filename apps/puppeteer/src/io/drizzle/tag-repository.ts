@@ -1,11 +1,13 @@
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import type { TagRepository } from '../index.ts';
 import type { Tag } from '../../types/tag.ts';
 import { tag } from '../../db/schema.ts';
+import type { Database } from '../../db/index.ts';
 import { randomUUID } from 'node:crypto';
 
+/** Tags stored in the `tag` table. */
 export class DrizzleTagRepository implements TagRepository {
-  constructor(private db: any) {}
+  constructor(private db: Database) {}
 
   async create(newTag: Tag): Promise<Tag> {
     const id = newTag.id || randomUUID();
@@ -15,19 +17,24 @@ export class DrizzleTagRepository implements TagRepository {
   }
 
   async getAll(): Promise<Tag[]> {
-    const rows = await this.db.select().from(tag);
-    return rows as Tag[];
+    return await this.db.select().from(tag);
   }
 
   async getById(id: string): Promise<Tag | null> {
     const rows = await this.db.select().from(tag).where(eq(tag.id, id));
-    if (rows.length === 0) return null;
-    return rows[0] as Tag;
+    return rows[0] ?? null;
+  }
+
+  /** Compares trimmed names case-insensitively. */
+  async findByName(name: string): Promise<Tag | null> {
+    const rows = await this.db.select().from(tag)
+      .where(sql`lower(trim(${tag.name})) = lower(trim(${name}))`)
+      .limit(1);
+    return rows[0] ?? null;
   }
 
   async update(id: string, updates: Partial<Tag>): Promise<Tag | null> {
     const rows = await this.db.update(tag).set(updates).where(eq(tag.id, id)).returning();
-    if (rows.length === 0) return null;
-    return rows[0] as Tag;
+    return rows[0] ?? null;
   }
 }

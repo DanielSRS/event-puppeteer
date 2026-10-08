@@ -74,6 +74,22 @@ export async function listEventsHandler(request: Request, orgId: string, io: App
   }));
 }
 
+/**
+ * Lists the logged-in User's own Events in an Organization, for their dashboard.
+ * Unlike the public listing it includes hidden and expired Events and keeps
+ * free-form Tags (they belong to the creator); deleted Events are left out.
+ * Newest first.
+ * @throws UNAUTHORIZED without a valid session.
+ * @throws FORBIDDEN when the actor belongs to another Organization and is not a Superadmin.
+ */
+export async function listMyEventsHandler(request: Request, orgId: string, io: AppIO): Promise<Event[]> {
+  const actor = await requireAuth(request, io);
+  if (actor.role !== 'Superadmin' && organizationOf(actor) !== orgId) throw new Error('FORBIDDEN');
+
+  const events = await io.eventRepo.listByCreator(orgId, actor.id);
+  return events.filter(e => !e.isDeleted);
+}
+
 export async function getEventHandler(request: Request, orgId: string, eventId: string, io: AppIO) {
   const event = await io.eventRepo.getById(eventId);
   if (!event || event.organizationId !== orgId || event.isDeleted) {

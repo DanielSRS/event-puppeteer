@@ -122,6 +122,89 @@ test('HTTP layer', async (t) => {
     assert.equal(admin.body.organizationId, orgId);
   });
 
+  await t.test('GET /organizations/:id/feed answers the weighted events with voteCount and weight', async () => {
+    const { orgId, adminToken, call } = await setup();
+    const created = await call('POST', `/organizations/${orgId}/events/`, adminToken, {
+      title: 'Feed event',
+      description: 'd',
+      location: 'l',
+      isHidden: false,
+      schedule: [{ date: '2100-01-01' }],
+      tags: [],
+      links: []
+    });
+    assert.equal(created.status, 200);
+    assert.equal((await call('POST', `/organizations/${orgId}/events/${created.body.id}/vote`, adminToken)).status, 200);
+
+    const feed = await call('GET', `/organizations/${orgId}/feed`);
+    assert.equal(feed.status, 200);
+    assert.equal(feed.body.length, 1);
+    assert.equal(feed.body[0].id, created.body.id);
+    assert.equal(feed.body[0].voteCount, 1);
+    assert.equal(typeof feed.body[0].weight, 'number');
+  });
+
+  await t.test('POST /tags lets a Member create a free-form Tag and answers 409 for a duplicate name', async () => {
+    const { io, orgId, call } = await setup();
+    const { token } = await registerVerified({ firstName: 'M', lastName: 'Y', email: 'm@a.com', password: 'password123' }, orgId, io);
+
+    const created = await call('POST', '/tags/', token, { name: ' Jazz ', isSystemDefined: false });
+    assert.equal(created.status, 200);
+    assert.equal(created.body.name, 'Jazz');
+
+    const duplicate = await call('POST', '/tags/', token, { name: 'JAZZ', isSystemDefined: false });
+    assert.equal(duplicate.status, 409);
+    assert.deepEqual(duplicate.body, { error: 'Tag already exists' });
+
+    assert.equal((await call('POST', '/tags/', token, { name: 'Rock', isSystemDefined: true })).status, 403);
+    assert.equal((await call('POST', '/tags/', token, { name: '  ', isSystemDefined: false })).status, 400);
+  });
+
+  await t.test('GET /organizations/:id/events/mine answers the caller\'s own events, hidden ones included', async () => {
+    const { orgId, adminToken, call } = await setup();
+    const created = await call('POST', `/organizations/${orgId}/events/`, adminToken, {
+      title: 'Mine',
+      description: 'd',
+      location: 'l',
+      isHidden: true,
+      schedule: [{ date: '2100-01-01' }],
+      tags: [{ tagId: 'free', isFreeForm: true }],
+      links: []
+    });
+    assert.equal(created.status, 200);
+
+    const mine = await call('GET', `/organizations/${orgId}/events/mine`, adminToken);
+    assert.equal(mine.status, 200);
+    assert.equal(mine.body.length, 1);
+    assert.equal(mine.body[0].id, created.body.id);
+    assert.deepEqual(mine.body[0].tags, created.body.tags);
+    assert.equal((await call('GET', `/organizations/${orgId}/events/mine`)).status, 401);
+  });
+
+  await t.test('DELETE /organizations/:id/users/:userId deactivates a User who has events, votes and reports', async () => {
+    const { io, orgId, adminToken, call } = await setup();
+    const { token, user } = await registerVerified({ firstName: 'T', lastName: 'Y', email: 't@a.com', password: 'password123' }, orgId, io);
+    const event = await call('POST', `/organizations/${orgId}/events/`, token, {
+      title: 'Theirs', description: 'd', location: 'l', isHidden: false,
+      schedule: [{ date: '2100-01-01' }], tags: [], links: []
+    });
+    assert.equal(event.status, 200);
+    assert.equal((await call('POST', `/organizations/${orgId}/events/${event.body.id}/vote`, token)).status, 200);
+    assert.equal((await call('POST', `/organizations/${orgId}/events/${event.body.id}/report`, token, { reason: 'spam' })).status, 200);
+
+    const removed = await call('DELETE', `/organizations/${orgId}/users/${user.id}`, adminToken);
+    assert.equal(removed.status, 200);
+    assert.deepEqual(removed.body, { success: true });
+
+    const users = await call('GET', `/organizations/${orgId}/users/`, adminToken);
+    assert.equal(users.status, 200);
+    assert.equal(users.body.length, 1);
+    assert.deepEqual((await call('GET', `/organizations/${orgId}/feed`)).body, []);
+    assert.equal((await call('GET', '/auth/me', token)).status, 401);
+    assert.equal((await call('POST', '/auth/login', undefined, { email: 't@a.com', password: 'password123' })).status, 401);
+    assert.equal((await call('DELETE', `/organizations/${orgId}/users/${user.id}`, adminToken)).status, 404);
+  });
+
   await t.test('every route except the public ones rejects anonymous requests', async () => {
     const { call } = await setup();
     // Public by decision: event listing (list, feed, details), what the TV display and the

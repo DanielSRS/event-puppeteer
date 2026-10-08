@@ -1,11 +1,18 @@
-import { eq, ilike, and } from 'drizzle-orm';
+import { eq, ilike, and, isNull } from 'drizzle-orm';
 import type { UserRepository } from '../index.ts';
 import type { User, UserUpdate } from '../../types/user.ts';
 import { organizationOf } from '../../types/user.ts';
 import { user } from '../../db/schema.ts';
+import type { Database } from '../../db/index.ts';
 
+type UserRow = typeof user.$inferSelect;
+
+/**
+ * Users stored in the `user` table (shared with better-auth). Removed Users
+ * (`removedAt` set) are treated as absent, except by `getByEmail`.
+ */
 export class DrizzleUserRepository implements UserRepository {
-  constructor(private db: any) {}
+  constructor(private db: Database) {}
 
   async create(u: User): Promise<User> {
     const existing = await this.db.select().from(user).where(eq(user.id, u.id));
@@ -33,32 +40,38 @@ export class DrizzleUserRepository implements UserRepository {
   }
 
   async getById(id: string): Promise<User | null> {
-    const rows = await this.db.select().from(user).where(eq(user.id, id));
-    if (rows.length === 0) return null;
-    return this.mapToDomain(rows[0]);
+    const rows = await this.db.select().from(user).where(and(eq(user.id, id), isNull(user.removedAt)));
+    const row = rows[0];
+    return row ? this.mapToDomain(row) : null;
   }
 
   async getByEmail(email: string): Promise<User | null> {
     const rows = await this.db.select().from(user).where(eq(user.email, email));
-    if (rows.length === 0) return null;
-    return this.mapToDomain(rows[0]);
+    const row = rows[0];
+    return row ? this.mapToDomain(row) : null;
   }
 
   async listByOrganization(orgId: string): Promise<User[]> {
-    const rows = await this.db.select().from(user).where(eq(user.organizationId, orgId));
-    return rows.map((r: any) => this.mapToDomain(r));
+    const rows = await this.db.select().from(user).where(and(eq(user.organizationId, orgId), isNull(user.removedAt)));
+    return rows.map(r => this.mapToDomain(r));
   }
 
+  /**
+   * Changing the role to Superadmin also drops the Organization (a Superadmin has none,
+   * as the user_role_organization check enforces). Does not skip removed Users.
+   */
   async update(id: string, updates: UserUpdate): Promise<User | null> {
-    const pgUpdates: any = { ...updates };
-    // A Superadmin has no Organization (also enforced by the user_role_organization check)
-    if (updates.role === 'Superadmin') pgUpdates.organizationId = null;
-    if (updates.firstName && updates.lastName) {
-      pgUpdates.name = `${updates.firstName} ${updates.lastName}`;
-    }
-    const rows = await this.db.update(user).set(pgUpdates).where(eq(user.id, id)).returning();
-    if (rows.length === 0) return null;
-    return this.mapToDomain(rows[0]);
+    const { firstName, lastName } = updates;
+    const rows = await this.db.update(user)
+      .set({
+        ...updates,
+        ...(updates.role === 'Superadmin' ? { organizationId: null } : {}),
+        ...(firstName && lastName ? { name: `${firstName} ${lastName}` } : {})
+      })
+      .where(eq(user.id, id))
+      .returning();
+    const row = rows[0];
+    return row ? this.mapToDomain(row) : null;
   }
 
   async searchByName(orgId: string, query: string): Promise<User[]> {
@@ -66,28 +79,41 @@ export class DrizzleUserRepository implements UserRepository {
     const rows = await this.db.select().from(user).where(
       and(
         eq(user.organizationId, orgId),
-        ilike(user.normalizedName, searchPattern)
+        ilike(user.normalizedName, searchPattern),
+        isNull(user.removedAt)
       )
     );
-    return rows.map((r: any) => this.mapToDomain(r));
+    return rows.map(r => this.mapToDomain(r));
   }
 
-  async delete(id: string): Promise<boolean> {
-    const rows = await this.db.delete(user).where(eq(user.id, id)).returning({ id: user.id });
+  async markRemoved(id: string, removedAt: Date): Promise<boolean> {
+    const rows = await this.db.update(user)
+      .set({ removedAt, updatedAt: removedAt })
+      .where(and(eq(user.id, id), isNull(user.removedAt)))
+      .returning({ id: user.id });
     return rows.length > 0;
   }
 
-  private mapToDomain(row: any): User {
-    return {
+  /**
+   * Converts a row to the domain User, discriminated by role.
+   * @throws when the row breaks the role/Organization invariant the database enforces.
+   */
+  private mapToDomain(row: UserRow): User {
+    const fields = {
       id: row.id,
       firstName: row.firstName,
       lastName: row.lastName,
       normalizedName: row.normalizedName,
       email: row.email,
-      isShadowBanned: row.isShadowBanned,
-      ...(row.role === 'Superadmin'
-        ? { role: 'Superadmin' as const }
-        : { role: row.role, organizationId: row.organizationId })
+      isShadowBanned: row.isShadowBanned
     };
+    if (row.role === 'Superadmin') return { ...fields, role: 'Superadmin' };
+    if (row.role !== 'Admin' && row.role !== 'Moderator' && row.role !== 'Member') {
+      throw new Error(`User ${row.id} has an unknown role: ${row.role}`);
+    }
+    if (row.organizationId === null) {
+      throw new Error(`User ${row.id} with role ${row.role} has no Organization`);
+    }
+    return { ...fields, role: row.role, organizationId: row.organizationId };
   }
 }

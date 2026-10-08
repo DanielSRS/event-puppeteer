@@ -24,7 +24,7 @@ import { heartbeatHandler, postLogHandler, postTelemetryHandler, pullPendingComm
 import { PostLogBody, DeviceTelemetrySchema, DeviceLogSchema, HeartbeatSchema } from './types/telemetry.ts';
 import { CreateCommandBody, CommandSchema } from './types/command.ts';
 import { createTagHandler, listTagsHandler, createLinkLabelHandler, listLinkLabelsHandler } from './handlers/system.ts';
-import { createEventHandler, listEventsHandler, getEventHandler, deleteEventHandler } from './handlers/events.ts';
+import { createEventHandler, listEventsHandler, listMyEventsHandler, getEventHandler, deleteEventHandler } from './handlers/events.ts';
 import { voteHandler, getVoteStatusHandler } from './handlers/votes.ts';
 import { eventFeedHandler } from './handlers/feed.ts';
 import { ReportSchema, CreateReportBody, AuditEntrySchema } from './types/moderation.ts';
@@ -84,8 +84,9 @@ export function createServer(io: AppIO, { adapter, appUrl = 'http://localhost:30
     // Not .decorate(): Elysia deep-merges decorators into every group, and walking the
     // Drizzle/better-auth instances inside io never terminates (heap OOM at startup)
     .derive({ as: 'global' }, () => ({ io }))
-    .onError(({ code, error, set }) => {
-      const message = error instanceof Error ? error.message : (error as any).message;
+    .onError(({ error, set }) => {
+      if (!(error instanceof Error)) return;
+      const message = error.message;
       if (message === 'UNAUTHORIZED') {
         set.status = 401;
         return { error: 'Unauthorized' };
@@ -125,6 +126,14 @@ export function createServer(io: AppIO, { adapter, appUrl = 'http://localhost:30
       if (message === 'BAD_REQUEST') {
         set.status = 400;
         return { error: 'Bad Request' };
+      }
+      if (message === 'TAG_EXISTS') {
+        set.status = 409;
+        return { error: 'Tag already exists' };
+      }
+      if (message === 'LINK_LABEL_EXISTS') {
+        set.status = 409;
+        return { error: 'Link label already exists' };
       }
     })
     .get(
@@ -256,7 +265,12 @@ export function createServer(io: AppIO, { adapter, appUrl = 'http://localhost:30
         .post('/', async ({ request, body, io }) => createTagHandler(request, body, io), {
           body: CreateTagBody,
           response: TagSchema,
-          detail: { tags: ['Tags'], summary: 'Create a Tag', security: asUser }
+          detail: {
+            tags: ['Tags'],
+            summary: 'Create a Tag',
+            description: 'Any logged-in User may create a free-form Tag (isSystemDefined: false); only a Superadmin may create a system-defined one (403 otherwise). The name is trimmed; 400 when blank, 409 when a Tag with the same name exists (case-insensitive).',
+            security: asUser
+          }
         })
         .get('/', async ({ io }) => listTagsHandler(io), {
           response: t.Array(TagSchema),
@@ -279,7 +293,12 @@ export function createServer(io: AppIO, { adapter, appUrl = 'http://localhost:30
         .post('/', async ({ request, body, io }) => createLinkLabelHandler(request, body, io), {
           body: CreateLinkLabelBody,
           response: LinkLabelSchema,
-          detail: { tags: ['Tags'], summary: 'Create a Link Label', security: asUser }
+          detail: {
+            tags: ['Tags'],
+            summary: 'Create a Link Label',
+            description: 'Superadmin only. The name is trimmed; 400 when blank, 409 when a Link Label with the same name exists (case-insensitive).',
+            security: asUser
+          }
         })
         .get('/', async ({ io }) => listLinkLabelsHandler(io), {
           response: t.Array(LinkLabelSchema),
@@ -499,7 +518,12 @@ export function createServer(io: AppIO, { adapter, appUrl = 'http://localhost:30
               {
                 params: t.Object({ id: t.String(), userId: t.String() }),
                 response: t.Object({ success: t.Literal(true) }),
-                detail: { tags: ['Users'], summary: 'Remove a User from an Organization', security: asUser }
+                detail: {
+                  tags: ['Users'],
+                  summary: 'Remove a User from an Organization',
+                  description: 'Admin of the Organization, or Superadmin. Deactivates the User: their sessions and credentials are revoked (existing tokens answer 401, login fails), their Events are soft-deleted, they disappear from user listings, and a remove_user entry is added to the Audit Trail. 400 when removing yourself, 404 for an unknown or already removed User.',
+                  security: asUser
+                }
               }
             )
         )
@@ -606,6 +630,18 @@ export function createServer(io: AppIO, { adapter, appUrl = 'http://localhost:30
               params: t.Object({ id: t.String() }),
               response: t.Array(EventSchema),
               detail: { tags: ['Events'], summary: 'List Events', security: asUser }
+            })
+            .get('/mine', async ({ request, params: { id }, io }) => {
+              return await listMyEventsHandler(request, id, io);
+            }, {
+              params: t.Object({ id: t.String() }),
+              response: t.Array(EventSchema),
+              detail: {
+                tags: ['Events'],
+                summary: 'List my Events',
+                description: 'The logged-in User\'s own Events in the Organization, newest first, including hidden and expired ones and free-form Tags; deleted Events are left out. 401 without a session, 403 for a User of another Organization (a Superadmin may use any Organization).',
+                security: asUser
+              }
             })
             .get('/:eventId', async ({ request, params: { id, eventId }, io }) => {
               return await getEventHandler(request, id, eventId, io);

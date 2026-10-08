@@ -15,20 +15,37 @@ export interface OrganizationRepository {
   update(id: string, updates: Partial<Omit<Organization, 'id'>>): Promise<Organization | null>;
 }
 
+/**
+ * Users. A removed User keeps their row (the audit trail and past Events, Votes and
+ * Reports reference it) but is treated as absent by every lookup except `getByEmail`.
+ */
 export interface UserRepository {
   create(user: User): Promise<User>;
+  /** @returns null for an unknown or removed User. */
   getById(id: string): Promise<User | null>;
+  /** Includes removed Users: their email stays taken. */
   getByEmail(email: string): Promise<User | null>;
+  /** Removed Users are left out. */
   listByOrganization(orgId: string): Promise<User[]>;
   update(id: string, updates: UserUpdate): Promise<User | null>;
+  /** Removed Users are left out. */
   searchByName(orgId: string, query: string): Promise<User[]>;
-  delete(id: string): Promise<boolean>;
+  /**
+   * Marks a User as removed from their Organization (deactivation, not deletion).
+   * @returns false when there is no such User or they were already removed.
+   */
+  markRemoved(id: string, removedAt: Date): Promise<boolean>;
 }
 
 export interface TagRepository {
   create(tag: Tag): Promise<Tag>;
   getAll(): Promise<Tag[]>;
   getById(id: string): Promise<Tag | null>;
+  /**
+   * Finds the Tag whose name matches, ignoring case and surrounding whitespace.
+   * @returns null when no Tag has that name.
+   */
+  findByName(name: string): Promise<Tag | null>;
   update(id: string, updates: Partial<Tag>): Promise<Tag | null>;
 }
 
@@ -36,13 +53,28 @@ export interface LinkLabelRepository {
   create(label: LinkLabel): Promise<LinkLabel>;
   getAll(): Promise<LinkLabel[]>;
   getById(id: string): Promise<LinkLabel | null>;
+  /**
+   * Finds the Link Label whose name matches, ignoring case and surrounding whitespace.
+   * @returns null when no Link Label has that name.
+   */
+  findByName(name: string): Promise<LinkLabel | null>;
 }
 
 export interface EventRepository {
   create(event: Event): Promise<Event>;
   getById(id: string): Promise<Event | null>;
   listByOrganization(orgId: string): Promise<Event[]>;
+  /**
+   * Lists every Event a User created in an Organization, whatever its state
+   * (hidden, expired, deleted, free-form tags included). Newest first.
+   */
+  listByCreator(orgId: string, creatorId: string): Promise<Event[]>;
   softDelete(id: string): Promise<Event | null>;
+  /**
+   * Soft-deletes every not yet deleted Event created by a User, in any Organization.
+   * @returns how many Events were deleted.
+   */
+  softDeleteByCreator(creatorId: string): Promise<number>;
   update(id: string, updates: Partial<Event>): Promise<Event | null>;
 }
 
@@ -118,6 +150,11 @@ export interface AuthProvider {
   // false when the token is invalid or expired
   verifyEmail(token: string): Promise<boolean>;
   markEmailVerified(email: string): Promise<void>;
+  /**
+   * Ends every session of a User and deletes their credential accounts, so existing
+   * tokens stop working and they can no longer log in. The User row is kept.
+   */
+  revokeAccess(userId: string): Promise<void>;
 }
 
 export interface EmailMessage {

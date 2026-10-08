@@ -1,5 +1,6 @@
 import type { AuthProvider, AuthSession } from './index.ts';
 import type { NewUser } from '../types/user.ts';
+import type { createAuth } from '../auth.ts';
 
 // Better-auth errors carry status/body.code; anything else (DB, crypto, config) is unexpected.
 // Logged so the real cause shows up in the server logs instead of a generic 401/400.
@@ -12,7 +13,7 @@ function describe(e: any) {
 const isExpected = (e: any, ...codes: string[]) => codes.includes(e?.body?.code);
 
 export class BetterAuthProvider implements AuthProvider {
-  constructor(private authInstance: any) {}
+  constructor(private authInstance: ReturnType<typeof createAuth>) {}
 
   async signUp(password: string, user: NewUser): Promise<{ userId: string }> {
     try {
@@ -70,6 +71,16 @@ export class BetterAuthProvider implements AuthProvider {
   async markEmailVerified(email: string): Promise<void> {
     const context = await this.authInstance.$context;
     await context.internalAdapter.updateUserByEmail(email, { emailVerified: true });
+  }
+
+  /**
+   * Deletes the User's sessions (existing tokens stop working at once) and all their
+   * accounts, credentials included (they can no longer log in). Errors propagate.
+   */
+  async revokeAccess(userId: string): Promise<void> {
+    const context = await this.authInstance.$context;
+    await context.internalAdapter.deleteUserSessions(userId);
+    await context.internalAdapter.deleteAccounts(userId);
   }
 
   async getSessionUserId(request: Request): Promise<string | null> {

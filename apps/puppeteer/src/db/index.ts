@@ -1,10 +1,17 @@
 import { PGlite } from "@electric-sql/pglite";
-import { drizzle } from "drizzle-orm/pglite";
+import { drizzle, type PgliteDatabase } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
+import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import * as schema from "./schema.ts";
 
+/**
+ * A Drizzle Postgres database over this schema, whatever the driver:
+ * postgres-js in production, PGlite in tests.
+ */
+export type Database = PgDatabase<PgQueryResultHKT, typeof schema>;
+
 let globalClient: PGlite | null = null;
-let globalDb: ReturnType<typeof drizzle> | null = null;
+let globalDb: PgliteDatabase<typeof schema> | null = null;
 
 export async function createInMemoryDatabase() {
   if (globalDb) {

@@ -1,5 +1,6 @@
 import { pgTable, text, timestamp, boolean, integer, doublePrecision, jsonb, primaryKey, check } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+import type { DayEntry, EventTag, EventLink } from "../types/event.ts";
 
 export const organization = pgTable("organization", {
 	id: text("id").primaryKey(),
@@ -33,7 +34,9 @@ export const user = pgTable("user", {
 	normalizedName: text("normalizedName").notNull().default(""),
 	organizationId: text("organizationId").references(() => organization.id),
 	role: text("role").notNull().default('Member'),
-	isShadowBanned: boolean("isShadowBanned").notNull().default(false)
+	isShadowBanned: boolean("isShadowBanned").notNull().default(false),
+	/** Set when an Admin removes the User: the row stays so the audit trail and past references hold. */
+	removedAt: timestamp("removedAt")
 }, (t) => [
 	// Only a Superadmin has no Organization; every other role must have one
 	check("user_role_organization", sql`(${t.role} = 'Superadmin') = (${t.organizationId} IS NULL)`)
@@ -100,9 +103,9 @@ export const event = pgTable("event", {
 	isHidden: boolean("isHidden").notNull().default(false),
 	isDeleted: boolean("isDeleted").notNull().default(false),
 	createdAt: timestamp("createdAt").notNull(),
-	schedule: jsonb("schedule").notNull(),
-	tags: jsonb("tags").notNull(),
-	links: jsonb("links").notNull()
+	schedule: jsonb("schedule").$type<DayEntry[]>().notNull(),
+	tags: jsonb("tags").$type<EventTag[]>().notNull(),
+	links: jsonb("links").$type<EventLink[]>().notNull()
 });
 
 export const vote = pgTable("vote", {

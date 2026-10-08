@@ -1,6 +1,7 @@
 import type { AppIO } from '../io/index.ts';
 import type { RegisterInput, LoginInput, NewUser, User, ResendVerificationInput } from '../types/user.ts';
 import { normalizeName } from '../utils/normalize.ts';
+import { requireAuth } from './users.ts';
 
 export async function registerHandler(body: RegisterInput, orgId: string, io: AppIO) {
   const existing = await io.userRepo.getByEmail(body.email);
@@ -39,12 +40,10 @@ export async function loginHandler(body: LoginInput, io: AppIO) {
   return await io.auth.signIn(body.email, body.password);
 }
 
+/**
+ * Returns the logged-in User.
+ * @throws UNAUTHORIZED without a valid session, or when the User is unknown or removed.
+ */
 export async function meHandler(request: Request, io: AppIO) {
-  const userId = await io.auth.getSessionUserId(request);
-  if (!userId) throw new Error('UNAUTHORIZED');
-
-  const user = await io.userRepo.getById(userId);
-  if (!user) throw new Error('USER_NOT_FOUND');
-
-  return user;
+  return await requireAuth(request, io);
 }
