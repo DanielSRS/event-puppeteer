@@ -1,35 +1,40 @@
-/* components/forms/VerifyEmailNotice.tsx */
+/**
+ * Shown right after sign-up: the account only works after the emailed link is opened.
+ *
+ * @module
+ */
 
 import Link from "next/link";
 import { MdMarkEmailRead } from "react-icons/md";
+import { ErrorAlert, StatusMessage } from "@/components/ui/Feedback";
 
-type VerifyEmailNoticeProps = {
+export type VerifyEmailNoticeProps = {
+  /** Where the link was sent. */
   email: string;
   resending?: boolean;
-  /* TRUE AFTER A RESEND, SO THE PERSON KNOWS THE CLICK WORKED */
+  /** True after a resend, so the person knows the click worked. */
   resent?: boolean;
+  /** Why the last resend failed. */
+  error?: string;
   onResend: () => void;
 };
 
-/* SHOWN RIGHT AFTER SIGN-UP: THE ACCOUNT ONLY WORKS AFTER THE EMAIL LINK IS OPENED */
-export function VerifyEmailNotice({ email, resending = false, resent = false, onResend }: VerifyEmailNoticeProps) {
+/** Says where the confirmation went, offers to resend it and links to the login. */
+export function VerifyEmailNotice({ email, resending = false, resent = false, error = "", onResend }: VerifyEmailNoticeProps) {
   return (
-    <section className="card column gap-4 w-full max-w-md text-center items-center">
+    <section aria-labelledby="verify-title" className="card column gap-4 w-full max-w-md text-center items-center">
       <MdMarkEmailRead className="w-12 h-12 text-main" aria-hidden />
 
-      <h1 className="title">Confirme seu e-mail</h1>
+      <h1 id="verify-title" className="title">Confirme seu e-mail</h1>
 
       <p className="text-sm">
         Enviamos um link de confirmação para <strong>{email}</strong>. Abra o link para ativar sua conta e depois faça login.
       </p>
 
-      {resent && (
-        <p role="status" className="text-sm text-success">
-          Se o e-mail estiver cadastrado, um novo link foi enviado.
-        </p>
-      )}
+      {resent && <StatusMessage className="text-left">Se o e-mail estiver cadastrado, um novo link foi enviado.</StatusMessage>}
+      <ErrorAlert className="text-left">{error}</ErrorAlert>
 
-      <button type="button" onClick={onResend} disabled={resending} className="button clean w-full">
+      <button type="button" onClick={onResend} disabled={resending} className="button clean touch w-full">
         {resending ? "Enviando..." : "Reenviar e-mail"}
       </button>
 
@@ -38,4 +43,4 @@ export function VerifyEmailNotice({ email, resending = false, resent = false, on
       </Link>
     </section>
   );
-};
+}

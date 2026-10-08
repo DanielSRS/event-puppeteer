@@ -1,35 +1,44 @@
-/* components/forms/AuthForm.tsx */
+/**
+ * The login and sign-up form.
+ *
+ * @module
+ */
 
-import { SyntheticEvent, useState } from "react";
+"use client";
+
+import { useId, useState, type FormEvent } from "react";
 import Link from "next/link";
-import { MIN_PASSWORD_LENGTH } from "@/utils/validation/UserValidation";
+import { ErrorAlert, StatusMessage } from "@/components/ui/Feedback";
+import { FormatPersonName } from "@/utils/text";
+import { ValidateUser, type UserFormErrors } from "@/utils/validation/UserValidation";
 
+/** What the form hands over on submit (email trimmed, name formatted). */
 export type AuthFormData = {
-  name?: string;
+  /** Full name; empty on login. */
+  name: string;
   email: string;
   password: string;
 };
 
-type AuthFormProps = {
+export type AuthFormProps = {
   mode: "login" | "register";
+  /** While the request runs. */
   loading?: boolean;
+  /** Why the last attempt failed. */
   generalError?: string;
-  /* GOOD NEWS SHOWN ABOVE THE FIELDS, E.G. "E-MAIL CONFIRMADO" */
+  /** Good news above the fields, e.g. "E-mail confirmado". */
   notice?: string;
+  /** Path kept across the login ↔ sign-up links. */
   redirectPath?: string;
-  /* OFFERED NEXT TO THE ERROR WHEN THE ACCOUNT IS WAITING FOR EMAIL CONFIRMATION */
+  /** Offered when the account waits for email confirmation. */
   onResendVerification?: () => void;
   resending?: boolean;
+  /** Why resending the confirmation failed. */
+  resendError?: string;
   onSubmit: (data: AuthFormData) => Promise<void> | void;
 };
 
-type FormErrors = {
-  name?: string;
-  email?: string;
-  password?: string;
-};
-
-/* ONE FORM FOR THE TWO SCREENS: THE ONLY DIFFERENCE IS THE NAME FIELD */
+/** One form for the two screens: sign-up adds the name field. Each field shows its own error. */
 export function AuthForm({
   mode,
   loading = false,
@@ -38,117 +47,86 @@ export function AuthForm({
   redirectPath = "/",
   onResendVerification,
   resending = false,
+  resendError = "",
   onSubmit,
 }: AuthFormProps) {
   const isRegister = mode === "register";
+  const ids = { name: useId(), email: useId(), password: useId() };
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [errors, setErrors] = useState<FormErrors>({});
+  const [errors, setErrors] = useState<UserFormErrors>({});
 
-  function validate(): FormErrors {
-    const newErrors: FormErrors = {};
-
-    if (isRegister && name.trim().length < 3)
-      newErrors.name = "Informe seu nome completo";
-
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()))
-      newErrors.email = "E-mail inválido";
-
-    if (password.length < MIN_PASSWORD_LENGTH)
-      newErrors.password = `A senha precisa ter pelo menos ${MIN_PASSWORD_LENGTH} caracteres`;
-
-    return newErrors;
-  };
-
-  async function handleSubmit(event: SyntheticEvent) {
+  async function handleSubmit(event: FormEvent) {
     event.preventDefault();
+    const found = ValidateUser({ name, email, password }, { requireName: isRegister });
+    setErrors(found);
+    if (Object.keys(found).length > 0) return;
+    await onSubmit({ name: isRegister ? FormatPersonName(name) : "", email: email.trim(), password });
+  }
 
-    const newErrors = validate();
-    setErrors(newErrors);
+  const other = isRegister ? "/entrar" : "/cadastro";
+  const otherHref = redirectPath === "/" ? other : `${other}?redirect=${encodeURIComponent(redirectPath)}`;
 
-    if (Object.values(newErrors).some(Boolean))
-      return;
-
-    await onSubmit({ name, email, password });
-  };
+  const field = (
+    key: "name" | "email" | "password",
+    label: string,
+    input: { type: string; value: string; onChange: (value: string) => void; autoComplete: string; placeholder: string },
+  ) => (
+    <div className="column">
+      <label htmlFor={ids[key]}>{label}</label>
+      <input
+        id={ids[key]}
+        type={input.type}
+        value={input.value}
+        disabled={loading}
+        onChange={(event) => input.onChange(event.target.value)}
+        className={`input min-h-11 ${errors[key] ? "input-error" : ""}`}
+        placeholder={input.placeholder}
+        autoComplete={input.autoComplete}
+        aria-invalid={errors[key] !== undefined}
+        aria-describedby={errors[key] !== undefined ? `${ids[key]}-error` : undefined}
+      />
+      {errors[key] !== undefined && <span id={`${ids[key]}-error`} className="error-message">{errors[key]}</span>}
+    </div>
+  );
 
   return (
-    <form onSubmit={handleSubmit} className="card column gap-4 w-full max-w-md">
-      <h1 className="title text-center">
-        {isRegister ? "Criar conta" : "Entrar"}
-      </h1>
+    <form onSubmit={handleSubmit} noValidate className="card column gap-4 w-full max-w-md">
+      <h1 className="title text-center">{isRegister ? "Criar conta" : "Entrar"}</h1>
 
-      <p className="text-sm text-center opacity-70">
+      <p className="text-sm text-center text-foreground/80">
         {isRegister ? "Já tem conta?" : "Ainda não tem conta?"}{" "}
-        <Link
-          href={`${isRegister ? "/entrar" : "/cadastro"}${redirectPath !== "/" ? `?redirect=${encodeURIComponent(redirectPath)}` : ""}`}
-          className="text-main underline"
-        >
+        <Link href={otherHref} className="text-main underline">
           {isRegister ? "Entrar" : "Criar conta"}
         </Link>
       </p>
 
-      {notice && <p role="status" className="text-sm text-center text-success">{notice}</p>}
+      <StatusMessage>{notice}</StatusMessage>
 
-      {isRegister && (
-        <div className="column">
-          <label htmlFor="name">Nome</label>
-          <input
-            id="name"
-            type="text"
-            value={name}
-            disabled={loading}
-            onChange={(e) => setName(e.target.value)}
-            className={`input ${errors.name ? "input-error" : ""}`}
-            placeholder="Seu nome completo"
-          />
-          {errors.name && <span className="error-message">{errors.name}</span>}
-        </div>
-      )}
+      {isRegister && field("name", "Nome completo", { type: "text", value: name, onChange: setName, autoComplete: "name", placeholder: "Maria Souza" })}
+      {field("email", "E-mail", { type: "email", value: email, onChange: setEmail, autoComplete: "email", placeholder: "voce@email.com" })}
+      {field("password", "Senha", {
+        type: "password",
+        value: password,
+        onChange: setPassword,
+        autoComplete: isRegister ? "new-password" : "current-password",
+        placeholder: "********",
+      })}
 
-      <div className="column">
-        <label htmlFor="email">E-mail</label>
-        <input
-          id="email"
-          type="email"
-          value={email}
-          disabled={loading}
-          onChange={(e) => setEmail(e.target.value)}
-          className={`input ${errors.email ? "input-error" : ""}`}
-          placeholder="voce@email.com"
-          autoComplete="email"
-        />
-        {errors.email && <span className="error-message">{errors.email}</span>}
-      </div>
+      <ErrorAlert>{generalError}</ErrorAlert>
+      <ErrorAlert>{resendError}</ErrorAlert>
 
-      <div className="column">
-        <label htmlFor="password">Senha</label>
-        <input
-          id="password"
-          type="password"
-          value={password}
-          disabled={loading}
-          onChange={(e) => setPassword(e.target.value)}
-          className={`input ${errors.password ? "input-error" : ""}`}
-          placeholder="********"
-          autoComplete={isRegister ? "new-password" : "current-password"}
-        />
-        {errors.password && <span className="error-message">{errors.password}</span>}
-      </div>
-
-      {generalError && <p role="alert" className="error-message">{generalError}</p>}
-
-      {onResendVerification && (
-        <button type="button" onClick={onResendVerification} disabled={resending} className="button clean">
+      {onResendVerification !== undefined && (
+        <button type="button" onClick={onResendVerification} disabled={resending} className="button clean touch">
           {resending ? "Enviando..." : "Reenviar e-mail de confirmação"}
         </button>
       )}
 
-      <button type="submit" disabled={loading} className="button main">
+      <button type="submit" disabled={loading} className="button main touch">
         {loading ? "Aguarde..." : isRegister ? "Criar conta" : "Entrar"}
       </button>
     </form>
   );
-};
+}

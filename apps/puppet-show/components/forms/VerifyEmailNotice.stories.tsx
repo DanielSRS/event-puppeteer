@@ -33,3 +33,10 @@ export const Resending: Story = {
 export const Resent: Story = {
   args: { resent: true },
 };
+
+export const ResendFailed: Story = {
+  args: { error: 'Não foi possível reenviar o e-mail.' },
+  play: async ({ canvas }) => {
+    await expect(canvas.getByRole('alert')).toHaveTextContent('Não foi possível reenviar');
+  },
+};
