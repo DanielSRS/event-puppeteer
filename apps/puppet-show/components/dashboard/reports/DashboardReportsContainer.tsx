@@ -10,7 +10,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { api, ApiErrorMessage, type ApiError } from "@/lib/api/client";
+import { api, ApiErrorMessage } from "@/lib/api/client";
 import type { Event } from "@/lib/api/schemas";
 import { Err, Ok, type Result } from "@/lib/result";
 import { ErrorAlert, LoadingMessage, StatusMessage } from "@/components/ui/Feedback";
@@ -22,16 +22,6 @@ import { ReportList, type ReportedEvent, type ReportQueueItem } from "./ReportLi
 /** What the queue knows about an event loaded from the API. */
 function ToReportedEvent(event: Event): ReportedEvent {
   return { kind: "loaded", title: event.title, isHidden: event.isHidden, isDeleted: event.isDeleted };
-}
-
-/**
- * Why a reported event couldn't be loaded. The API answers 404 for deleted
- * events and for events whose author is shadow-banned, even to moderators.
- */
-function EventLoadError(error: ApiError): string {
-  if (error.kind === "http" && error.status === 404)
-    return "A API não devolve este evento: ele foi excluído ou o autor está em shadow ban. Não é possível mostrar o título nem alterar a visibilidade aqui.";
-  return `Não foi possível carregar este evento. ${ApiErrorMessage(error)}`;
 }
 
 /** Loads the reports of `orgId` and every reported event. */
@@ -48,7 +38,7 @@ async function LoadQueue(orgId: string): Promise<Result<ReportQueueItem[], strin
       ...group,
       event: event.ok
         ? ToReportedEvent(event.value)
-        : { kind: "error", message: EventLoadError(event.error) },
+        : { kind: "error", message: `Não foi possível carregar este evento. ${ApiErrorMessage(event.error)}` },
     };
   }));
 }
