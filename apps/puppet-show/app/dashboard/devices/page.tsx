@@ -1,19 +1,22 @@
-import React from 'react';
-import { DashboardDevicesContainer } from '@/components/dashboard/devices/DashboardDevicesContainer';
+/**
+ * Organization devices page (Admin+).
+ *
+ * @module
+ */
 
-export const metadata = {
-  title: 'Diretório de Dispositivos - Dashboard',
-};
+import type { Metadata } from "next";
+import { DashboardDevicesContainer } from "@/components/dashboard/devices/DashboardDevicesContainer";
 
-export default function DevicesPage() {
+export const metadata: Metadata = { title: "Dispositivos - Painel" };
+
+/** Heading and description; the client container does the rest. */
+export default function Page() {
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="title">Dispositivos Kiosk</h1>
-        <p className="mt-1 text-sm opacity-60">
-          Gerencie e aprove os displays Smart TV ou Raspberry Pi conectados à sua organização.
-        </p>
-      </div>
+    <div className="column gap-6">
+      <header>
+        <h1 className="title">Dispositivos</h1>
+        <p className="mt-1 text-sm text-foreground/70">Totens da organização: aprove novos dispositivos e acompanhe os ativos.</p>
+      </header>
 
       <DashboardDevicesContainer />
     </div>

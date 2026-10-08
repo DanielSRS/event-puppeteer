@@ -1,44 +1,41 @@
-import type { Meta, StoryObj } from '@storybook/nextjs-vite';
-import { expect, fn, userEvent } from 'storybook/test';
-import { DeviceTelemetry, type DeviceInfo } from './DeviceTelemetry';
+import type { Meta, StoryObj } from "@storybook/nextjs-vite";
+import { expect, fn, userEvent, waitFor, within } from "storybook/test";
+import { DeviceTelemetry, type DeviceDetails } from "./DeviceTelemetry";
 
-const NOW = '2026-10-07T12:00:00.000Z';
+const NOW = "2026-10-07T15:00:00.000Z";
 
-const ONLINE_DEVICE: DeviceInfo = {
-  id: 'dev-1',
-  name: 'Totem Principal',
-  location: 'Recepção',
-  isOnline: true,
-  lastHeartbeat: NOW,
+const DETAILS: DeviceDetails = {
+  device: {
+    id: "d2", identifier: "active-mac-03", name: "Totem Biblioteca", location: "Biblioteca Central",
+    status: "active", organizationId: "o1", connectedAt: NOW,
+  },
+  status: { isOnline: true, latestHeartbeat: { deviceId: "d2", timestamp: NOW, status: "ok" } },
   telemetry: {
-    cpuTemp: 48.5,
-    memoryUsage: 512 * 1024 * 1024,
-    diskTotal: 16 * 1024 * 1024 * 1024,
-    diskUsage: 6 * 1024 * 1024 * 1024,
-    uptime: 93600,
-    osVersion: 'Raspberry Pi OS 12',
-    kernelVersion: '6.6.31-v8+',
-    puppetVersion: '0.4.0',
-    puppetMemoryUsage: 64 * 1024 * 1024,
-    networkInfo: '10.0.0.42',
+    cpuTemp: 51.5, memoryUsage: 512 * 1024 * 1024, diskTotal: 32 * 1024 ** 3, diskUsage: 8 * 1024 ** 3, uptime: 7200,
+    osVersion: "Debian 13", kernelVersion: "6.12", puppetVersion: "1.0.0", puppetCpuUsage: 12.5, puppetMemoryUsage: 64 * 1024 * 1024,
+    hdmiConnected: true, screenOn: true, screenResolution: "1920x1080", kiosKModeEnabled: true, restarts: 2,
+    startupTimes: ["2026-10-07T12:00:00Z"],
   },
   commands: [
-    { id: 'c1', deviceId: 'dev-1', type: 'restart', status: 'completed', issuedBy: 'u1', issuedAt: NOW },
-    { id: 'c2', deviceId: 'dev-1', type: 'request_telemetry', status: 'failed', issuedBy: 'u1', issuedAt: NOW },
+    { id: "c1", deviceId: "d2", type: "update", status: "completed", issuedBy: "u1", issuedAt: NOW, completedAt: NOW, payload: { url: "/u/puppet", sha256: "a".repeat(64), version: "1.1.0" } },
+    { id: "c2", deviceId: "d2", type: "restart", status: "failed", issuedBy: "u1", issuedAt: NOW },
   ],
   logs: [
-    { id: 'l1', deviceId: 'dev-1', level: 'info', message: 'Puppet iniciado', timestamp: NOW },
-    { id: 'l2', deviceId: 'dev-1', level: 'error', message: 'Falha ao baixar banner', timestamp: NOW },
+    { id: "l1", deviceId: "d2", level: "info", message: "Puppet iniciado", timestamp: NOW },
+    { id: "l2", deviceId: "d2", level: "error", message: "Falha ao baixar banner", timestamp: NOW },
   ],
 };
 
 const meta = {
-  title: 'Dashboard/Devices/DeviceTelemetry',
+  title: "Dashboard/Devices/DeviceTelemetry",
   component: DeviceTelemetry,
-  parameters: { layout: 'padded' },
+  parameters: { layout: "padded" },
   args: {
-    device: ONLINE_DEVICE,
-    onCommand: fn(),
+    details: DETAILS,
+    loadedAt: NOW,
+    refreshError: "",
+    sending: null,
+    onCommand: fn(async () => null),
     onRefresh: fn(),
   },
 } satisfies Meta<typeof DeviceTelemetry>;
@@ -46,36 +43,110 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+/** Telemetry in groups, command history, logs; telemetry requests go straight out. */
 export const Online: Story = {
+  args: { onCommand: fn(async () => null), onRefresh: fn() },
   play: async ({ canvas, args }) => {
-    await expect(canvas.getByText('Online')).toBeInTheDocument();
-    await expect(canvas.getByText('512.0 MB')).toBeInTheDocument();
-    await userEvent.click(canvas.getByRole('button', { name: /Pedir telemetria/ }));
-    await expect(args.onCommand).toHaveBeenCalledWith('request_telemetry');
-    await userEvent.click(canvas.getByRole('button', { name: 'Recarregar dados' }));
+    await expect(canvas.getByText("Online")).toBeInTheDocument();
+    await expect(canvas.getByText("active-mac-03")).toBeInTheDocument();
+    for (const group of ["Hardware", "Sistema", "Puppet", "Rede", "Tela", "Modo quiosque", "Estabilidade"])
+      await expect(canvas.getByRole("region", { name: group })).toBeInTheDocument();
+    await expect(canvas.getByText("51,5 °C")).toBeInTheDocument();
+    await expect(canvas.getByText("8,0 GB de 32,0 GB (25,0%)")).toBeInTheDocument();
+    await expect(canvas.getAllByText("Não informado").length).toBeGreaterThan(0);
+    await expect(canvas.getByRole("rowheader", { name: "Atualizar Puppet" })).toBeInTheDocument();
+    await expect(canvas.getByText("Versão 1.1.0 · /u/puppet")).toBeInTheDocument();
+    await expect(canvas.getByText("Falhou")).toBeInTheDocument();
+    await expect(canvas.getByText("Falha ao baixar banner")).toBeInTheDocument();
+
+    await userEvent.click(canvas.getByRole("button", { name: "Pedir telemetria" }));
+    await expect(args.onCommand).toHaveBeenCalledWith({ type: "request_telemetry" });
+    await userEvent.click(canvas.getByRole("button", { name: "Atualizar agora" }));
     await expect(args.onRefresh).toHaveBeenCalled();
   },
 };
 
-export const OfflineWithoutTelemetry: Story = {
+/** Restart asks for confirmation; cancelling sends nothing. */
+export const RestartConfirmed: Story = {
+  args: { onCommand: fn(async () => null) },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement.ownerDocument.body);
+    await userEvent.click(canvas.getByRole("button", { name: "Reiniciar" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Cancelar" }));
+    await expect(args.onCommand).not.toHaveBeenCalled();
+
+    await userEvent.click(canvas.getByRole("button", { name: "Reiniciar" }));
+    await expect(canvas.getByRole("alertdialog", { name: "Reiniciar o dispositivo?" })).toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Sim, reiniciar" }));
+    await expect(args.onCommand).toHaveBeenCalledWith({ type: "restart" });
+  },
+};
+
+/** The update form validates before sending, then closes on success. */
+export const UpdateWithValidation: Story = {
+  args: { onCommand: fn(async () => null) },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement.ownerDocument.body);
+    await userEvent.click(canvas.getByRole("button", { name: "Atualizar Puppet" }));
+    const dialog = within(canvas.getByRole("dialog", { name: "Atualizar o Puppet" }));
+    await userEvent.type(dialog.getByLabelText("Endereço do Puppet"), "puppet.bin");
+    await userEvent.type(dialog.getByLabelText("SHA-256"), "abc");
+    await userEvent.click(dialog.getByRole("button", { name: "Enviar atualização" }));
+    await expect(args.onCommand).not.toHaveBeenCalled();
+    await expect(dialog.getByText(/este tem 3/)).toBeInTheDocument();
+
+    await userEvent.clear(dialog.getByLabelText("Endereço do Puppet"));
+    await userEvent.type(dialog.getByLabelText("Endereço do Puppet"), "/updates/puppet");
+    await userEvent.clear(dialog.getByLabelText("SHA-256"));
+    await userEvent.type(dialog.getByLabelText("SHA-256"), "b".repeat(64));
+    await userEvent.type(dialog.getByLabelText("Versão (opcional)"), "1.2.0");
+    await userEvent.click(dialog.getByRole("button", { name: "Enviar atualização" }));
+    await expect(args.onCommand).toHaveBeenCalledWith({ type: "update", payload: { url: "/updates/puppet", sha256: "b".repeat(64), version: "1.2.0" } });
+    await waitFor(() => expect(canvas.queryByRole("dialog", { name: "Atualizar o Puppet" })).not.toBeInTheDocument());
+  },
+};
+
+/** A refused update stays open with the reason. */
+export const UpdateRefused: Story = {
+  args: { onCommand: fn(async () => "Não foi possível enviar “Atualizar Puppet”. Os dados enviados foram recusados pelo servidor.") },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement.ownerDocument.body);
+    await userEvent.click(canvas.getByRole("button", { name: "Atualizar Puppet" }));
+    const dialog = within(canvas.getByRole("dialog", { name: "Atualizar o Puppet" }));
+    await userEvent.type(dialog.getByLabelText("Endereço do Puppet"), "https://cdn.example.org/puppet");
+    await userEvent.type(dialog.getByLabelText("SHA-256"), "c".repeat(64));
+    await userEvent.click(dialog.getByRole("button", { name: "Enviar atualização" }));
+    await expect(await dialog.findByRole("alert")).toHaveTextContent("recusados pelo servidor");
+  },
+};
+
+/** Offline, never sent telemetry, with heartbeat errors and a failed refresh. */
+export const OfflineWithProblems: Story = {
   args: {
-    device: { id: 'dev-2', isOnline: false, telemetry: null, commands: [], logs: [] },
+    details: {
+      ...DETAILS,
+      status: { isOnline: false, latestHeartbeat: { deviceId: "d2", timestamp: NOW, status: "degraded", errors: ["HDMI desconectado"] } },
+      telemetry: null,
+      commands: [],
+      logs: [],
+    },
+    refreshError: "Falha ao atualizar; os dados abaixo são os últimos recebidos. Não foi possível falar com o servidor.",
   },
   play: async ({ canvas }) => {
-    await expect(canvas.getByText('Offline')).toBeInTheDocument();
+    await expect(canvas.getByText("Offline")).toBeInTheDocument();
     await expect(canvas.getByText(/ainda não enviou telemetria/)).toBeInTheDocument();
+    await expect(canvas.getByText("HDMI desconectado")).toBeInTheDocument();
+    await expect(canvas.getByText(/Falha ao atualizar/)).toBeInTheDocument();
+    await expect(canvas.getByText("Nenhum comando enviado.")).toBeInTheDocument();
+    await expect(canvas.getByText("Nenhum log recebido.")).toBeInTheDocument();
   },
 };
 
-export const WithHeartbeatErrors: Story = {
-  args: {
-    device: { ...ONLINE_DEVICE, heartbeatErrors: ['HDMI desconectado', 'Sem espaço em disco'] },
-  },
-};
-
-export const SendingCommand: Story = {
-  args: { sendingCommand: 'restart' },
+/** While a command is sent the command buttons are disabled. */
+export const Sending: Story = {
+  args: { sending: "restart" },
   play: async ({ canvas }) => {
-    await expect(canvas.getByRole('button', { name: /Reiniciar/ })).toBeDisabled();
+    await expect(canvas.getByRole("button", { name: "Enviando..." })).toBeDisabled();
+    await expect(canvas.getByRole("button", { name: "Desligar" })).toBeDisabled();
   },
 };
