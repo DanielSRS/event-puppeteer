@@ -1,60 +1,84 @@
-import React, { useEffect } from "react";
+/**
+ * Side panel for forms (create organization, report an event, approve a device…).
+ *
+ * Built on the native `<dialog>` opened with `showModal()`, so the browser
+ * traps focus inside it, makes the page behind inert, closes it on Escape and
+ * returns focus to whatever opened it. On phones it takes the whole width.
+ *
+ * Chrome may close a modal on Escape without firing `cancel` (when the page
+ * had no user activation yet); the `close` event then reopens the panel and
+ * asks the parent via `onClose`, so the parent stays in charge.
+ *
+ * @module
+ */
+
+"use client";
+
+import { useEffect, useId, useRef, type ReactNode } from "react";
 import { MdClose } from "react-icons/md";
 
 export type DrawerProps = {
+  /** Whether the panel is shown. */
   isOpen: boolean;
+  /** Called on Escape, the close button or a click on the backdrop. Ignore it to keep the panel open (e.g. while saving). */
   onClose: () => void;
+  /** Heading of the panel; also its accessible name. */
   title: string;
-  children: React.ReactNode;
+  children: ReactNode;
+  /** Maximum width on larger screens. */
   width?: "md" | "lg" | "xl";
 };
 
+const WIDTHS = {
+  md: "sm:max-w-md",
+  lg: "sm:max-w-2xl",
+  xl: "sm:max-w-4xl",
+} as const;
+
+/** A modal side panel with a title and a close button. */
 export function Drawer({ isOpen, onClose, title, children, width = "md" }: DrawerProps) {
+  const ref = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
+
   useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "";
-    }
-    return () => {
-      document.body.style.overflow = "";
-    };
+    const dialog = ref.current;
+    if (dialog === null) return;
+    if (isOpen && !dialog.open) dialog.showModal();
+    if (!isOpen && dialog.open) dialog.close();
   }, [isOpen]);
 
-  if (!isOpen) return null;
-
-  const widthClasses = {
-    md: "max-w-md",
-    lg: "max-w-2xl",
-    xl: "max-w-4xl",
-  };
-
   return (
-    <div className="fixed inset-0 z-[100] flex justify-end">
-      {/* Backdrop */}
-      <div 
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity"
-        onClick={onClose}
-        aria-hidden="true"
-      />
-      
-      {/* Drawer Panel */}
-      <div className={`relative w-full ${widthClasses[width]} bg-background shadow-2xl h-full flex flex-col animate-in slide-in-from-right-full duration-300`}>
-        <header className="between p-4 border-b border-muted">
-          <h2 className="title text-lg">{title}</h2>
-          <button 
-            onClick={onClose} 
-            className="p-2 rounded-full hover:bg-white/5 transition-colors"
-            title="Fechar"
-          >
-            <MdClose className="icon" />
-          </button>
-        </header>
-        
-        <div className="flex-1 overflow-y-auto">
-          {children}
+    <dialog
+      ref={ref}
+      aria-labelledby={titleId}
+      onCancel={(event) => { event.preventDefault(); onClose(); }}
+      onClose={() => {
+        if (!isOpen) return;
+        ref.current?.showModal();
+        onClose();
+      }}
+      onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}
+      className={`m-0 ml-auto h-dvh max-h-dvh w-full ${WIDTHS[width]} bg-background text-foreground p-0 shadow-2xl backdrop:bg-black/60 backdrop:backdrop-blur-sm`}
+    >
+      {isOpen && (
+        <div className="column h-full">
+          <header className="between gap-2 p-4 border-b border-muted">
+            <h2 id={titleId} className="title text-lg">{title}</h2>
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-2 rounded-full hover:bg-white/5 transition-colors"
+              aria-label="Fechar"
+            >
+              <MdClose aria-hidden className="icon" />
+            </button>
+          </header>
+
+          <div className="flex-1 overflow-y-auto p-4">
+            {children}
+          </div>
         </div>
-      </div>
-    </div>
+      )}
+    </dialog>
   );
 }
