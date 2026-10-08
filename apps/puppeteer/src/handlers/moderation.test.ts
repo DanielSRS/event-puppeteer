@@ -86,6 +86,30 @@ test('Moderation Handlers', async (t) => {
     await assert.rejects(getEventHandler(u2Req, orgId, event.id, io), /NOT_FOUND/);
   });
 
+  await t.test('moderators and admins still open events of shadow-banned authors', async () => {
+    const { io, orgId, u1Req, modReq, adminReq, user1 } = await setup();
+    const event = await createEventHandler(u1Req, orgId, {
+      title: 'Ev1', description: '...', location: '...', isHidden: false, schedule: [{ date: '2100-01-01' }], tags: [], links: []
+    }, io);
+    await io.userRepo.update(user1.id, { isShadowBanned: true });
+
+    assert.equal((await getEventHandler(modReq, orgId, event.id, io)).id, event.id);
+    assert.equal((await getEventHandler(adminReq, orgId, event.id, io)).id, event.id);
+  });
+
+  await t.test('a hidden event is only opened by its creator and moderators', async () => {
+    const { io, orgId, u1Req, u2Req, modReq } = await setup();
+    const event = await createEventHandler(u1Req, orgId, {
+      title: 'Ev1', description: '...', location: '...', isHidden: false, schedule: [{ date: '2100-01-01' }], tags: [], links: []
+    }, io);
+    await hideEventHandler(modReq, orgId, event.id, io);
+
+    await assert.rejects(getEventHandler(u2Req, orgId, event.id, io), /NOT_FOUND/);
+    await assert.rejects(getEventHandler(new Request('http://localhost/'), orgId, event.id, io), /NOT_FOUND/);
+    assert.equal((await getEventHandler(u1Req, orgId, event.id, io)).isHidden, true);
+    assert.equal((await getEventHandler(modReq, orgId, event.id, io)).isHidden, true);
+  });
+
   await t.test('manual hide/unhide', async () => {
     const { io, orgId, u1Req, modReq } = await setup();
     const event = await createEventHandler(u1Req, orgId, {

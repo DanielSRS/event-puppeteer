@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto';
 import type { AppIO } from '../io/index.ts';
 import type { CreateEventInput, Event } from '../types/event.ts';
 import { requireAuth } from './users.ts';
-import { organizationOf } from '../types/user.ts';
+import { organizationOf, type User } from '../types/user.ts';
+import { hasAtLeastRole } from '../utils/roles.ts';
 
 function isEventExpired(event: Event): boolean {
   if (event.schedule.length === 0) return true;
@@ -55,7 +56,7 @@ export async function createEventHandler(request: Request, orgId: string, body: 
 
 export async function listEventsHandler(request: Request, orgId: string, io: AppIO) {
   const allEvents = await io.eventRepo.listByOrganization(orgId);
-  const viewerId = await io.auth.getSessionUserId(request).catch(() => null);
+  const viewerId = await io.auth.getSessionUserId(request);
   
   const publicEvents = [];
   for (const e of allEvents) {
@@ -90,19 +91,39 @@ export async function listMyEventsHandler(request: Request, orgId: string, io: A
   return events.filter(e => !e.isDeleted);
 }
 
+/**
+ * Gets one Event of an Organization.
+ *
+ * Everyone sees an Event that is neither hidden nor authored by a shadow-banned User.
+ * Its creator always sees it (a shadow-banned author must not notice the ban), and so do
+ * Moderators+ of the Organization and Superadmins, who moderate hidden Events and
+ * shadow-banned authors from the report queue.
+ * @throws NOT_FOUND when the Event doesn't exist, belongs to another Organization, is
+ * deleted, or is not visible to the viewer.
+ */
 export async function getEventHandler(request: Request, orgId: string, eventId: string, io: AppIO) {
   const event = await io.eventRepo.getById(eventId);
   if (!event || event.organizationId !== orgId || event.isDeleted) {
     throw new Error('NOT_FOUND');
   }
 
+  const viewerId = await io.auth.getSessionUserId(request);
+  const viewer = viewerId ? await io.userRepo.getById(viewerId) : null;
+  if (viewer && (viewer.id === event.creatorId || canModerate(viewer, orgId))) {
+    return event;
+  }
+
   const creator = await io.userRepo.getById(event.creatorId);
-  const viewerId = await io.auth.getSessionUserId(request).catch(() => null);
-  if (creator?.isShadowBanned && creator.id !== viewerId) {
+  if (event.isHidden || !creator || creator.isShadowBanned) {
     throw new Error('NOT_FOUND');
   }
 
   return event;
+}
+
+/** Whether `user` moderates `orgId`: a Moderator+ of it, or a Superadmin. */
+function canModerate(user: User, orgId: string): boolean {
+  return user.role === 'Superadmin' || (organizationOf(user) === orgId && hasAtLeastRole(user.role, 'Moderator'));
 }
 
 export async function deleteEventHandler(request: Request, orgId: string, eventId: string, io: AppIO) {
