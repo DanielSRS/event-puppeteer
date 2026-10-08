@@ -1,89 +1,75 @@
-import React from 'react';
-import { MdLabel, MdArrowUpward, MdDelete, MdCheckCircle } from 'react-icons/md';
+/**
+ * Review of tags: free-form tags (created by people when publishing events)
+ * wait as suggestions; a moderator promotes the ones that should become public
+ * filters. The API can't reject or delete a tag, so there is no such button.
+ *
+ * @module
+ */
 
-export interface UserTag {
-  id: string;
-  name: string;
-  usageCount?: number;
-  status: 'pending' | 'promoted' | 'rejected';
+import { MdArrowUpward, MdCheckCircle, MdLabel } from "react-icons/md";
+import type { Tag } from "@/lib/api/schemas";
+
+export type TagManagerProps = {
+  /** Every tag of the system, free-form and official. */
+  tags: Tag[];
+  /** Tag being promoted right now. */
+  busyTagId: string | null;
+  /** Asks to promote a free-form tag (the container confirms first). */
+  onPromote: (tag: Tag) => void;
+};
+
+/** Sorts by name the Portuguese way. */
+function ByName(a: Tag, b: Tag): number {
+  return a.name.localeCompare(b.name, "pt-BR");
 }
 
-interface TagManagerProps {
-  tags: UserTag[];
-  onPromoteTag: (tagId: string) => void;
-  onRejectTag: (tagId: string) => void;
-}
-
-export function TagManager({ tags, onPromoteTag, onRejectTag }: TagManagerProps) {
-  const pendingTags = tags.filter(t => t.status === 'pending');
-  const promotedTags = tags.filter(t => t.status === 'promoted');
+/** Pending suggestions with a promote button, then the official tags. */
+export function TagManager({ tags, busyTagId, onPromote }: TagManagerProps) {
+  const pending = tags.filter((tag) => !tag.isSystemDefined).sort(ByName);
+  const official = tags.filter((tag) => tag.isSystemDefined).sort(ByName);
 
   return (
-    <div className="space-y-8">
-      {/* Pending Tags Section */}
-      <section>
-        <h3 className="text-lg font-medium text-foreground mb-4 flex items-center gap-2">
-          <MdLabel className="w-5 h-5" /> Tags Sugeridas ({pendingTags.length})
-        </h3>
-        {pendingTags.length === 0 ? (
-          <div className="p-6 bg-background border border-dashed rounded-lg text-center text-foreground/60 border-muted">
-            Nenhuma nova tag aguardando revisão.
-          </div>
+    <div className="column gap-8">
+      <section aria-labelledby="pending-tags-title" className="column gap-3">
+        <h2 id="pending-tags-title" className="subtitle row gap-2">
+          <MdLabel aria-hidden className="icon" /> Aguardando revisão ({pending.length})
+        </h2>
+        {pending.length === 0 ? (
+          <p className="rounded-lg border border-dashed border-muted p-6 text-center text-sm text-foreground/70">
+            Nenhuma tag sugerida aguardando revisão.
+          </p>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            {pendingTags.map(tag => (
-              <div key={tag.id} className="flex items-center justify-between p-4 bg-surface border rounded-lg shadow-sm border-muted">
-                <div>
-                  <span className="inline-flex items-center rounded-md bg-main/10 px-2.5 py-1 text-sm font-medium text-main ring-1 ring-inset ring-main/30">
-                    #{tag.name}
-                  </span>
-                  {tag.usageCount !== undefined && (
-                    <div className="mt-1 text-xs text-foreground/60">Usada {tag.usageCount} vezes</div>
-                  )}
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => onPromoteTag(tag.id)}
-                    className="p-1.5 text-success hover:bg-success/20 rounded"
-                    title="Promover"
-                  >
-                    <MdArrowUpward className="w-5 h-5" />
-                  </button>
-                  <button
-                    onClick={() => onRejectTag(tag.id)}
-                    className="p-1.5 text-danger hover:bg-danger/20 rounded"
-                    title="Rejeitar"
-                  >
-                    <MdDelete className="w-5 h-5" />
-                  </button>
-                </div>
-              </div>
+          <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {pending.map((tag) => (
+              <li key={tag.id} className="card flex items-center justify-between gap-3">
+                <span className="min-w-0 break-words font-medium text-main">#{tag.name}</span>
+                <button
+                  type="button"
+                  disabled={busyTagId === tag.id}
+                  onClick={() => onPromote(tag)}
+                  className="button clean min-h-10 shrink-0"
+                >
+                  <MdArrowUpward aria-hidden className="icon" /> Promover<span className="sr-only"> a tag {tag.name}</span>
+                </button>
+              </li>
             ))}
-          </div>
+          </ul>
         )}
       </section>
 
-      {/* Promoted Tags Section */}
-      <section>
-        <h3 className="text-lg font-medium text-foreground mb-4 flex items-center gap-2">
-          <MdCheckCircle className="w-5 h-5 text-success" /> Tags Promovidas ({promotedTags.length})
-        </h3>
-        <div className="flex flex-wrap gap-2 p-6 bg-background rounded-lg border border-muted">
-          {promotedTags.length === 0 ? (
-            <span className="text-foreground/60 text-sm">Nenhuma tag promovida ainda.</span>
-          ) : (
-            promotedTags.map(tag => (
-              <span key={tag.id} className="inline-flex items-center gap-1.5 rounded-full bg-success/10 px-3 py-1 text-sm font-medium text-success">
-                #{tag.name}
-                {tag.usageCount !== undefined && (
-                  <span className="bg-success/20 text-success rounded-full px-1.5 py-0.5 text-xs">
-                    {tag.usageCount}
-                  </span>
-                )}
-              </span>
-            ))
-          )}
-        </div>
+      <section aria-labelledby="official-tags-title" className="column gap-3">
+        <h2 id="official-tags-title" className="subtitle row gap-2">
+          <MdCheckCircle aria-hidden className="icon text-success" /> Tags públicas ({official.length})
+        </h2>
+        {official.length === 0 ? (
+          <p className="text-sm text-foreground/70">Nenhuma tag pública ainda.</p>
+        ) : (
+          <ul className="flex flex-wrap gap-2 rounded-lg border border-muted p-4">
+            {official.map((tag) => (
+              <li key={tag.id} className="rounded-full bg-success/10 px-3 py-1 text-sm font-medium text-success">#{tag.name}</li>
+            ))}
+          </ul>
+        )}
       </section>
     </div>
   );

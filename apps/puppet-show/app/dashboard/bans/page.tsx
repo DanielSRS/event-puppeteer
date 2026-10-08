@@ -1,19 +1,22 @@
-import React from 'react';
-import { DashboardBansContainer } from '@/components/dashboard/bans/DashboardBansContainer';
+/**
+ * Shadow-banned users page (Moderator+).
+ *
+ * @module
+ */
 
-export const metadata = {
-  title: 'Shadow Bans - Dashboard',
-};
+import type { Metadata } from "next";
+import { DashboardBansContainer } from "@/components/dashboard/bans/DashboardBansContainer";
 
-export default function BansPage() {
+export const metadata: Metadata = { title: "Usuários Banidos - Painel" };
+
+/** Heading and description; the client container does the rest. */
+export default function Page() {
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="title">Shadow Bans</h1>
-        <p className="mt-1 text-sm opacity-60">
-          Gerencie usuários que foram banidos automaticamente devido a alto volume de denúncias.
-        </p>
-      </div>
+    <div className="column gap-6">
+      <header>
+        <h1 className="title">Usuários Banidos</h1>
+        <p className="mt-1 text-sm text-foreground/70">Pessoas em shadow ban: os eventos que publicam não aparecem no mural até o banimento ser removido.</p>
+      </header>
 
       <DashboardBansContainer />
     </div>

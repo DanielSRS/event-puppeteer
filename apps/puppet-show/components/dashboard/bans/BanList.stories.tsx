@@ -1,14 +1,17 @@
-import type { Meta, StoryObj } from '@storybook/nextjs-vite';
-import { fn } from 'storybook/test';
-import { BanList } from './BanList';
+import type { Meta, StoryObj } from "@storybook/nextjs-vite";
+import { expect, fn, userEvent } from "storybook/test";
+import { BanList } from "./BanList";
 
 const meta = {
-  title: 'Dashboard/Bans/BanList',
+  title: "Dashboard/Bans/BanList",
   component: BanList,
-  parameters: {
-    layout: 'padded',
-  },
+  parameters: { layout: "padded" },
   args: {
+    users: [
+      { id: "u1", name: "João Silva", email: "joao.silva@example.com" },
+      { id: "u2", name: "Maria Souza", email: "maria.souza@example.com" },
+    ],
+    busyUserId: null,
     onLiftBan: fn(),
   },
 } satisfies Meta<typeof BanList>;
@@ -16,31 +19,28 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+/** Each person has a labelled button that asks to lift their ban. */
 export const Default: Story = {
-  args: {
-    bannedUsers: [
-      {
-        id: 'usr-1',
-        name: 'João Silva',
-        email: 'joao.silva@example.com',
-        bannedAt: '2023-11-20T10:00:00Z',
-        reason: 'Spam excessivo de eventos',
-        reportCount: 15,
-      },
-      {
-        id: 'usr-2',
-        name: 'Maria Souza',
-        email: 'maria.souza@example.com',
-        bannedAt: '2023-11-25T14:30:00Z',
-        reason: 'Conteúdo inapropriado repetido',
-        reportCount: 22,
-      },
-    ],
+  play: async ({ canvas, args }) => {
+    await expect(canvas.getByRole("heading", { name: "Em shadow ban (2)" })).toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Remover banimento de Maria Souza" }));
+    await expect(args.onLiftBan).toHaveBeenCalledWith({ id: "u2", name: "Maria Souza", email: "maria.souza@example.com" });
   },
 };
 
+/** While a ban is being lifted its button is disabled. */
+export const Lifting: Story = {
+  args: { busyUserId: "u1" },
+  play: async ({ canvas }) => {
+    await expect(canvas.getByRole("button", { name: "Remover banimento de João Silva" })).toBeDisabled();
+    await expect(canvas.getByRole("button", { name: "Remover banimento de Maria Souza" })).toBeEnabled();
+  },
+};
+
+/** Nobody banned. */
 export const Empty: Story = {
-  args: {
-    bannedUsers: [],
+  args: { users: [] },
+  play: async ({ canvas }) => {
+    await expect(canvas.getByRole("heading", { name: "Nenhum usuário banido" })).toBeInTheDocument();
   },
 };

@@ -1,57 +1,102 @@
-'use client';
+/**
+ * Suggested tags page (Moderator+): lists every tag and promotes a free-form
+ * one to a public tag after confirmation.
+ *
+ * Tags are system-wide, but the page lives in an organization context because
+ * promoting is a moderator action recorded in that organization's audit trail.
+ *
+ * @module
+ */
 
-import React, { useState, useEffect, useTransition } from 'react';
-import { TagManager, UserTag } from './TagManager';
-import { api } from '@/lib/api/client';
+"use client";
 
+import { useEffect, useState } from "react";
+import { api, ApiErrorMessage } from "@/lib/api/client";
+import type { Tag } from "@/lib/api/schemas";
+import { Err, Ok, type Result } from "@/lib/result";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { ErrorAlert, LoadingMessage, StatusMessage } from "@/components/ui/Feedback";
+import { SectionDenialFor, SelectOrgNotice, useDashboard } from "../DashboardContext";
+import { AccessNotice } from "../global/AccessNotice";
+import { TagManager } from "./TagManager";
+
+/** Loads every tag. */
+async function LoadTags(): Promise<Result<Tag[], string>> {
+  const tags = await api.tags.list();
+  if (!tags.ok) return Err(`Não foi possível carregar as tags. ${ApiErrorMessage(tags.error)}`);
+  return Ok(tags.value);
+}
+
+/** The page, guarded by the section rules. */
 export function DashboardTagsContainer() {
-  const [tags, setTags] = useState<UserTag[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [isPending, startTransition] = useTransition();
+  const { user, orgId } = useDashboard();
+  const denial = SectionDenialFor("tags", user, orgId);
+  if (denial !== null) return <AccessNotice denial={denial} />;
+  if (orgId === null) return <SelectOrgNotice />;
+  return <TagReview key={orgId} />;
+}
+
+/** The review list; remounted when the organization changes. */
+function TagReview() {
+  const [tags, setTags] = useState<Result<Tag[], string> | null>(null);
+  const [confirming, setConfirming] = useState<Tag | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [dialogError, setDialogError] = useState("");
+  const [status, setStatus] = useState("");
 
   useEffect(() => {
-    api.tags.list()
-      .then(data => {
-        setTags(data.map(t => ({
-          id: t.id,
-          name: t.name,
-          status: t.isSystemDefined ? 'promoted' : 'pending',
-        })));
-        setError('');
-      })
-      .catch(() => setError('Erro ao carregar tags.'))
-      .finally(() => setIsLoading(false));
+    let active = true;
+    LoadTags().then((result) => { if (active) setTags(result); });
+    return () => { active = false; };
   }, []);
 
-  const handlePromoteTag = (tagId: string) => {
-    startTransition(async () => {
-      try {
-        await api.tags.promote(tagId);
-        setTags(prev => prev.map(t => t.id === tagId ? { ...t, status: 'promoted' } : t));
-      } catch {
-        setError('Não foi possível promover a tag.');
-      }
-    });
+  const handleConfirm = async () => {
+    if (confirming === null) return;
+    setBusy(true);
+    setDialogError("");
+    const result = await api.tags.promote(confirming.id);
+    setBusy(false);
+
+    if (!result.ok) {
+      setDialogError(`Não foi possível promover a tag. ${ApiErrorMessage(result.error)}`);
+      return;
+    }
+
+    const promoted = result.value;
+    setTags((current) => current !== null && current.ok
+      ? Ok(current.value.map((tag) => tag.id === promoted.id ? promoted : tag))
+      : current);
+    setStatus(`A tag “${promoted.name}” agora é pública e pode ser usada como filtro no mural.`);
+    setConfirming(null);
   };
 
-  // The API has no reject endpoint yet: the tag only leaves this view and stays free-form
-  const handleRejectTag = (tagId: string) => {
-    setTags(prev => prev.filter(t => t.id !== tagId));
-  };
-
-  if (isLoading) {
-    return <div className="p-8 text-center text-foreground/60 animate-pulse">Carregando tags...</div>;
-  }
+  if (tags === null) return <LoadingMessage>Carregando tags...</LoadingMessage>;
+  if (!tags.ok) return <ErrorAlert>{tags.error}</ErrorAlert>;
 
   return (
-    <div className={isPending ? "opacity-50" : ""}>
-      {error && <p className="mb-4 text-sm text-danger">{error}</p>}
-      <TagManager 
-        tags={tags}
-        onPromoteTag={handlePromoteTag}
-        onRejectTag={handleRejectTag}
+    <div className="column gap-4">
+      <StatusMessage>{status}</StatusMessage>
+      <TagManager
+        tags={tags.value}
+        busyTagId={busy && confirming !== null ? confirming.id : null}
+        onPromote={(tag) => { setDialogError(""); setStatus(""); setConfirming(tag); }}
       />
+      <ConfirmDialog
+        isOpen={confirming !== null}
+        title="Promover esta tag?"
+        confirmLabel="Sim, promover"
+        busy={busy}
+        error={dialogError}
+        onConfirm={handleConfirm}
+        onCancel={() => setConfirming(null)}
+      >
+        {confirming !== null && (
+          <p>
+            “{confirming.name}” passará a ser uma tag pública, visível como filtro no mural de todas as organizações.
+            Não há como desfazer pelo painel.
+          </p>
+        )}
+      </ConfirmDialog>
     </div>
   );
 }

@@ -1,60 +1,96 @@
-'use client';
+/**
+ * Shadow-banned users page (Moderator+): lists the banned people of the
+ * organization and lifts a ban after confirmation.
+ *
+ * @module
+ */
 
-import React, { useState, useEffect, useTransition } from 'react';
-import { BanList, BannedUser } from './BanList';
-import { api } from '@/lib/api/client';
-import { useDashboard, SelectOrgNotice } from '../DashboardContext';
+"use client";
 
+import { useEffect, useState } from "react";
+import { api, ApiErrorMessage } from "@/lib/api/client";
+import { Err, Ok, type Result } from "@/lib/result";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { ErrorAlert, LoadingMessage, StatusMessage } from "@/components/ui/Feedback";
+import { SectionDenialFor, SelectOrgNotice, useDashboard } from "../DashboardContext";
+import { AccessNotice } from "../global/AccessNotice";
+import { BanList, type BannedUser } from "./BanList";
+
+/** Loads the banned people of `orgId`. */
+async function LoadBans(orgId: string): Promise<Result<BannedUser[], string>> {
+  const users = await api.moderation.listShadowBans(orgId);
+  if (!users.ok) return Err(`Não foi possível carregar os usuários banidos. ${ApiErrorMessage(users.error)}`);
+  return Ok(users.value.map((user) => ({ id: user.id, name: `${user.firstName} ${user.lastName}`, email: user.email })));
+}
+
+/** The page, guarded by the section rules. */
 export function DashboardBansContainer() {
-  const { orgId } = useDashboard();
-  const [bannedUsers, setBannedUsers] = useState<BannedUser[]>([]);
-  const [loadedOrgId, setLoadedOrgId] = useState<string | null>(null);
-  const [error, setError] = useState('');
-  const [isPending, startTransition] = useTransition();
+  const { user, orgId } = useDashboard();
+  const denial = SectionDenialFor("bans", user, orgId);
+  if (denial !== null) return <AccessNotice denial={denial} />;
+  if (orgId === null) return <SelectOrgNotice />;
+  return <Bans key={orgId} orgId={orgId} />;
+}
+
+/** The bans of one organization; remounted when the organization changes. */
+function Bans({ orgId }: { orgId: string }) {
+  const [bans, setBans] = useState<Result<BannedUser[], string> | null>(null);
+  const [confirming, setConfirming] = useState<BannedUser | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [dialogError, setDialogError] = useState("");
+  const [status, setStatus] = useState("");
 
   useEffect(() => {
-    if (!orgId) return;
-    api.moderation.listShadowBans(orgId)
-      .then(users => {
-        setBannedUsers(users.map(u => ({
-          id: u.id,
-          name: `${u.firstName} ${u.lastName}`.trim(),
-          email: u.email,
-          reason: 'Volume de denúncias acima do limite',
-        })));
-        setError('');
-      })
-      .catch(() => setError('Erro ao carregar usuários banidos.'))
-      .finally(() => setLoadedOrgId(orgId));
+    let active = true;
+    LoadBans(orgId).then((result) => { if (active) setBans(result); });
+    return () => { active = false; };
   }, [orgId]);
 
-  const handleLiftBan = (userId: string) => {
-    if (!orgId) return;
-    startTransition(async () => {
-      try {
-        await api.moderation.liftShadowBan(orgId, userId);
-        setBannedUsers(prev => prev.filter(u => u.id !== userId));
-      } catch {
-        setError('Não foi possível remover o banimento.');
-      }
-    });
+  const handleConfirm = async () => {
+    if (confirming === null) return;
+    setBusy(true);
+    setDialogError("");
+    const result = await api.moderation.liftShadowBan(orgId, confirming.id);
+    setBusy(false);
+
+    if (!result.ok) {
+      setDialogError(`Não foi possível remover o banimento. ${ApiErrorMessage(result.error)}`);
+      return;
+    }
+
+    const lifted = confirming;
+    setBans((current) => current !== null && current.ok ? Ok(current.value.filter((u) => u.id !== lifted.id)) : current);
+    setStatus(`Banimento de ${lifted.name} removido. Os eventos dessa pessoa voltam a aparecer no mural.`);
+    setConfirming(null);
   };
 
-  if (!orgId) return <SelectOrgNotice />;
-
-  const isLoading = loadedOrgId !== orgId;
-
-  if (isLoading) {
-    return <div className="p-8 text-center text-foreground/60 animate-pulse">Carregando usuários banidos...</div>;
-  }
+  if (bans === null) return <LoadingMessage>Carregando usuários banidos...</LoadingMessage>;
+  if (!bans.ok) return <ErrorAlert>{bans.error}</ErrorAlert>;
 
   return (
-    <div className={isPending ? "opacity-50" : ""}>
-      {error && <p className="mb-4 text-sm text-danger">{error}</p>}
-      <BanList 
-        bannedUsers={bannedUsers}
-        onLiftBan={handleLiftBan}
+    <div className="column gap-4">
+      <StatusMessage>{status}</StatusMessage>
+      <BanList
+        users={bans.value}
+        busyUserId={busy && confirming !== null ? confirming.id : null}
+        onLiftBan={(user) => { setDialogError(""); setStatus(""); setConfirming(user); }}
       />
+      <ConfirmDialog
+        isOpen={confirming !== null}
+        title="Remover o banimento?"
+        confirmLabel="Sim, remover banimento"
+        busy={busy}
+        error={dialogError}
+        onConfirm={handleConfirm}
+        onCancel={() => setConfirming(null)}
+      >
+        {confirming !== null && (
+          <p>
+            {confirming.name} deixará de estar em shadow ban e os eventos que publicar voltarão a aparecer no mural.
+            Eventos ocultados continuam ocultos até serem reexibidos na fila de denúncias.
+          </p>
+        )}
+      </ConfirmDialog>
     </div>
   );
 }
