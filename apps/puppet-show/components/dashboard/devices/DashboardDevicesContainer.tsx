@@ -84,9 +84,12 @@ function Devices({ orgId }: { orgId: string }) {
     const result = await api.devices.reject(rejecting.id);
     setBusy(false);
     if (!result.ok) { setActionError(`Não foi possível rejeitar o dispositivo. ${ApiErrorMessage(result.error)}`); return; }
+    const gone = rejecting.id;
+    setLists((current) => current !== null && current.ok
+      ? Ok({ ...current.value, pending: current.value.pending.filter((device) => device.id !== gone) })
+      : current);
     setStatus(`Dispositivo ${DeviceIdentifierText(rejecting)} rejeitado.`);
     setRejecting(null);
-    setReloadKey((key) => key + 1);
   };
 
   if (lists === null) return <LoadingMessage>Carregando dispositivos...</LoadingMessage>;
