@@ -10,7 +10,10 @@
     "lint": "eslint",
     "db:seed": "tsx db/seed.mts",
     "storybook": "storybook dev -p 6006",
-    "build-storybook": "storybook build"
+    "build-storybook": "storybook build",
+    "test:unit": "vitest run --project unit",
+    "test:stories": "vitest run --project storybook",
+    "test:e2e": "node e2e/run.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
