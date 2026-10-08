@@ -44,11 +44,11 @@ export const WithNotice: Story = {
   },
 };
 
-/** Phone: the sidebar becomes a top bar whose Menu button opens the navigation. */
+/** Phone: the sidebar becomes a top bar whose Seções button opens the navigation. */
 export const Phone: Story = {
   globals: { viewport: { value: "mobile1", isRotated: false } },
   play: async ({ canvas, canvasElement }) => {
-    const menu = canvas.getByRole("button", { name: "Menu" });
+    const menu = canvas.getByRole("button", { name: "Seções" });
     await expect(canvas.queryByRole("navigation", { name: "Seções do painel" })).not.toBeInTheDocument();
     await userEvent.click(menu);
     const dialog = within(canvasElement.ownerDocument.body).getByRole("dialog", { name: "Menu do painel" });

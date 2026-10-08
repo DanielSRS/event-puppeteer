@@ -3,7 +3,7 @@
  * being managed, notices from the shell and the page itself.
  *
  * From the `md` breakpoint up the navigation is a sidebar; on phones it
- * collapses into a top bar whose "Menu" button opens it in a panel.
+ * collapses into a top bar whose "Seções" button opens it in a panel.
  *
  * @module
  */
@@ -45,7 +45,7 @@ export function DashboardLayout({ notices, children, ...sidebar }: DashboardLayo
           aria-expanded={menuOpen}
           className="button clean min-h-10 shrink-0"
         >
-          <MdMenu aria-hidden className="icon" /> Menu
+          <MdMenu aria-hidden className="icon" /> Seções
         </button>
       </div>
 
