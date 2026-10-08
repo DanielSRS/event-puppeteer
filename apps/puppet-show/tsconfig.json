@@ -1,11 +1,16 @@
 {
   "compilerOptions": {
     "target": "ES2017",
-    "lib": ["dom", "dom.iterable", "esnext"],
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
     "noEmit": true,
+    "allowImportingTsExtensions": true,
     "esModuleInterop": true,
     "module": "esnext",
     "moduleResolution": "bundler",
@@ -19,7 +24,9 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"]
+      "@/*": [
+        "./*"
+      ]
     }
   },
   "include": [
@@ -28,7 +35,17 @@
     "**/*.tsx",
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts",
-    "**/*.mts"
+    "**/*.mts",
+    ".next-e2e-3120/types/**/*.ts",
+    ".next-e2e-3120/dev/types/**/*.ts",
+    ".next-e2e-3110/types/**/*.ts",
+    ".next-e2e-3110/dev/types/**/*.ts",
+    ".next-e2e-3130/types/**/*.ts",
+    ".next-e2e-3130/dev/types/**/*.ts"
   ],
-  "exclude": ["node_modules", "**/*.stories.tsx", "**/*.stories.ts"]
+  "exclude": [
+    "node_modules",
+    "**/*.stories.tsx",
+    "**/*.stories.ts"
+  ]
 }
