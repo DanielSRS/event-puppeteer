@@ -1,84 +1,107 @@
-'use client';
+/**
+ * Moderation queue page (Moderator+): loads the organization's reports,
+ * groups them by event and loads each reported event with
+ * `GET .../events/:id`, which also answers for hidden events, so the title and
+ * the visibility shown are always the real ones (even after an automatic hide).
+ *
+ * @module
+ */
 
-import React, { useState, useEffect, useTransition } from 'react';
-import { ReportList, Report } from './ReportList';
-import { api } from '@/lib/api/client';
-import type { Report as ApiReport } from '@/lib/api/types';
-import { useDashboard, SelectOrgNotice } from '../DashboardContext';
+"use client";
 
-const REASONS: Record<ApiReport['reason'], string> = {
-  spam: 'Spam',
-  offensive_content: 'Conteúdo ofensivo',
-  incorrect_information: 'Informação incorreta',
-  duplicate: 'Duplicado',
-};
+import { useEffect, useState } from "react";
+import { api, ApiErrorMessage, type ApiError } from "@/lib/api/client";
+import type { Event } from "@/lib/api/schemas";
+import { Err, Ok, type Result } from "@/lib/result";
+import { ErrorAlert, LoadingMessage, StatusMessage } from "@/components/ui/Feedback";
+import { SectionDenialFor, SelectOrgNotice, useDashboard } from "../DashboardContext";
+import { AccessNotice } from "../global/AccessNotice";
+import { GroupReports } from "./reportGroups";
+import { ReportList, type ReportedEvent, type ReportQueueItem } from "./ReportList";
 
+/** What the queue knows about an event loaded from the API. */
+function ToReportedEvent(event: Event): ReportedEvent {
+  return { kind: "loaded", title: event.title, isHidden: event.isHidden, isDeleted: event.isDeleted };
+}
+
+/**
+ * Why a reported event couldn't be loaded. The API answers 404 for deleted
+ * events and for events whose author is shadow-banned, even to moderators.
+ */
+function EventLoadError(error: ApiError): string {
+  if (error.kind === "http" && error.status === 404)
+    return "A API não devolve este evento: ele foi excluído ou o autor está em shadow ban. Não é possível mostrar o título nem alterar a visibilidade aqui.";
+  return `Não foi possível carregar este evento. ${ApiErrorMessage(error)}`;
+}
+
+/** Loads the reports of `orgId` and every reported event. */
+async function LoadQueue(orgId: string): Promise<Result<ReportQueueItem[], string>> {
+  const reports = await api.moderation.listReports(orgId);
+  if (!reports.ok) return Err(`Não foi possível carregar as denúncias. ${ApiErrorMessage(reports.error)}`);
+
+  const groups = GroupReports(reports.value);
+  const events = await Promise.all(groups.map((group) => api.events.get(orgId, group.eventId)));
+
+  return Ok(groups.map((group, index): ReportQueueItem => {
+    const event = events[index];
+    return {
+      ...group,
+      event: event.ok
+        ? ToReportedEvent(event.value)
+        : { kind: "error", message: EventLoadError(event.error) },
+    };
+  }));
+}
+
+/** The page, guarded by the section rules. */
 export function DashboardReportsContainer() {
-  const { orgId } = useDashboard();
-  const [reports, setReports] = useState<Report[]>([]);
-  const [loadedOrgId, setLoadedOrgId] = useState<string | null>(null);
-  const [error, setError] = useState('');
-  const [isPending, startTransition] = useTransition();
+  const { user, orgId } = useDashboard();
+  const denial = SectionDenialFor("reports", user, orgId);
+  if (denial !== null) return <AccessNotice denial={denial} />;
+  if (orgId === null) return <SelectOrgNotice />;
+  return <ReportQueue key={orgId} orgId={orgId} />;
+}
+
+/** The queue of one organization; remounted when the organization changes. */
+function ReportQueue({ orgId }: { orgId: string }) {
+  const [queue, setQueue] = useState<Result<ReportQueueItem[], string> | null>(null);
+  const [busyEventId, setBusyEventId] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null);
 
   useEffect(() => {
-    if (!orgId) return;
-    // Reports only carry the event id, so the event list fills in title and visibility
-    Promise.all([api.moderation.listReports(orgId), api.events.list(orgId)])
-      .then(([data, events]) => {
-        const byId = new Map(events.map(e => [e.id, e]));
-        setReports(data.map(r => ({
-          id: r.id,
-          eventId: r.eventId,
-          eventTitle: byId.get(r.eventId)?.title ?? 'Evento indisponível',
-          reason: REASONS[r.reason] ?? r.reason,
-          comment: r.comment,
-          reportedAt: r.createdAt,
-          status: 'pending',
-          eventIsHidden: byId.get(r.eventId)?.isHidden ?? false,
-        })));
-        setError('');
-      })
-      .catch(() => setError('Erro ao carregar denúncias.'))
-      .finally(() => setLoadedOrgId(orgId));
+    let active = true;
+    LoadQueue(orgId).then((result) => { if (active) setQueue(result); });
+    return () => { active = false; };
   }, [orgId]);
 
-  const handleToggleVisibility = (eventId: string, currentHiddenStatus: boolean) => {
-    if (!orgId) return;
-    startTransition(async () => {
-      try {
-        const event = currentHiddenStatus
-          ? await api.events.unhide(orgId, eventId)
-          : await api.events.hide(orgId, eventId);
-        setReports(prev =>
-          prev.map(r => r.eventId === eventId ? { ...r, eventIsHidden: event.isHidden } : r)
-        );
-      } catch {
-        setError('Não foi possível alterar a visibilidade do evento.');
-      }
+  const handleSetHidden = async (eventId: string, hidden: boolean) => {
+    setBusyEventId(eventId);
+    setFeedback(null);
+    const result = hidden ? await api.events.hide(orgId, eventId) : await api.events.unhide(orgId, eventId);
+    setBusyEventId(null);
+
+    if (!result.ok) {
+      setFeedback({ ok: false, text: `Não foi possível ${hidden ? "ocultar" : "reexibir"} o evento. ${ApiErrorMessage(result.error)}` });
+      return;
+    }
+
+    const updated = result.value;
+    setQueue((current) => current !== null && current.ok
+      ? Ok(current.value.map((item) => item.eventId === eventId ? { ...item, event: ToReportedEvent(updated) } : item))
+      : current);
+    setFeedback({
+      ok: true,
+      text: updated.isHidden ? `“${updated.title}” foi ocultado do mural.` : `“${updated.title}” voltou a aparecer no mural.`,
     });
   };
 
-  // The API has no "resolve" endpoint yet: dismissing only clears the report from this view
-  const handleResolveReport = (reportId: string) => {
-    setReports(prev => prev.filter(r => r.id !== reportId));
-  };
-
-  if (!orgId) return <SelectOrgNotice />;
-
-  const isLoading = loadedOrgId !== orgId;
-
-  if (isLoading) {
-    return <div className="p-8 text-center text-foreground/60 animate-pulse">Carregando denúncias...</div>;
-  }
+  if (queue === null) return <LoadingMessage>Carregando denúncias...</LoadingMessage>;
+  if (!queue.ok) return <ErrorAlert>{queue.error}</ErrorAlert>;
 
   return (
-    <div className={isPending ? "opacity-50" : ""}>
-      {error && <p className="mb-4 text-sm text-danger">{error}</p>}
-      <ReportList 
-        reports={reports}
-        onToggleVisibility={handleToggleVisibility}
-        onResolveReport={handleResolveReport}
-      />
+    <div className="column gap-4">
+      {feedback !== null && (feedback.ok ? <StatusMessage>{feedback.text}</StatusMessage> : <ErrorAlert>{feedback.text}</ErrorAlert>)}
+      <ReportList items={queue.value} busyEventId={busyEventId} onSetHidden={handleSetHidden} />
     </div>
   );
 }
