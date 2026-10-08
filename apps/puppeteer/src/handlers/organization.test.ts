@@ -128,4 +128,14 @@ test('Organization Handlers', async (t) => {
     await assert.rejects(updateOrganizationHandler(memberReq, own.id, { name: 'X' }, io), /FORBIDDEN/);
     await assert.rejects(updateOrganizationHandler(new Request('http://localhost/'), own.id, { name: 'X' }, io), /UNAUTHORIZED/);
   });
+
+  await t.test('a slug already in use is refused on create and on update', async () => {
+    const { io, sReq } = await setup();
+    const first = await createOrganizationHandler(sReq, { name: 'First', slug: 'taken' }, io);
+    const second = await createOrganizationHandler(sReq, { name: 'Second', slug: 'free' }, io);
+
+    await assert.rejects(createOrganizationHandler(sReq, { name: 'Copy', slug: 'taken' }, io), /ORGANIZATION_SLUG_EXISTS/);
+    await assert.rejects(updateOrganizationHandler(sReq, second.id, { slug: 'taken' }, io), /ORGANIZATION_SLUG_EXISTS/);
+    assert.equal((await updateOrganizationHandler(sReq, first.id, { slug: 'taken', name: 'Same slug kept' }, io))?.name, 'Same slug kept');
+  });
 });

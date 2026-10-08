@@ -127,6 +127,10 @@ export function createServer(io: AppIO, { adapter, appUrl = 'http://localhost:30
         set.status = 400;
         return { error: 'Bad Request' };
       }
+      if (message === 'ORGANIZATION_SLUG_EXISTS') {
+        set.status = 409;
+        return { error: 'Organization slug already exists' };
+      }
       if (message === 'TAG_EXISTS') {
         set.status = 409;
         return { error: 'Tag already exists' };
@@ -388,7 +392,7 @@ export function createServer(io: AppIO, { adapter, appUrl = 'http://localhost:30
           {
             body: CreateOrganizationBody,
             response: OrganizationSchema,
-            detail: { tags: ['Organizations'], summary: 'Create an Organization', description: 'Superadmin only.', security: asUser }
+            detail: { tags: ['Organizations'], summary: 'Create an Organization', description: 'Superadmin only. 409 when the slug is already used.', security: asUser }
           }
         )
         .get(
@@ -437,7 +441,7 @@ export function createServer(io: AppIO, { adapter, appUrl = 'http://localhost:30
               200: OrganizationSchema,
               404: t.Object({ error: t.String() })
             },
-            detail: { tags: ['Organizations'], summary: 'Update an Organization', description: 'Admin of the Organization, or Superadmin.', security: asUser }
+            detail: { tags: ['Organizations'], summary: 'Update an Organization', description: 'Admin of the Organization, or Superadmin. 409 when the new slug belongs to another Organization.', security: asUser }
           }
         )
         .get(
@@ -648,7 +652,7 @@ export function createServer(io: AppIO, { adapter, appUrl = 'http://localhost:30
             }, {
               params: t.Object({ id: t.String(), eventId: t.String() }),
               response: EventSchema,
-              detail: { tags: ['Events'], summary: 'Get an Event', security: asUser }
+              detail: { tags: ['Events'], summary: 'Get an Event', description: 'Hidden Events and Events by shadow-banned Users answer 404, except to their creator and to Moderators+ of the Organization or Superadmins.', security: asUser }
             })
             .delete('/:eventId', async ({ request, params: { id, eventId }, io }) => {
               await deleteEventHandler(request, id, eventId, io);

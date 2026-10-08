@@ -11,6 +11,8 @@ import type { Report, AuditEntry } from '../types/moderation.ts';
 export interface OrganizationRepository {
   create(org: Omit<Organization, 'id'>): Promise<Organization>;
   getById(id: string): Promise<Organization | null>;
+  /** The Organization using `slug` (slugs are unique), or null. */
+  findBySlug(slug: string): Promise<Organization | null>;
   getAll(): Promise<Organization[]>;
   update(id: string, updates: Partial<Omit<Organization, 'id'>>): Promise<Organization | null>;
 }
