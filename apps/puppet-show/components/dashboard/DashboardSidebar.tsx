@@ -1,97 +1,96 @@
-import React from "react";
+/**
+ * The dashboard navigation: the context switcher and the sections the person
+ * may open in the current context (see {@link AccessibleSections}).
+ *
+ * Shown as a sidebar on larger screens and inside the menu panel on phones.
+ *
+ * @module
+ */
+
+"use client";
+
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { 
-  MdEvent, 
-  MdReport, 
-  MdBlock, 
-  MdLabel, 
-  MdHistory, 
-  MdPeople, 
-  MdDevices, 
-  MdSettings,
-  MdPublic,
-  MdLink
+import type { ReactNode } from "react";
+import {
+  MdBlock, MdDevices, MdEvent, MdHistory, MdLabel, MdLink, MdPeople, MdPublic, MdReport, MdSettings,
+  MdDevicesOther, MdNewLabel,
 } from "react-icons/md";
-import { ContextSwitcher, type Organization } from "./ContextSwitcher";
+import type { UserRole } from "@/lib/api/schemas";
+import { ContextSwitcher, type ContextOrganization } from "./ContextSwitcher";
+import { AccessibleSections, SectionForPath, type DashboardSection } from "./DashboardSections";
 
-export type Role = "MEMBER" | "MODERATOR" | "ADMIN" | "SUPERADMIN";
-
-type NavItem = {
-  label: string;
-  href: string;
-  icon: React.ReactNode;
-  roles: Role[];
-  globalOnly?: boolean;
-  orgOnly?: boolean;
+/** Icon of each section. */
+const ICONS: Record<DashboardSection, ReactNode> = {
+  "events": <MdEvent aria-hidden className="icon" />,
+  "reports": <MdReport aria-hidden className="icon" />,
+  "bans": <MdBlock aria-hidden className="icon" />,
+  "tags": <MdNewLabel aria-hidden className="icon" />,
+  "audit": <MdHistory aria-hidden className="icon" />,
+  "users": <MdPeople aria-hidden className="icon" />,
+  "devices": <MdDevices aria-hidden className="icon" />,
+  "settings": <MdSettings aria-hidden className="icon" />,
+  "global-orgs": <MdPublic aria-hidden className="icon" />,
+  "global-devices": <MdDevicesOther aria-hidden className="icon" />,
+  "global-tags": <MdLabel aria-hidden className="icon" />,
+  "global-links": <MdLink aria-hidden className="icon" />,
 };
 
-const NAV_ITEMS: NavItem[] = [
-  // Member
-  { label: "Meus Eventos", href: "/dashboard/events", icon: <MdEvent />, roles: ["MEMBER", "MODERATOR", "ADMIN"], orgOnly: true },
-  
-  // Moderator
-  { label: "Denúncias", href: "/dashboard/reports", icon: <MdReport />, roles: ["MODERATOR", "ADMIN"], orgOnly: true },
-  { label: "Usuários Banidos", href: "/dashboard/bans", icon: <MdBlock />, roles: ["MODERATOR", "ADMIN"], orgOnly: true },
-  { label: "Tags Sugeridas", href: "/dashboard/tags", icon: <MdLabel />, roles: ["MODERATOR", "ADMIN"], orgOnly: true },
-  { label: "Auditoria", href: "/dashboard/audit", icon: <MdHistory />, roles: ["MODERATOR", "ADMIN"], orgOnly: true },
-  
-  // Admin
-  { label: "Usuários", href: "/dashboard/users", icon: <MdPeople />, roles: ["ADMIN"], orgOnly: true },
-  { label: "Dispositivos", href: "/dashboard/devices", icon: <MdDevices />, roles: ["ADMIN"], orgOnly: true },
-  { label: "Configurações", href: "/dashboard/settings", icon: <MdSettings />, roles: ["ADMIN"], orgOnly: true },
-
-  // Superadmin (Global)
-  { label: "Organizações", href: "/dashboard/global/orgs", icon: <MdPublic />, roles: ["SUPERADMIN"], globalOnly: true },
-  { label: "Dispositivos Órfãos", href: "/dashboard/global/devices", icon: <MdDevices />, roles: ["SUPERADMIN"], globalOnly: true },
-  { label: "Tags Globais", href: "/dashboard/global/tags", icon: <MdLabel />, roles: ["SUPERADMIN"], globalOnly: true },
-  { label: "Links Globais", href: "/dashboard/global/links", icon: <MdLink />, roles: ["SUPERADMIN"], globalOnly: true },
-];
-
+/** Props of {@link DashboardSidebar}. */
 export type DashboardSidebarProps = {
-  userRole: Role;
-  organizations: Organization[];
-  currentOrgId?: string;
-  onSelectOrg: (id: string | null) => void;
+  /** Role of the logged-in user. */
+  role: UserRole;
+  /** Organization being managed; `null` = global context (Superadmin). */
+  orgId: string | null;
+  /** Name of the current context. */
+  contextName: string;
+  /** Organizations the context switcher offers. */
+  organizations: ContextOrganization[];
+  /** Current route, to mark the open section. */
+  pathname: string;
+  onSelectOrg: (orgId: string | null) => void;
+  /** Called when a section link is followed (the phone menu closes itself). */
+  onNavigate?: () => void;
 };
 
-export function DashboardSidebar({ userRole, organizations, currentOrgId, onSelectOrg }: DashboardSidebarProps) {
-  const pathname = usePathname() || "";
-  const isGlobal = !currentOrgId;
-
-  const visibleItems = NAV_ITEMS.filter((item) => {
-    if (!item.roles.includes(userRole)) return false;
-    if (isGlobal && item.orgOnly) return false;
-    if (!isGlobal && item.globalOnly) return false;
-    return true;
-  });
+/** Context switcher plus section links. */
+export function DashboardSidebar({
+  role, orgId, contextName, organizations, pathname, onSelectOrg, onNavigate,
+}: DashboardSidebarProps) {
+  const sections = AccessibleSections({ role }, orgId);
+  const active = SectionForPath(pathname);
 
   return (
-    <aside className="w-64 border-r border-muted bg-background/50 column h-full shrink-0">
-      <div className="p-4 border-b border-muted">
-        <ContextSwitcher 
-          organizations={organizations} 
-          currentOrgId={currentOrgId} 
-          isSuperadmin={userRole === "SUPERADMIN"}
-          onSelectOrg={onSelectOrg}
-        />
-      </div>
+    <div className="column gap-4">
+      <ContextSwitcher
+        organizations={organizations}
+        currentOrgId={orgId}
+        contextName={contextName}
+        canSwitch={role === "Superadmin"}
+        onSelect={onSelectOrg}
+      />
 
-      <nav className="flex-1 overflow-y-auto p-4 column gap-1">
-        {visibleItems.map((item) => {
-          const active = pathname.startsWith(item.href);
-          return (
-            <Link 
-              key={item.href} 
-              href={item.href}
-              className={`row gap-3 p-2 rounded-md transition-colors ${active ? "bg-main text-background font-semibold" : "hover:bg-white/5 opacity-80 hover:opacity-100"}`}
-            >
-              <span className="icon text-lg">{item.icon}</span>
-              <span className="text-sm">{item.label}</span>
-            </Link>
-          );
-        })}
+      <nav aria-label="Seções do painel">
+        <ul className="column gap-1">
+          {sections.map((section) => {
+            const current = section.id === active;
+            return (
+              <li key={section.id}>
+                <Link
+                  href={section.href}
+                  onClick={onNavigate}
+                  aria-current={current ? "page" : undefined}
+                  className={`row min-h-10 gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
+                    current ? "bg-main font-semibold text-background" : "hover:bg-white/5"
+                  }`}
+                >
+                  {ICONS[section.id]}
+                  <span>{section.label}</span>
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
       </nav>
-    </aside>
+    </div>
   );
 }
