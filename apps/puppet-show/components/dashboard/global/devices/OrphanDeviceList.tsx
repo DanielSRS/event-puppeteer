@@ -1,67 +1,60 @@
-import React from 'react';
-import { MdMonitor, MdOutlineLink } from 'react-icons/md';
+/**
+ * Devices that connected without naming an organization (Superadmin queue):
+ * each can be assigned to an organization (approving it) or rejected.
+ *
+ * @module
+ */
 
-export interface OrphanDevice {
-  id: string;
-  identifier: string;
-  firstSeen: string;
-  ipAddress?: string;
-}
+import { MdClose, MdMonitor, MdOutlineLink } from "react-icons/md";
+import type { Device } from "@/lib/api/schemas";
+import { FormatInstant } from "../../audit/instant";
+import { DeviceIdentifierText } from "../../devices/telemetryFormat";
 
-interface OrphanDeviceListProps {
-  devices: OrphanDevice[];
-  onAssignToOrg: (deviceId: string) => void;
-}
+export type OrphanDeviceListProps = {
+  devices: Device[];
+  /** Device being handled right now. */
+  busyDeviceId: string | null;
+  onAssign: (device: Device) => void;
+  onReject: (device: Device) => void;
+};
 
-export function OrphanDeviceList({ devices, onAssignToOrg }: OrphanDeviceListProps) {
+/** The orphan devices, or an empty state. */
+export function OrphanDeviceList({ devices, busyDeviceId, onAssign, onReject }: OrphanDeviceListProps) {
   if (devices.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center p-8 text-center bg-background rounded-lg border border-dashed border-muted">
-        <MdMonitor className="w-12 h-12 text-foreground/50 mb-4" />
-        <h3 className="text-lg font-medium text-foreground">Nenhum dispositivo órfão</h3>
-        <p className="mt-1 text-sm text-foreground/60">
-          Todos os totens conectados já estão vinculados a alguma organização.
-        </p>
+      <div className="column items-center gap-2 rounded-lg border border-dashed border-muted p-8 text-center">
+        <MdMonitor aria-hidden className="w-12 h-12 text-foreground/50" />
+        <h2 className="text-lg font-medium">Nenhum dispositivo órfão</h2>
+        <p className="text-sm text-foreground/70">Todos os dispositivos conectados já pertencem a uma organização.</p>
       </div>
     );
   }
 
   return (
-    <div className="overflow-hidden bg-surface shadow-sm ring-1 ring-muted sm:rounded-lg">
-      <table className="min-w-full divide-y divide-muted">
-        <thead className="bg-background">
-          <tr>
-            <th className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-foreground">Identificador</th>
-            <th className="px-3 py-3.5 text-left text-sm font-semibold text-foreground">Endereço IP</th>
-            <th className="px-3 py-3.5 text-left text-sm font-semibold text-foreground">Primeira Conexão</th>
-            <th className="relative py-3.5 pl-3 pr-4 sm:pr-6"><span className="sr-only">Ações</span></th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-muted bg-surface">
-          {devices.map(device => (
-            <tr key={device.id}>
-              <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-mono font-medium text-foreground">
-                {device.identifier}
-              </td>
-              <td className="whitespace-nowrap px-3 py-4 text-sm text-foreground/60 font-mono">
-                {device.ipAddress ?? '-'}
-              </td>
-              <td className="whitespace-nowrap px-3 py-4 text-sm text-foreground/60">
-                {new Date(device.firstSeen).toLocaleString()}
-              </td>
-              <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
-                <button
-                  onClick={() => onAssignToOrg(device.id)}
-                  className="text-main hover:text-main inline-flex items-center gap-1"
-                >
-                  <MdOutlineLink className="w-4 h-4" />
-                  Atribuir a Org
+    <section aria-labelledby="orphans-title" className="column gap-3">
+      <h2 id="orphans-title" className="subtitle">Aguardando organização ({devices.length})</h2>
+      <ul className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+        {devices.map((device) => {
+          const identifier = DeviceIdentifierText(device);
+          const busy = busyDeviceId === device.id;
+          return (
+            <li key={device.id} className="card column gap-3">
+              <div>
+                <h3 className="font-mono text-sm font-medium break-all">{identifier}</h3>
+                <p className="text-xs text-foreground/70">Conectou em {FormatInstant(device.connectedAt)}</p>
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+                <button type="button" disabled={busy} onClick={() => onReject(device)} className="button clean min-h-10 text-danger">
+                  <MdClose aria-hidden className="icon" /> Rejeitar<span className="sr-only"> {identifier}</span>
                 </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+                <button type="button" disabled={busy} onClick={() => onAssign(device)} className="button main min-h-10">
+                  <MdOutlineLink aria-hidden className="icon" /> Atribuir a uma organização<span className="sr-only"> ({identifier})</span>
+                </button>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }
