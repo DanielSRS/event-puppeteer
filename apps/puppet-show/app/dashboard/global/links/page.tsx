@@ -1,19 +1,22 @@
-import React from 'react';
-import { GlobalLinksContainer } from '@/components/dashboard/global/links/GlobalLinksContainer';
+/**
+ * Link labels page (Superadmin, global context).
+ *
+ * @module
+ */
 
-export const metadata = {
-  title: 'Links Globais - Superadmin',
-};
+import type { Metadata } from "next";
+import { GlobalLinksContainer } from "@/components/dashboard/global/links/GlobalLinksContainer";
 
-export default function GlobalLinksPage() {
+export const metadata: Metadata = { title: "Rótulos de Links - Painel" };
+
+/** Heading and description; the client container does the rest. */
+export default function Page() {
   return (
-    <div className="space-y-6">
-      <div>
+    <div className="column gap-6">
+      <header>
         <h1 className="title">Rótulos de Links</h1>
-        <p className="mt-1 text-sm opacity-60">
-          Gerencie os rótulos de links externos que os usuários podem adicionar aos seus eventos.
-        </p>
-      </div>
+        <p className="mt-1 text-sm text-foreground/70">Nomes que os links dos eventos podem ter (por exemplo, “Inscrição”).</p>
+      </header>
 
       <GlobalLinksContainer />
     </div>
