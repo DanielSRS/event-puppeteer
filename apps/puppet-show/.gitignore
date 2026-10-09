@@ -47,3 +47,4 @@ storybook-static
 
 # end-to-end test stack writes the seeded ids here
 /e2e/.state.json
+/tsconfig.e2e-*.json

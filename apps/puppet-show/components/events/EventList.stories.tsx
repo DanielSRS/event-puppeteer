@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 import { expect, fn, userEvent, waitFor } from "storybook/test";
 import type { FeedCard } from "@/domain/feed";
-import { Err, Ok } from "@/lib/result";
+import { Err, Ok, type Result } from "@/lib/result";
 import { EventList } from "./EventList";
 
 const BASE: FeedCard = {
@@ -65,7 +65,7 @@ export const DeleteConfirmed: Story = {
 
 /** A failed delete keeps the dialog open with the reason. */
 export const DeleteFailed: Story = {
-  args: { onDelete: fn(async () => Err("Você não tem permissão para fazer isso.")) },
+  args: { onDelete: fn(async (): Promise<Result<void, string>> => Err("Você não tem permissão para fazer isso.")) },
   play: async ({ canvas, canvasElement }) => {
     await userEvent.click(canvas.getByRole("button", { name: "Excluir “Palestra de IA”" }));
     const doc = canvasElement.ownerDocument;

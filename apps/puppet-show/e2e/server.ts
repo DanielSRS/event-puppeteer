@@ -175,6 +175,9 @@ createHttpServer(async (req, res) => {
 }).listen(E2E.apiPort, () => {
   console.log(`[e2e] API on http://localhost:${E2E.apiPort} (org A ${orgA.id})`);
 
+  const tsconfig = `tsconfig.e2e-${E2E.webPort}.json`;
+  writeFileSync(join(here, "..", tsconfig), JSON.stringify({ extends: "./tsconfig.json" }, null, 2));
+
   const next = spawn("npx", ["next", "dev", "-p", String(E2E.webPort)], {
     cwd: join(here, ".."),
     stdio: "inherit",
@@ -184,6 +187,7 @@ createHttpServer(async (req, res) => {
       NEXT_PUBLIC_ORG_ID: orgA.id,
       NEXT_PUBLIC_SITE_URL: `http://localhost:${E2E.webPort}`,
       NEXT_DIST_DIR: `.next-e2e-${E2E.webPort}`,
+      NEXT_TSCONFIG_PATH: tsconfig,
     },
   });
 

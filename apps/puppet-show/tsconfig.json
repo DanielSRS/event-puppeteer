@@ -35,17 +35,10 @@
     "**/*.tsx",
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts",
-    "**/*.mts",
-    ".next-e2e-3120/types/**/*.ts",
-    ".next-e2e-3120/dev/types/**/*.ts",
-    ".next-e2e-3110/types/**/*.ts",
-    ".next-e2e-3110/dev/types/**/*.ts",
-    ".next-e2e-3130/types/**/*.ts",
-    ".next-e2e-3130/dev/types/**/*.ts"
+    "**/*.mts"
   ],
   "exclude": [
     "node_modules",
-    "**/*.stories.tsx",
-    "**/*.stories.ts"
+    ".next-e2e-*"
   ]
 }

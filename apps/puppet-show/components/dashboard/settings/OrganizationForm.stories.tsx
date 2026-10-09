@@ -27,8 +27,24 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+/** Args of the stories that edit an existing organization. */
+const EDIT = { mode: "edit", original: ORG, onUpdate: fn(), slugEditable: false, takenSlugs: [] } as const;
+
+/** The create callback of a story set up in create mode (the props are a union by `mode`). */
+function CreateSpy(args: Story["args"]) {
+  if (args === undefined || args.mode !== "create") throw new Error("story is not in create mode");
+  return args.onCreate;
+}
+
+/** The update callback of a story set up in edit mode. */
+function UpdateSpy(args: Story["args"]) {
+  if (args === undefined || args.mode !== "edit") throw new Error("story is not in edit mode");
+  return args.onUpdate;
+}
+
 /** Creating: the slug follows the name; every field reaches the API body. */
 export const Create: Story = {
+  args: { mode: "create", onCreate: fn() },
   play: async ({ canvas, args }) => {
     await userEvent.type(canvas.getByLabelText("Nome"), "Instituto Federal");
     await expect(canvas.getByLabelText("Identificador (slug)")).toHaveValue("instituto-federal");
@@ -41,7 +57,7 @@ export const Create: Story = {
     await userEvent.clear(canvas.getByLabelText("Limite de denúncias"));
     await userEvent.type(canvas.getByLabelText("Limite de denúncias"), "3");
     await userEvent.click(canvas.getByRole("button", { name: "Criar organização" }));
-    await expect(args.onCreate).toHaveBeenCalledWith({
+    await expect(CreateSpy(args)).toHaveBeenCalledWith({
       name: "Instituto Federal", slug: "instituto-federal", description: "Campus central", url: "https://if.edu.br",
       colorScheme: "#16a34a", location: "Salvador", latitude: -12.97, longitude: -38.5, shadowBanThreshold: 3,
     });
@@ -50,7 +66,7 @@ export const Create: Story = {
 
 /** Invalid values are pointed out on each field and nothing is sent. */
 export const ValidationErrors: Story = {
-  args: { onCreate: fn() },
+  args: { mode: "create", onCreate: fn() },
   play: async ({ canvas, args }) => {
     await userEvent.type(canvas.getByLabelText("Nome"), "Outra");
     await userEvent.type(canvas.getByLabelText("Endereço do logo (opcional)"), "logo.png");
@@ -58,7 +74,7 @@ export const ValidationErrors: Story = {
     await userEvent.clear(canvas.getByLabelText("Limite de denúncias"));
     await userEvent.click(canvas.getByRole("button", { name: "Criar organização" }));
 
-    await expect(args.onCreate).not.toHaveBeenCalled();
+    await expect(CreateSpy(args)).not.toHaveBeenCalled();
     await expect(canvas.getByLabelText("Identificador (slug)")).toHaveAccessibleDescription(/Já existe uma organização com esse identificador/);
     await expect(canvas.getByLabelText("Endereço do logo (opcional)")).toHaveAttribute("aria-invalid", "true");
     await expect(canvas.getByText("Latitude deve ser um número entre -90 e 90.")).toBeInTheDocument();
@@ -69,7 +85,7 @@ export const ValidationErrors: Story = {
 
 /** Admin editing their organization: no slug field; only changed fields are sent. */
 export const EditAsAdmin: Story = {
-  args: { mode: "edit", original: ORG, onUpdate: fn(), slugEditable: false, takenSlugs: [], onCancel: undefined },
+  args: { ...EDIT, onCancel: undefined },
   play: async ({ canvas, args }) => {
     await expect(canvas.queryByLabelText("Identificador (slug)")).not.toBeInTheDocument();
     await userEvent.click(canvas.getByRole("button", { name: "Salvar alterações" }));
@@ -78,24 +94,24 @@ export const EditAsAdmin: Story = {
     await userEvent.clear(canvas.getByLabelText("Limite de denúncias"));
     await userEvent.type(canvas.getByLabelText("Limite de denúncias"), "2");
     await userEvent.click(canvas.getByRole("button", { name: "Salvar alterações" }));
-    await expect(args.onUpdate).toHaveBeenCalledWith({ shadowBanThreshold: 2 });
+    await expect(UpdateSpy(args)).toHaveBeenCalledWith({ shadowBanThreshold: 2 });
   },
 };
 
 /** Emptying a field that had a value is explained (the API can't remove values). */
 export const CannotClearField: Story = {
-  args: { mode: "edit", original: ORG, onUpdate: fn(), slugEditable: false, takenSlugs: [] },
+  args: EDIT,
   play: async ({ canvas, args }) => {
     await userEvent.clear(canvas.getByLabelText("Descrição (opcional)"));
     await userEvent.click(canvas.getByRole("button", { name: "Salvar alterações" }));
-    await expect(args.onUpdate).not.toHaveBeenCalled();
+    await expect(UpdateSpy(args)).not.toHaveBeenCalled();
     await expect(canvas.getByText(/não permite apagar este campo/)).toBeInTheDocument();
   },
 };
 
 /** The API refused the save; the form stays as typed. */
 export const SaveFailed: Story = {
-  args: { error: "Não foi possível salvar. Já existe uma organização com esse identificador." },
+  args: { mode: "create", onCreate: fn(), error: "Não foi possível salvar. Já existe uma organização com esse identificador." },
   play: async ({ canvas }) => {
     await expect(canvas.getByRole("alert")).toHaveTextContent("Já existe uma organização com esse identificador.");
   },
@@ -103,7 +119,7 @@ export const SaveFailed: Story = {
 
 /** While saving the buttons are disabled. */
 export const Saving: Story = {
-  args: { saving: true },
+  args: { mode: "create", onCreate: fn(), saving: true },
   play: async ({ canvas }) => {
     await expect(canvas.getByRole("button", { name: "Salvando..." })).toBeDisabled();
     await expect(canvas.getByRole("button", { name: "Cancelar" })).toBeDisabled();

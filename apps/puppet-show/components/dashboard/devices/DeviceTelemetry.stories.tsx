@@ -108,7 +108,7 @@ export const UpdateWithValidation: Story = {
 
 /** A refused update stays open with the reason. */
 export const UpdateRefused: Story = {
-  args: { onCommand: fn(async () => "Não foi possível enviar “Atualizar Puppet”. Os dados enviados foram recusados pelo servidor.") },
+  args: { onCommand: fn(async (): Promise<string | null> => "Não foi possível enviar “Atualizar Puppet”. Os dados enviados foram recusados pelo servidor.") },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement.ownerDocument.body);
     await userEvent.click(canvas.getByRole("button", { name: "Atualizar Puppet" }));

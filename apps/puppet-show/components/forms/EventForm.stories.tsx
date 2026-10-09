@@ -1,8 +1,9 @@
 import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 import { expect, fireEvent, fn, userEvent, waitFor } from "storybook/test";
-import { Err, Ok } from "@/lib/result";
+import { Err, Ok, type Result } from "@/lib/result";
 import type { LinkLabel, Tag } from "@/lib/api/schemas";
 import { EventForm } from "./EventForm";
+import type { Coordinates } from "./EventFormBasics";
 
 /** Tags the API would list: two official ones and an unpromoted suggestion. */
 const TAGS: Tag[] = [
@@ -27,8 +28,8 @@ const meta = {
     busy: false,
     generalError: "",
     onSubmit: fn(),
-    onCreateTag: fn(async (name: string) => Ok({ id: `tag-${name}`, name, isSystemDefined: false })),
-    onLocate: fn(async () => Ok({ latitude: -12.2, longitude: -38.97 })),
+    onCreateTag: fn(async (name: string): Promise<Result<Tag, string>> => Ok({ id: `tag-${name}`, name, isSystemDefined: false })),
+    onLocate: fn(async (): Promise<Result<Coordinates, string>> => Ok({ latitude: -12.2, longitude: -38.97 })),
   },
   tags: ["autodocs"],
   decorators: [(Story) => <div className="mx-auto max-w-2xl"><Story /></div>],
@@ -95,7 +96,7 @@ export const LocateSuccess: Story = {
 /** A refused or failed position request is explained to the person. */
 export const LocateDenied: Story = {
   args: {
-    onLocate: fn(async () => Err("Permissão de localização negada. Autorize o acesso à localização nas configurações do navegador.")),
+    onLocate: fn(async (): Promise<Result<Coordinates, string>> => Err("Permissão de localização negada. Autorize o acesso à localização nas configurações do navegador.")),
   },
   play: async ({ canvas }) => {
     await userEvent.click(canvas.getByRole("button", { name: "Usar minha localização" }));
@@ -201,7 +202,7 @@ export const SubmitSummary: Story = {
 /** Creating a free-form tag can fail; the reason is shown under the field. */
 export const FreeFormTagError: Story = {
   args: {
-    onCreateTag: fn(async () => Err("Não foi possível criar a tag. Não foi possível falar com o servidor.")),
+    onCreateTag: fn<(name: string) => Promise<Result<Tag, string>>>(async () => Err("Não foi possível criar a tag. Não foi possível falar com o servidor.")),
   },
   play: async ({ canvas }) => {
     await FillBasics(canvas);
