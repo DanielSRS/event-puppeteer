@@ -37,7 +37,7 @@ npm run storybook      # Storybook em http://localhost:6006 (inclui o servidor M
 npm run test:unit      # funções puras (Vitest, Node)
 npm run test:stories   # cada story é um teste de componente + acessibilidade (axe), no Chromium
 npm run test:e2e       # fluxos completos contra a API real; veja e2e/README.md
-npx tsc --noEmit -p .  # typecheck (inclui stories e specs)
+npx tsc --noEmit -p . && npx tsc --noEmit -p e2e   # typecheck do app (com stories) e dos testes E2E
 npm run lint
 ```
 
