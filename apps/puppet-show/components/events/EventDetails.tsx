@@ -35,17 +35,14 @@ export type LoginPrompt = "curtir" | "denunciar";
 
 export type EventDetailsProps = {
   event: EventDetail;
-  /**
-   * The like button's state, or `null` when the event isn't in the public feed
-   * (hidden or already past): the API only counts votes there.
-   */
-  likes: ShownVote | null;
+  /** The like button's state: count and whether the viewer liked it. */
+  likes: ShownVote;
   likeBusy?: boolean;
   /** Moderator, Admin of the event's organization, or Superadmin. */
   canModerate: boolean;
   /** The viewer created the event. */
   isCreator: boolean;
-  /** The viewer reported this event already (learned from the server in this visit). */
+  /** The viewer already reported this event (from the API's report status). */
   reported: boolean;
   /** Set after an anonymous visitor tried an action that needs an account. */
   loginPrompt: LoginPrompt | null;
@@ -128,12 +125,8 @@ export function EventDetails({
         </header>
 
         <div className="flex flex-wrap items-center gap-2">
-          {likes === null ? (
-            <p className="text-sm text-foreground/80">Curtidas aparecem apenas enquanto o evento está no mural.</p>
-          ) : (
-            <LikeButton title={event.title} voted={likes.voted} count={likes.count} busy={likeBusy} onToggle={onToggleLike} />
-          )}
-          {likes !== null && <span className="sr-only" aria-live="polite">{LikesLabel(likes.count)}</span>}
+          <LikeButton title={event.title} voted={likes.voted} count={likes.count} busy={likeBusy} onToggle={onToggleLike} />
+          <span className="sr-only" aria-live="polite">{LikesLabel(likes.count)}</span>
 
           <button type="button" onClick={onShare} className="button clean touch">
             <MdShare aria-hidden className="icon" />

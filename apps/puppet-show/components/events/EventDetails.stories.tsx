@@ -113,10 +113,9 @@ export const Moderator: Story = {
 
 /** Hidden by moderation, seen by a moderator: notice and "Reexibir". */
 export const HiddenForModerator: Story = {
-  args: { canModerate: true, likes: null, event: { ...EVENT, isHidden: true } },
+  args: { canModerate: true, event: { ...EVENT, isHidden: true } },
   play: async ({ canvas, args }) => {
     await expect(canvas.getByText(/Oculto pela moderação/)).toBeInTheDocument();
-    await expect(canvas.getByText("Curtidas aparecem apenas enquanto o evento está no mural.")).toBeInTheDocument();
     await userEvent.click(canvas.getByRole("button", { name: "Reexibir evento" }));
     await expect(args.onUnhide).toHaveBeenCalled();
   },

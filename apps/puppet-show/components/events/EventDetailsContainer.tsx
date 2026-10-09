@@ -6,7 +6,7 @@
 
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Drawer } from "@/components/ui/Drawer";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -42,21 +42,21 @@ function CanModerate(user: User | null, orgId: string): boolean {
   return UserOrgId(user) === orgId && (user.role === "Admin" || user.role === "Moderator");
 }
 
-/** The likes the details page knows: the feed count plus the viewer's vote. */
+/** The likes the details page knows: the server's count plus the viewer's vote. */
 type Likes = { serverCount: number; viewerVoted: boolean; pending: PendingVote | undefined };
 
 type Load =
   | { kind: "loading" }
   | { kind: "error"; message: string }
-  | { kind: "ready"; event: EventDetail; likes: Likes | null; threshold: number | null };
+  | { kind: "ready"; event: EventDetail; likes: Likes; threshold: number | null };
 
 /** Which confirmation is open. */
 type Confirm = "hide" | "delete" | null;
 
 /**
- * Fetches the event with the tag and link-label catalogs (for names), its
- * vote count (from the feed, the only place the API counts votes), the
- * viewer's vote and the organization's report threshold.
+ * Fetches the event (with its vote count) and the tag and link-label catalogs
+ * (for names), the organization's report threshold and, for a logged-in
+ * viewer, whether they liked and whether they already reported it.
  */
 export function EventDetailsContainer({ eventId }: EventDetailsContainerProps) {
   const router = useRouter();
@@ -77,25 +77,16 @@ export function EventDetailsContainer({ eventId }: EventDetailsContainerProps) {
   const [confirmBusy, setConfirmBusy] = useState(false);
   const [confirmError, setConfirmError] = useState("");
 
-  /** Reads the feed's vote count for this event; `null` when the event isn't in the feed. */
-  const fetchCount = useCallback(async (org: string): Promise<{ ok: true; count: number | null } | { ok: false; message: string }> => {
-    const feed = await api.organizations.feed(org);
-    if (!feed.ok) return { ok: false, message: `Não foi possível carregar as curtidas. ${ApiErrorMessage(feed.error)}` };
-    const entry = feed.value.find((item) => item.id === eventId);
-    return { ok: true, count: entry === undefined ? null : entry.voteCount };
-  }, [eventId]);
-
   useEffect(() => {
     if (!ready || orgId === null) return;
     let active = true;
 
     (async () => {
-      const [event, tags, labels, org, count] = await Promise.all([
+      const [event, tags, labels, org] = await Promise.all([
         api.events.get(orgId, eventId),
         api.tags.list(),
         api.linkLabels.list(),
         api.organizations.get(orgId),
-        fetchCount(orgId),
       ]);
       if (!active) return;
 
@@ -106,29 +97,30 @@ export function EventDetailsContainer({ eventId }: EventDetailsContainerProps) {
       }
       if (!tags.ok) return setLoad({ kind: "error", message: `Não foi possível carregar as categorias. ${ApiErrorMessage(tags.error)}` });
       if (!labels.ok) return setLoad({ kind: "error", message: `Não foi possível carregar os links. ${ApiErrorMessage(labels.error)}` });
-      if (!count.ok) return setLoad({ kind: "error", message: count.message });
 
       const detail = ToEventDetail(event.value, tags.value, labels.value);
 
       let viewerVoted = false;
-      if (viewerId !== null && count.count !== null) {
-        const status = await api.events.voteStatus(orgId, eventId);
+      if (viewerId !== null) {
+        const [vote, report] = await Promise.all([api.events.voteStatus(orgId, eventId), api.events.reportStatus(orgId, eventId)]);
         if (!active) return;
-        if (!status.ok) return setLoad({ kind: "error", message: `Não foi possível saber se você curtiu este evento. ${ApiErrorMessage(status.error)}` });
-        viewerVoted = status.value.voted;
+        if (!vote.ok) return setLoad({ kind: "error", message: `Não foi possível saber se você curtiu este evento. ${ApiErrorMessage(vote.error)}` });
+        if (!report.ok) return setLoad({ kind: "error", message: `Não foi possível saber se você já denunciou este evento. ${ApiErrorMessage(report.error)}` });
+        viewerVoted = vote.value.voted;
+        setReported(report.value.reported);
       }
 
       setLoad({
         kind: "ready",
         event: detail,
-        likes: count.count === null ? null : { serverCount: count.count, viewerVoted, pending: undefined },
+        likes: { serverCount: event.value.voteCount, viewerVoted, pending: undefined },
         threshold: org.ok ? org.value.shadowBanThreshold : null,
       });
       if (!org.ok) setError(`Não foi possível carregar as regras de denúncia da organização. ${ApiErrorMessage(org.error)}`);
     })();
 
     return () => { active = false; };
-  }, [ready, orgId, eventId, viewerId, fetchCount]);
+  }, [ready, orgId, eventId, viewerId]);
 
   if (auth.status === "error") return <ErrorAlert className="max-w-4xl mx-auto">{auth.message}</ErrorAlert>;
   if (ready && orgId === null) return <ErrorAlert className="max-w-4xl mx-auto">{MISSING_ORG_MESSAGE}</ErrorAlert>;
@@ -146,7 +138,7 @@ export function EventDetailsContainer({ eventId }: EventDetailsContainerProps) {
 
   /** Applies a change to the likes of the loaded event. */
   const updateLikes = (change: (likes: Likes) => Likes) =>
-    setLoad((current) => (current.kind === "ready" && current.likes !== null ? { ...current, likes: change(current.likes) } : current));
+    setLoad((current) => (current.kind === "ready" ? { ...current, likes: change(current.likes) } : current));
 
   const clearMessages = () => {
     setNotice("");
@@ -157,7 +149,7 @@ export function EventDetailsContainer({ eventId }: EventDetailsContainerProps) {
   const toggleLike = async () => {
     clearMessages();
     if (viewerId === null) return setLoginPrompt("curtir");
-    if (likes === null || IsVoteInFlight(likes.pending)) return;
+    if (IsVoteInFlight(likes.pending)) return;
 
     const before = likes.pending;
     updateLikes((current) => ({ ...current, pending: StartVote(current.pending, current.viewerVoted) }));
@@ -174,11 +166,9 @@ export function EventDetailsContainer({ eventId }: EventDetailsContainerProps) {
       pending: current.pending === undefined ? undefined : ConfirmVote(current.pending, voted, 0),
     }));
 
-    const fresh = await fetchCount(org);
-    if (!fresh.ok) return setError(fresh.message);
-    setLoad((current) => current.kind === "ready"
-      ? { ...current, likes: fresh.count === null ? null : { serverCount: fresh.count, viewerVoted: voted, pending: undefined } }
-      : current);
+    const fresh = await api.events.get(org, event.id);
+    if (!fresh.ok) return setError(`Não foi possível atualizar as curtidas. ${ApiErrorMessage(fresh.error)}`);
+    updateLikes(() => ({ serverCount: fresh.value.voteCount, viewerVoted: voted, pending: undefined }));
   };
 
   const share = async () => {
@@ -253,8 +243,8 @@ export function EventDetailsContainer({ eventId }: EventDetailsContainerProps) {
     <>
       <EventDetails
         event={event}
-        likes={likes === null ? null : ShownVoteFor(likes.serverCount, likes.viewerVoted, likes.pending)}
-        likeBusy={likes !== null && IsVoteInFlight(likes.pending)}
+        likes={ShownVoteFor(likes.serverCount, likes.viewerVoted, likes.pending)}
+        likeBusy={IsVoteInFlight(likes.pending)}
         canModerate={CanModerate(user, org)}
         isCreator={viewerId !== null && event.creatorId === viewerId}
         reported={reported}

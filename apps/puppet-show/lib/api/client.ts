@@ -18,8 +18,8 @@ import { Err, Ok, type Result } from "@/lib/result";
 import { GetToken } from "./session";
 import {
   ApiErrorBodySchema, AuditEntrySchema, CommandSchema, DeviceLogSchema, DeviceSchema, DeviceStatusSchema,
-  DeviceTelemetrySchema, EventSchema, FeedEventSchema, LinkLabelSchema, LoginResponseSchema, OrganizationSchema,
-  RegisterResponseSchema, ReportSchema, SuccessSchema, TagSchema, UserSchema, VoteResponseSchema, VoteStatusSchema,
+  DeviceTelemetrySchema, EventSchema, EventWithVotesSchema, FeedEventSchema, LinkLabelSchema, LoginResponseSchema, OrganizationSchema,
+  RegisterResponseSchema, ReportSchema, ReportStatusSchema, SuccessSchema, TagSchema, UserSchema, VoteResponseSchema, VoteStatusSchema,
   type CreateCommandInput, type CreateEventInput, type OrgRole, type OrganizationInput, type ReportReason,
 } from "./schemas";
 
@@ -169,9 +169,12 @@ export const api = {
     list: (orgId: string) => Request(EventSchema.array(), "GET", `/organizations/${seg(orgId)}/events`),
     /** The logged-in user's own events in `orgId`, including hidden and past ones. */
     mine: (orgId: string) => Request(EventSchema.array(), "GET", `/organizations/${seg(orgId)}/events/mine`),
-    /** One event (also hidden ones, for moderators). */
+    /**
+     * One event with its vote count. Hidden events and events by shadow-banned
+     * authors answer 404, except to their creator, the org's Moderators+ and Superadmins.
+     */
     get: (orgId: string, eventId: string) =>
-      Request(EventSchema, "GET", `/organizations/${seg(orgId)}/events/${seg(eventId)}`),
+      Request(EventWithVotesSchema, "GET", `/organizations/${seg(orgId)}/events/${seg(eventId)}`),
     create: (orgId: string, body: CreateEventInput) =>
       Request(EventSchema, "POST", `/organizations/${seg(orgId)}/events`, body),
     /** Soft delete; creator or Superadmin. */
@@ -182,6 +185,9 @@ export const api = {
       Request(VoteResponseSchema, "POST", `/organizations/${seg(orgId)}/events/${seg(eventId)}/vote`),
     voteStatus: (orgId: string, eventId: string) =>
       Request(VoteStatusSchema, "GET", `/organizations/${seg(orgId)}/events/${seg(eventId)}/vote`),
+    /** Whether the logged-in user already reported the event. */
+    reportStatus: (orgId: string, eventId: string) =>
+      Request(ReportStatusSchema, "GET", `/organizations/${seg(orgId)}/events/${seg(eventId)}/report`),
     /** One report per user per event (a second one answers 400). */
     report: (orgId: string, eventId: string, body: { reason: ReportReason; comment?: string }) =>
       Request(ReportSchema, "POST", `/organizations/${seg(orgId)}/events/${seg(eventId)}/report`, body),

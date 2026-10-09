@@ -113,6 +113,10 @@ export const EventSchema = z.object({
 });
 export type Event = z.infer<typeof EventSchema>;
 
+/** An event opened by id (`GET .../events/:eventId`), with its vote count. */
+export const EventWithVotesSchema = EventSchema.extend({ voteCount: z.number() });
+export type EventWithVotes = z.infer<typeof EventWithVotesSchema>;
+
 /** An event in the public feed, with its votes and its rank weight (votes + how soon it happens). */
 export const FeedEventSchema = EventSchema.extend({ voteCount: z.number(), weight: z.number() });
 export type FeedEvent = z.infer<typeof FeedEventSchema>;
@@ -288,6 +292,9 @@ export const VoteResponseSchema = z.object({ status: z.enum(["voted", "unvoted"]
 
 /** Answer of `GET .../vote`. */
 export const VoteStatusSchema = z.object({ voted: z.boolean() });
+
+/** Answer of `GET .../report`: whether the logged-in user already reported the event. */
+export const ReportStatusSchema = z.object({ reported: z.boolean() });
 
 /** Body of every API error answer. */
 export const ApiErrorBodySchema = z.object({ error: z.string() });

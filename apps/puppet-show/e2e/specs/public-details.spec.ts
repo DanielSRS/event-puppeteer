@@ -58,13 +58,18 @@ describe("Público: detalhes do evento", () => {
     });
   }
 
-  test("denúncia explica a regra e a segunda é recusada", async () => {
+  test("denúncia explica a regra, fica registrada e a segunda é recusada", async () => {
     const { orgA } = await State();
     const title = `Para denunciar ${Date.now()}`;
     const id = await CreateEvent("member", orgA.id, title);
 
     const { page, context, errors } = await OpenPage("mobile");
     await LoginAs(page, "reporter", `/eventos/${id}`);
+
+    const stale = await OpenPage("desktop");
+    await LoginAs(stale.page, "reporter", `/eventos/${id}`);
+    await stale.page.getByRole("button", { name: "Denunciar", exact: true }).waitFor();
+
     await page.getByRole("button", { name: "Denunciar", exact: true }).click();
     const drawer = page.getByRole("dialog", { name: "Denunciar evento" });
     await drawer.getByText(/denúncias? de pessoas diferentes, o evento é ocultado automaticamente/).waitFor();
@@ -75,15 +80,23 @@ describe("Público: detalhes do evento", () => {
     assert.equal(await page.getByRole("button", { name: "Denunciado" }).isDisabled(), true);
 
     await page.reload();
-    await page.getByRole("button", { name: "Denunciar", exact: true }).click();
-    await drawer.getByLabel("Evento duplicado").check();
-    await drawer.getByRole("button", { name: "Enviar denúncia" }).click();
-    await page.getByRole("alert").filter({ hasText: "Você já denunciou este evento." }).waitFor();
+    const reported = page.getByRole("button", { name: "Denunciado" });
+    await reported.waitFor();
+    assert.equal(await reported.isDisabled(), true);
+
+    await stale.page.getByRole("button", { name: "Denunciar", exact: true }).click();
+    const staleDrawer = stale.page.getByRole("dialog", { name: "Denunciar evento" });
+    await staleDrawer.getByLabel("Evento duplicado").check();
+    await staleDrawer.getByRole("button", { name: "Enviar denúncia" }).click();
+    await stale.page.getByRole("alert").filter({ hasText: "Você já denunciou este evento." }).waitFor();
+    assert.equal(await stale.page.getByRole("button", { name: "Denunciado" }).isDisabled(), true);
 
     const reports = (await Api("moderator", "GET", `/organizations/${orgA.id}/reports`)) as Array<{ eventId: string }>;
     assert.equal(reports.filter((report) => report.eventId === id).length, 1);
-    assert.deepEqual(Unexpected(errors, [400]), []);
+    assert.deepEqual(errors, []);
+    assert.deepEqual(Unexpected(stale.errors, [400]), []);
     await context.close();
+    await stale.context.close();
   });
 
   test("visitante precisa entrar para denunciar", async () => {
