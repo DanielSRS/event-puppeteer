@@ -27,8 +27,10 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** Args of the stories that edit an existing organization. */
-const EDIT = { mode: "edit", original: ORG, onUpdate: fn(), slugEditable: false, takenSlugs: [] } as const;
+/** Args of a story that edits an existing organization, each with its own update spy. */
+function EditArgs() {
+  return { mode: "edit", original: ORG, onUpdate: fn(), slugEditable: false, takenSlugs: [] } as const;
+}
 
 /** The create callback of a story set up in create mode (the props are a union by `mode`). */
 function CreateSpy(args: Story["args"]) {
@@ -85,7 +87,7 @@ export const ValidationErrors: Story = {
 
 /** Admin editing their organization: no slug field; only changed fields are sent. */
 export const EditAsAdmin: Story = {
-  args: { ...EDIT, onCancel: undefined },
+  args: { ...EditArgs(), onCancel: undefined },
   play: async ({ canvas, args }) => {
     await expect(canvas.queryByLabelText("Identificador (slug)")).not.toBeInTheDocument();
     await userEvent.click(canvas.getByRole("button", { name: "Salvar alterações" }));
@@ -100,7 +102,7 @@ export const EditAsAdmin: Story = {
 
 /** Emptying a field that had a value is explained (the API can't remove values). */
 export const CannotClearField: Story = {
-  args: EDIT,
+  args: EditArgs(),
   play: async ({ canvas, args }) => {
     await userEvent.clear(canvas.getByLabelText("Descrição (opcional)"));
     await userEvent.click(canvas.getByRole("button", { name: "Salvar alterações" }));
