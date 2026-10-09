@@ -1,208 +1,65 @@
-<h1 align="center">
-  Eventos
-</h1>
+<h1 align="center">puppet-show</h1>
 
 <p align="center">
-  Este projeto é um mural de eventos onde qualquer pessoa pode criar uma conta, publicar um evento, curtir e se inscrever. Na tela grande a lista rola sozinha e um QR Code leva o visitante para a versão do celular.
+  Front-end do mural de eventos: o <strong>Mural</strong> público, onde qualquer pessoa da organização encontra, curte, compartilha e denuncia eventos; o <strong>Modo TV</strong> para os totens; e o <strong>Painel</strong>, que mostra a cada papel (Membro, Moderador, Admin, Superadmin) as ferramentas que ele pode usar.
 </p>
+
+Todos os dados vêm da API **Puppeteer** (`apps/puppeteer`). O vocabulário do domínio está em [`CONTEXT.md`](../../CONTEXT.md) e a especificação na issue #1 do GitHub.
+
+## Telas
+
+| Rota | O que faz |
+|---|---|
+| `/` | Mural: busca, filtros (Todos, Mais próximos, Mais curtidos e uma pílula por tag oficial), cards com data, horário, local, tags e curtidas. O mural é recarregado a cada 5 s enquanto a aba está visível (a API não tem push), e a curtida aparece na hora e é confirmada pelo servidor. |
+| `/eventos/[id]` | Detalhes: programação de vários dias, mapa (OpenStreetMap), links (ex.: Inscrição), curtir, compartilhar, denunciar; o autor pode excluir e Moderadores+ podem ocultar ou reexibir. |
+| `/eventos/novo` | Publicar evento: o mesmo editor do painel. |
+| `/display` | Modo TV: relógio, QR code para o site e rotação de 3 em 3 eventos (15 s + 1 s por curtida na janela). |
+| `/entrar`, `/cadastro` | Login e cadastro com confirmação de e-mail. |
+| `/dashboard/...` | Painel: Meus Eventos; Denúncias, Usuários Banidos e Tags Sugeridas (Moderador+); Auditoria, Usuários, Dispositivos e Configurações (Admin+); Organizações, Dispositivos Órfãos, Tags e Links Globais (Superadmin no contexto "Sistema Global"). O Superadmin troca de contexto pelo seletor no topo do menu, e a escolha fica salva. |
+
+## Configuração
+
+Copie `.env.example` para `.env` e preencha:
+
+| Variável | Obrigatória | Para quê |
+|---|---|---|
+| `PUPPETEER_URL` | sim | URL da API. O Next encaminha `/api/*` para ela (sem CORS). Sem ela o app não inicia. |
+| `NEXT_PUBLIC_ORG_ID` | sim | Organização que visitantes veem (mural, Modo TV) e na qual os cadastros entram. |
+| `NEXT_PUBLIC_SITE_URL` | sim | Endereço público do site, usado nos QR codes. |
+
+## Comandos
+
+Dependências com `nub install` na raiz do repositório.
+
+```bash
+npm run dev            # next dev
+npm run storybook      # Storybook em http://localhost:6006 (inclui o servidor MCP)
+npm run test:unit      # funções puras (Vitest, Node)
+npm run test:stories   # cada story é um teste de componente + acessibilidade (axe), no Chromium
+npm run test:e2e       # fluxos completos contra a API real; veja e2e/README.md
+npx tsc --noEmit -p .  # typecheck (inclui stories e specs)
+npm run lint
+```
+
+## Organização do código
+
+- `lib/api/`: o contrato da API (`schemas.ts`, em zod; os tipos do app são inferidos dele) e o cliente HTTP (`client.ts`). Toda resposta é validada, e nenhuma chamada lança exceção: o retorno é um `Result` (`lib/result.ts`) e `ApiErrorMessage` transforma a falha em texto para a pessoa.
+- `domain/`: regras puras do mural (filtros, programação, curtidas, links, tempo da TV), com testes unitários.
+- `components/`: componentes de apresentação (recebem dados por props e têm stories) e *containers* (`*Container.tsx`), que chamam a API e tratam cada erro. `components/ui/` tem os blocos compartilhados (mensagens de erro e status, `Drawer` e `ConfirmDialog` sobre o `<dialog>` nativo).
+- `components/dashboard/DashboardSections.ts`: a regra única de quais seções cada papel vê em cada contexto (espelha as permissões da API). O layout do painel usa essa regra para proteger todas as páginas.
+- `utils/validation/`: validações dos formulários, com testes.
+
+## Convenções
+
+- Sem mocks nem APIs simuladas no código do app; se um endpoint não existe, a interface não oferece a ação.
+- Sem fallbacks silenciosos: configuração ausente ou dado inválido aparece como erro explícito.
+- Erros como valores (`Result`); toda falha é mostrada para a pessoa.
+- Sem `any`. Comentários só como documentação JSDoc.
+- Todas as telas funcionam em 390 px (celular) sem rolagem horizontal e por teclado.
 
 ## Extensões recomendadas para IDE
 
-- Color Info (by Matt Bierner)
-- Drizzle ORM snippets (by Manuel Gil)
-- ESLint (by Microsoft)
-- JavaScript and TypeScript Nightly (by Microsoft)
-- Tailwind CSS IntelliSense (by Tailwind Labs)
-- TypeScript 7 (by Microsoft)
-
-## Configurações de ambiente
-
-```bash
-npm install drizzle-orm postgres dotenv
-npm install -D drizzle-kit tsx
-npm install react-icons
-npm install jose
-npm install bcryptjs
-npm install qrcode
-npm install --save-dev @types/qrcode
-```
-
-Propriedade adicionada ao `package.json`:
-
-```bash
-"type": "module",
-```
-
-## Drizzle ORM
-
-Foi criado dentro da pasta raíz o arquivo <code>drizzle.config.ts</code> e foi adicionado dentro deste arquivo o seguinte código:
-```bash
-import "dotenv/config";
-import { defineConfig } from "drizzle-kit";
-
-if (!process.env.DATABASE_URL) {
-  throw new Error("DATABASE_URL não definida. Confira o arquivo .env.");
-};
-
-export default defineConfig({
-  schema: "./db/schema.ts",
-  out: "./db/migrations",
-  dialect: "postgresql",
-  dbCredentials: {
-    url: process.env.DATABASE_URL,
-  },
-  schemaFilter: ["public"],
-  verbose: true,
-  strict: true,
-});
-```
-
-### • Gerando o Banco de Dados
-
-```bash
-npx drizzle-kit generate
-npx drizzle-kit migrate
-```
-
-Scripts no `package.json`:
-
-```json
-"db:generate": "drizzle-kit generate",
-"db:migrate": "drizzle-kit migrate",
-"db:studio": "drizzle-kit studio"
-```
-
-A partir dai, pode-se usar o comando <code>npm run</code> seguido dos atalhos acima, exemplo: <code>npm run db:generate</code>
-
-**Antes de rodar qualquer comando do Drizzle**, pare o `npm run dev`
-
-### • Tabelas criadas
-
-| Tabela | Para que serve |
-|---|---|
-| `users` | Contas de quem publica, curte e se inscreve |
-| `events` | Eventos publicados |
-| `event_likes` | Uma curtida por pessoa em cada evento |
-| `event_subscriptions` | Uma inscrição por pessoa em cada evento |
-
-### • Informações do .env
-<div>
-  No arquivo <code>.env</code> foram configuradas as seguintes variáveis:
-</div>
-
-```bash
-JWT_SECRET=Código de segurança longo, da sua preferência (sem aspas)
-DATABASE_URL="Link fornecido pelo Supabase na área de Conexão" (com aspas)
-NEXT_PUBLIC_SITE_URL=Endereço do site que vai dentro do QR Code (sem aspas)
-```
-
-### • Para gerar um JWT Secret
-<div>
-  No terminal, pode-se escrever o seguinte comando para gerar uma chave <code>JWT_SECRET</code> para utilizar no seu código:
-</div>
-
-```bash
-node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
-```
-
-### • Para testar o QR Code no celular
-<div>
-  Em desenvolvimento, o endereço <code>localhost</code> não funciona no celular. Descubra o IP da sua máquina com <code>ipconfig</code> no Windows ou <code>ifconfig</code> no Linux e use ele no <code>.env</code>:
-</div>
-
-```bash
-NEXT_PUBLIC_SITE_URL=http://192.168.0.10:3000
-```
-
-<div>
-  O celular precisa estar na mesma rede Wi-Fi do computador.
-</div>
-
-## Configurações no Supabase:
-
-<div>
-  Foram executados os seguintes comandos abaixo no SQL Editor do Supabase:
-</div>
-
-<br/>
-
-### • Ativar Row Level Security nas tabelas do projeto:
-
-```bash
-ALTER TABLE public.users               ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.events              ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.event_likes         ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.event_subscriptions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE drizzle."__drizzle_migrations" ENABLE ROW LEVEL SECURITY;
-```
-
-### • Bloquear acesso público às tabelas
-
-```bash
-CREATE POLICY "Block public access"
-ON "users"
-FOR ALL
-TO anon, authenticated
-USING (false);
-
-CREATE POLICY "Block public access"
-ON "events"
-FOR ALL
-TO anon, authenticated
-USING (false);
-
-CREATE POLICY "Block public access"
-ON "event_likes"
-FOR ALL
-TO anon, authenticated
-USING (false);
-
-CREATE POLICY "Block public access"
-ON "event_subscriptions"
-FOR ALL
-TO anon, authenticated
-USING (false);
-```
-
-<div>
-  O site continua funcionando normalmente, porque ele conversa com o banco pela <code>DATABASE_URL</code>, e não pela API pública do Supabase.
-</div>
-
-## Como o site funciona
-
-### • Tela grande (TV ou monitor)
-
-- A lista de eventos rola sozinha, em looping, e pausa quando o mouse passa por cima.
-- A lista se atualiza a cada 15 segundos, então a ordem acompanha as curtidas sem ninguém mexer.
-- Em monitor deitado, o QR Code fica ao lado da lista. Em monitor em pé, ele vira um rodapé.
-- O QR Code é gerado no servidor como SVG, então nada é carregado de fora.
-
-### • Celular
-
-- A mesma lista, com os botões de curtir e de se inscrever.
-- Os dois botões funcionam como interruptor: tocar de novo desfaz.
-- Quem não está logado vê um convite para entrar.
-
-### • Regras
-
-- Os eventos mais curtidos ficam no topo. Em caso de empate, vale a data mais próxima.
-- Eventos com data no passado não podem ser cadastrados e saem da lista, com a data contada no horário de Brasília.
-- Curtir e se inscrever exigem login, senão daria para inflar as curtidas só atualizando a página.
-- O nome da conta é salvo padronizado, no formato "Maria Da Silva".
-
-## Estrutura de pastas
-
-```bash
-app/
-├── page.tsx                      lista de eventos e QR Code
-├── entrar/  cadastro/            telas de conta
-├── eventos/novo/                 publicar evento
-└── api/
-    ├── users/                    cadastro, login, logout e sessão
-    └── events/                   listar, publicar, curtir e inscrever
-components/                       navbar, cards, formulários e QR Code
-hooks/                            sessão e eventos
-db/                               schema e conexão
-utils/                            token, sessão, datas e validações
-proxy.ts                          protege as páginas e APIs privadas
-```
+- ESLint (Microsoft)
+- Tailwind CSS IntelliSense (Tailwind Labs)
+- Color Info (Matt Bierner)
+- TypeScript 7 (Microsoft)
