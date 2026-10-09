@@ -43,6 +43,11 @@ for (const viewport of ["desktop", "mobile"] as const) {
         assert.equal(await ManagedContext(page), orgContext ? "Universidade Estadual" : "Sistema Global");
         assert.deepEqual(await SectionLabels(page, viewport), [...sections]);
 
+        const phoneMenu = page.getByRole("button", { name: "Seções", exact: true });
+        const sidebar = page.getByRole("complementary", { name: "Navegação do painel" });
+        assert.equal(await phoneMenu.isVisible(), viewport === "mobile", "phone menu button visibility");
+        assert.equal(await sidebar.isVisible(), viewport === "desktop", "sidebar visibility");
+
         for (const label of sections) {
           await OpenSection(page, viewport, label);
           assert.equal(await page.getByText("Página indisponível").count(), 0, `${label} was guarded`);

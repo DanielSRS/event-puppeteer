@@ -36,33 +36,29 @@
   }
 }
 
-@layer utilities {
-  .column {
-    @apply
-      flex
-      flex-col;
-  }
+/* Layout shorthands. Declared with @utility (not inside @layer utilities) so responsive
+   variants such as md:hidden or sm:flex-row are emitted after them and win. */
+@utility column {
+  display: flex;
+  flex-direction: column;
+}
 
-  .row {
-    @apply
-      flex
-      flex-row
-      items-center;
-  }
+@utility row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
 
-  .center {
-    @apply
-      flex
-      items-center
-      justify-center;
-  }
+@utility center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
 
-  .between {
-    @apply
-      flex
-      items-center
-      justify-between;
-  }
+@utility between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 @layer components {

@@ -22,10 +22,11 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** Desktop: sidebar plus the context named in the header. */
+/** Desktop: sidebar plus the context named in the header; the phone top bar stays hidden. */
 export const Desktop: Story = {
   play: async ({ canvas }) => {
     await expect(canvas.getByRole("navigation", { name: "Seções do painel" })).toBeVisible();
+    await expect(canvas.queryByRole("button", { name: "Seções" })).not.toBeInTheDocument();
     await expect(canvas.getByText("Gerenciando:")).toBeInTheDocument();
   },
 };
