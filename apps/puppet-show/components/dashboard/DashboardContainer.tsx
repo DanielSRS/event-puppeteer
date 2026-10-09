@@ -22,6 +22,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { ErrorAlert, LoadingMessage } from "@/components/ui/Feedback";
 import { useAuth } from "@/hooks/useAuth";
 import { api, ApiErrorMessage } from "@/lib/api/client";
+import { SortByName } from "@/utils/text";
 import type { User } from "@/lib/api/schemas";
 import { AccessDeniedNotice } from "./AccessDeniedNotice";
 import type { ContextOrganization } from "./ContextSwitcher";
@@ -61,7 +62,7 @@ async function LoadShell(user: User): Promise<Shell> {
 
   const orgs = await api.organizations.list();
   if (!orgs.ok) return { status: "error", message: `Não foi possível carregar as organizações. ${ApiErrorMessage(orgs.error)}` };
-  const organizations = orgs.value.map((org) => ({ id: org.id, name: org.name }));
+  const organizations = SortByName(orgs.value).map((org) => ({ id: org.id, name: org.name }));
 
   const stored = ReadStoredContext(user.id);
   if (!stored.ok) return { status: "ready", userId: user.id, organizations, orgId: null, notice: CONTEXT_NOT_REMEMBERED_MESSAGE };

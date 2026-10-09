@@ -9,6 +9,7 @@
 
 import { useEffect, useState } from "react";
 import { api, ApiErrorMessage, type ApiError } from "@/lib/api/client";
+import { SortByName } from "@/utils/text";
 import type { Organization, OrganizationInput } from "@/lib/api/schemas";
 import { Err, Ok, type Result } from "@/lib/result";
 import { Drawer } from "@/components/ui/Drawer";
@@ -25,7 +26,7 @@ type Editing = { kind: "closed" } | { kind: "create" } | { kind: "edit"; org: Or
 async function LoadOrganizations(): Promise<Result<Organization[], string>> {
   const orgs = await api.organizations.list();
   if (!orgs.ok) return Err(`Não foi possível carregar as organizações. ${ApiErrorMessage(orgs.error)}`);
-  return Ok(orgs.value);
+  return Ok(SortByName(orgs.value));
 }
 
 /** Message for a failed save; a 409 means the slug is taken. */
@@ -64,7 +65,7 @@ function Organizations() {
     if (!result.ok) { setSaveError(SaveErrorMessage(result.error)); return; }
     const saved = result.value;
     setOrgs((current) => current !== null && current.ok
-      ? Ok(current.value.some((o) => o.id === saved.id) ? current.value.map((o) => o.id === saved.id ? saved : o) : [...current.value, saved])
+      ? Ok(SortByName(current.value.some((o) => o.id === saved.id) ? current.value.map((o) => o.id === saved.id ? saved : o) : [...current.value, saved]))
       : current);
     setStatus(`Organização “${saved.name}” ${verb}.`);
     setEditing({ kind: "closed" });

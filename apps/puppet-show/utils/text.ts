@@ -27,3 +27,11 @@ export function SplitName(name: string): { firstName: string; lastName: string }
   const words = name.trim().split(/\s+/).filter((word) => word.length > 0);
   return { firstName: words.length === 0 ? "" : words[0], lastName: words.slice(1).join(" ") };
 }
+
+/**
+ * Sorts by `name` the way a Portuguese reader expects (accents and case don't
+ * change the order). Returns a new array.
+ */
+export function SortByName<T extends { name: string }>(items: readonly T[]): T[] {
+  return [...items].sort((a, b) => a.name.localeCompare(b.name, "pt-BR", { sensitivity: "base" }));
+}

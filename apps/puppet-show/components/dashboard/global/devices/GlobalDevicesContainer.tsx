@@ -10,6 +10,7 @@
 
 import { useEffect, useState } from "react";
 import { api, ApiErrorMessage } from "@/lib/api/client";
+import { SortByName } from "@/utils/text";
 import type { Device, Organization } from "@/lib/api/schemas";
 import { Err, Ok, type Result } from "@/lib/result";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -29,7 +30,7 @@ async function LoadOrphans(): Promise<Result<OrphanData, string>> {
   const [devices, organizations] = await Promise.all([api.devices.listPending(), api.organizations.list()]);
   if (!devices.ok) return Err(`Não foi possível carregar os dispositivos órfãos. ${ApiErrorMessage(devices.error)}`);
   if (!organizations.ok) return Err(`Não foi possível carregar as organizações. ${ApiErrorMessage(organizations.error)}`);
-  return Ok({ devices: devices.value, organizations: organizations.value });
+  return Ok({ devices: devices.value, organizations: SortByName(organizations.value) });
 }
 
 /** The page, guarded by the section rules. */

@@ -108,12 +108,13 @@ for (const viewport of ["desktop", "mobile"] as const) {
       await page.keyboard.press("Enter");
       const options = scope.getByRole("list", { name: "Contextos disponíveis" });
       assert.equal(await options.getByRole("button", { name: "Sistema Global" }).getAttribute("aria-current"), "true");
-      await page.keyboard.press("Tab");
-      await page.keyboard.press("Tab");
-      assert.equal(
-        await options.getByRole("button", { name: "Universidade Estadual" }).evaluate((element) => element === document.activeElement),
-        true,
-      );
+      const target = options.getByRole("button", { name: "Universidade Estadual" });
+      const optionCount = await options.getByRole("button").count();
+      for (let step = 0; step < optionCount; step += 1) {
+        await page.keyboard.press("Tab");
+        if (await target.evaluate((element) => element === document.activeElement)) break;
+      }
+      assert.equal(await target.evaluate((element) => element === document.activeElement), true, "Tab never reached the org option");
       await page.keyboard.press("Enter");
       await page.waitForURL((url) => url.pathname === "/dashboard/events");
       if (viewport === "mobile") await page.keyboard.press("Escape");
