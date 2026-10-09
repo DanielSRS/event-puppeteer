@@ -154,7 +154,13 @@ async function ReadBody(req: IncomingMessage) {
   return chunks.length ? Buffer.concat(chunks) : undefined;
 }
 
-createHttpServer(async (req, res) => {
+/**
+ * The HTTP bridge to the in-process API. Idle keep-alive sockets are kept
+ * longer than Next's proxy keeps them: with Node's 5 s default the server could
+ * close a socket just as the proxy reused it, and the proxy answered 500
+ * (ECONNRESET) to the page.
+ */
+const bridge = createHttpServer(async (req, res) => {
   const url = `http://localhost:${E2E.apiPort}${req.url}`;
   const extra = TestRoute(new URL(url).pathname);
   if (extra) {
@@ -172,7 +178,11 @@ createHttpServer(async (req, res) => {
 
   res.writeHead(response.status, Object.fromEntries(response.headers.entries()));
   res.end(Buffer.from(await response.arrayBuffer()));
-}).listen(E2E.apiPort, () => {
+});
+bridge.keepAliveTimeout = 120_000;
+bridge.headersTimeout = 121_000;
+
+bridge.listen(E2E.apiPort, () => {
   console.log(`[e2e] API on http://localhost:${E2E.apiPort} (org A ${orgA.id})`);
 
   const tsconfig = `tsconfig.e2e-${E2E.webPort}.json`;
