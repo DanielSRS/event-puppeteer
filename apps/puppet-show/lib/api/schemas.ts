@@ -243,6 +243,9 @@ export const DeviceTelemetrySchema = z.object({
 });
 export type DeviceTelemetry = z.infer<typeof DeviceTelemetrySchema>;
 
+/** Answer of `GET .../telemetry`: `telemetry` is null until the device sends it for the first time. */
+export const DeviceTelemetryResponseSchema = z.object({ telemetry: DeviceTelemetrySchema.nullable() });
+
 export const DeviceLogSchema = z.object({
   id: z.string(),
   deviceId: z.string(),

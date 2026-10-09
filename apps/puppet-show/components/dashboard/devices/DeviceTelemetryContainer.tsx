@@ -49,7 +49,7 @@ async function LoadDetails(orgId: string, deviceId: string): Promise<Result<Devi
   return Ok({
     device: device.value,
     status: status.value,
-    telemetry: telemetry.value,
+    telemetry: telemetry.value.telemetry,
     commands: [...commands.value].sort((a, b) => b.issuedAt.localeCompare(a.issuedAt)),
     logs: [...logs.value].sort((a, b) => b.timestamp.localeCompare(a.timestamp)),
   });

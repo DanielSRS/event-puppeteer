@@ -18,7 +18,7 @@ import { Err, Ok, type Result } from "@/lib/result";
 import { GetToken } from "./session";
 import {
   ApiErrorBodySchema, AuditEntrySchema, CommandSchema, DeviceLogSchema, DeviceSchema, DeviceStatusSchema,
-  DeviceTelemetrySchema, EventSchema, EventWithVotesSchema, FeedEventSchema, LinkLabelSchema, LoginResponseSchema, OrganizationSchema,
+  DeviceTelemetryResponseSchema, EventSchema, EventWithVotesSchema, FeedEventSchema, LinkLabelSchema, LoginResponseSchema, OrganizationSchema,
   RegisterResponseSchema, ReportSchema, ReportStatusSchema, SuccessSchema, TagSchema, UserSchema, VoteResponseSchema, VoteStatusSchema,
   type CreateCommandInput, type CreateEventInput, type OrgRole, type OrganizationInput, type ReportReason,
 } from "./schemas";
@@ -255,9 +255,9 @@ export const api = {
       Request(DeviceSchema, "GET", `/organizations/${seg(orgId)}/devices/${seg(deviceId)}`),
     status: (orgId: string, deviceId: string) =>
       Request(DeviceStatusSchema, "GET", `/organizations/${seg(orgId)}/devices/${seg(deviceId)}/status`),
-    /** `null` until the device sends telemetry for the first time. */
+    /** `{ telemetry: null }` until the device sends telemetry for the first time. */
     telemetry: (orgId: string, deviceId: string) =>
-      Request(DeviceTelemetrySchema.nullable(), "GET", `/organizations/${seg(orgId)}/devices/${seg(deviceId)}/telemetry`),
+      Request(DeviceTelemetryResponseSchema, "GET", `/organizations/${seg(orgId)}/devices/${seg(deviceId)}/telemetry`),
     logs: (orgId: string, deviceId: string) =>
       Request(DeviceLogSchema.array(), "GET", `/organizations/${seg(orgId)}/devices/${seg(deviceId)}/logs`),
     commands: (orgId: string, deviceId: string) =>
