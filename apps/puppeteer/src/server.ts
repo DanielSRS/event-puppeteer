@@ -574,14 +574,14 @@ export function createServer(io: AppIO, { adapter, appUrl = 'http://localhost:30
               detail: { tags: ['Device Management'], summary: 'List Device logs', security: asUser }
             })
             .get('/:deviceId/telemetry', async ({ request, params: { id, deviceId }, io }) => {
-              return await getDetailedTelemetryHandler(request, id, deviceId, io);
+              return { telemetry: await getDetailedTelemetryHandler(request, id, deviceId, io) };
             }, {
               params: t.Object({ id: t.String(), deviceId: t.String() }),
-              response: t.Nullable(DeviceTelemetrySchema),
+              response: t.Object({ telemetry: t.Nullable(DeviceTelemetrySchema) }),
               detail: {
                 tags: ['Device Management'],
                 summary: 'Get the latest detailed Telemetry',
-                description: 'Null until the Device has sent detailed Telemetry at least once.',
+                description: '`telemetry` is null until the Device has sent detailed Telemetry at least once. Wrapped in an object because a bare null response body is sent empty, which is not JSON.',
                 security: asUser
               }
             })

@@ -56,6 +56,23 @@ test('HTTP layer', async (t) => {
     assert.equal(listed.body[0].status, 'acknowledged');
   });
 
+  await t.test('GET device telemetry answers JSON before and after the device sends any', async () => {
+    const { orgId, adminToken, call } = await setup();
+    const connected = await call('POST', '/devices/connect', undefined, { identifier: 'mac-telemetry', organizationId: orgId });
+    const { device, token } = connected.body;
+    await call('POST', `/devices/${device.id}/approve`, adminToken, { name: 'D1', location: 'L1' });
+    const path = `/organizations/${orgId}/devices/${device.id}/telemetry`;
+
+    const before = await call('GET', path, adminToken);
+    assert.equal(before.status, 200);
+    assert.deepEqual(before.body, { telemetry: null });
+
+    assert.equal((await call('POST', `/devices/${device.id}/telemetry`, token, { cpuTemp: 50, uptime: 10 })).status, 200);
+    const after = await call('GET', path, adminToken);
+    assert.equal(after.status, 200);
+    assert.deepEqual(after.body, { telemetry: { cpuTemp: 50, uptime: 10 } });
+  });
+
   await t.test('update command requires a url and a sha256 digest', async () => {
     const { orgId, adminToken, call } = await setup();
     const { device } = (await call('POST', '/devices/connect', undefined, { identifier: 'mac-1', organizationId: orgId })).body;
