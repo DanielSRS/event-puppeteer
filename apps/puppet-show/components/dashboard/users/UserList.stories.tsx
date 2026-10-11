@@ -27,6 +27,8 @@ const meta = {
     busyUserId: null,
     onChangeRole: fn(),
     onRemove: fn(),
+    canPromoteToSuperadmin: false,
+    onPromoteToSuperadmin: fn(),
   },
 } satisfies Meta<typeof UserList>;
 
@@ -43,6 +45,27 @@ export const Default: Story = {
 
     await userEvent.click(canvas.getByRole("button", { name: "Remover Maria Membro" }));
     await expect(args.onRemove).toHaveBeenCalledWith(MARIA);
+
+    await expect(canvas.queryByRole("button", { name: /Promover .* a Superadmin/ })).not.toBeInTheDocument();
+  },
+};
+
+/** A Superadmin managing the organization can promote anyone in it to Superadmin. */
+export const SuperadminCanPromote: Story = {
+  args: { currentUserId: "s1", canPromoteToSuperadmin: true },
+  play: async ({ canvas, args }) => {
+    await expect(canvas.getAllByRole("button", { name: /Promover .* a Superadmin/ })).toHaveLength(3);
+    await userEvent.click(canvas.getByRole("button", { name: "Promover Maria Membro a Superadmin" }));
+    await expect(args.onPromoteToSuperadmin).toHaveBeenCalledWith(MARIA);
+  },
+};
+
+/** While someone is being promoted, their promote button is disabled too. */
+export const Promoting: Story = {
+  args: { currentUserId: "s1", canPromoteToSuperadmin: true, busyUserId: "u3" },
+  play: async ({ canvas }) => {
+    await expect(canvas.getByRole("button", { name: "Promover Maria Membro a Superadmin" })).toBeDisabled();
+    await expect(canvas.getByRole("button", { name: "Promover Ana Admin a Superadmin" })).toBeEnabled();
   },
 };
 

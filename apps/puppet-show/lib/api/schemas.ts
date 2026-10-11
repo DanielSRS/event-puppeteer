@@ -164,6 +164,7 @@ export const AuditActionSchema = z.enum([
   "promote_tag",
   "update_org_threshold",
   "remove_user",
+  "change_role",
 ]);
 export type AuditAction = z.infer<typeof AuditActionSchema>;
 

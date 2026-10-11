@@ -1,7 +1,7 @@
 /**
  * Organization users page (Admin+): searches people by name (the API ignores
  * accents and case), changes roles and removes (deactivates) accounts after
- * confirmation.
+ * confirmation. A Superadmin can also promote someone to Superadmin.
  *
  * @module
  */
@@ -16,7 +16,8 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { ErrorAlert, LoadingMessage, StatusMessage } from "@/components/ui/Feedback";
 import { SectionDenialFor, SelectOrgNotice, useDashboard } from "../DashboardContext";
 import { AccessNotice } from "../global/AccessNotice";
-import { FullName, ROLE_LABELS, UserList } from "./UserList";
+import { ROLE_LABELS } from "../roleLabels";
+import { FullName, UserList } from "./UserList";
 
 /** Time without typing before the search runs. */
 const SEARCH_DELAY_MS = 300;
@@ -37,11 +38,11 @@ export function DashboardUsersContainer() {
   const denial = SectionDenialFor("users", user, orgId);
   if (denial !== null) return <AccessNotice denial={denial} />;
   if (orgId === null) return <SelectOrgNotice />;
-  return <Users key={orgId} orgId={orgId} currentUserId={user.id} />;
+  return <Users key={orgId} orgId={orgId} currentUserId={user.id} isSuperadmin={user.role === "Superadmin"} />;
 }
 
 /** The people of one organization; remounted when the organization changes. */
-function Users({ orgId, currentUserId }: { orgId: string; currentUserId: string }) {
+function Users({ orgId, currentUserId, isSuperadmin }: { orgId: string; currentUserId: string; isSuperadmin: boolean }) {
   const [search, setSearch] = useState("");
   const [query, setQuery] = useState("");
   const [result, setResult] = useState<SearchResult | null>(null);
@@ -49,6 +50,8 @@ function Users({ orgId, currentUserId }: { orgId: string; currentUserId: string 
   const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null);
   const [removing, setRemoving] = useState<User | null>(null);
   const [removeError, setRemoveError] = useState("");
+  const [promoting, setPromoting] = useState<User | null>(null);
+  const [promoteError, setPromoteError] = useState("");
 
   useEffect(() => {
     const timer = setTimeout(() => setQuery(search.trim()), SEARCH_DELAY_MS);
@@ -97,6 +100,23 @@ function Users({ orgId, currentUserId }: { orgId: string; currentUserId: string 
     setRemoving(null);
   };
 
+  const handleConfirmPromote = async () => {
+    if (promoting === null) return;
+    setBusyUserId(promoting.id);
+    setPromoteError("");
+    const promoted = await api.users.promoteToSuperadmin(orgId, promoting.id);
+    setBusyUserId(null);
+
+    if (!promoted.ok) {
+      setPromoteError(`Não foi possível promover ${FullName(promoting)}. ${ApiErrorMessage(promoted.error)}`);
+      return;
+    }
+    const person = promoting;
+    updateResults((users) => users.filter((u) => u.id !== person.id));
+    setFeedback({ ok: true, text: `${FullName(person)} agora é Superadmin e saiu desta organização.` });
+    setPromoting(null);
+  };
+
   const searching = result === null || result.query !== search.trim();
 
   return (
@@ -135,6 +155,8 @@ function Users({ orgId, currentUserId }: { orgId: string; currentUserId: string 
               busyUserId={busyUserId}
               onChangeRole={handleChangeRole}
               onRemove={(user) => { setRemoveError(""); setFeedback(null); setRemoving(user); }}
+              canPromoteToSuperadmin={isSuperadmin}
+              onPromoteToSuperadmin={(user) => { setPromoteError(""); setFeedback(null); setPromoting(user); }}
             />
           )}
         </div>
@@ -154,6 +176,24 @@ function Users({ orgId, currentUserId }: { orgId: string; currentUserId: string 
           <li>A pessoa não conseguirá mais entrar na conta.</li>
           <li>Os eventos que ela publicou saem do mural.</li>
           <li>O histórico (auditoria, votos e denúncias) é mantido.</li>
+        </ul>
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        isOpen={promoting !== null}
+        title={promoting === null ? "Promover a Superadmin?" : `Promover ${FullName(promoting)} a Superadmin?`}
+        confirmLabel="Sim, promover"
+        danger
+        busy={busyUserId !== null && promoting !== null && busyUserId === promoting.id}
+        error={promoteError}
+        onConfirm={handleConfirmPromote}
+        onCancel={() => setPromoting(null)}
+      >
+        <ul className="list-disc column gap-1 pl-5">
+          <li>A pessoa passa a ter acesso total: todas as organizações, dispositivos, tags e links globais.</li>
+          <li>Ela sai desta organização e deixa de aparecer nesta lista.</li>
+          <li>O painel não permite desfazer esta ação.</li>
+          <li>A promoção fica registrada na auditoria desta organização.</li>
         </ul>
       </ConfirmDialog>
     </div>

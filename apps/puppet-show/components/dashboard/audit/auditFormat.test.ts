@@ -36,6 +36,17 @@ describe("FormatAuditDetails", () => {
     expect(FormatAuditDetails({ deletedEvents: 1 }, lookups)).toEqual([Ok("1 evento excluído junto com a conta.")]);
   });
 
+  test("a role change names the old and the new role", () => {
+    expect(FormatAuditDetails({ from: "Member", to: "Superadmin" }, lookups)).toEqual([
+      Ok("Papel anterior: Membro."),
+      Ok("Novo papel: Superadmin."),
+    ]);
+  });
+
+  test("an unknown role value is labelled, not translated", () => {
+    expect(FormatAuditDetails({ to: "Root" }, lookups)).toEqual([Ok("Informação adicional “to”: Root.")]);
+  });
+
   test("unknown details are labelled, not dumped", () => {
     expect(FormatAuditDetails({ reason: "manual", extra: { a: 1 } }, lookups)).toEqual([
       Ok("Motivo: manual."),

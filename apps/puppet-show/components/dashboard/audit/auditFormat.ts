@@ -12,6 +12,7 @@
 
 import type { AuditAction, AuditEntry } from "@/lib/api/schemas";
 import { Err, Ok, type Result } from "@/lib/result";
+import { RoleLabel } from "../roleLabels";
 
 /** Portuguese label of each audit action. */
 export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
@@ -22,6 +23,7 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   promote_tag: "Tag promovida",
   update_org_threshold: "Limite de denúncias alterado",
   remove_user: "Usuário removido",
+  change_role: "Papel alterado",
 };
 
 /** How actions without an actor (the automatic report threshold) are attributed. */
@@ -87,6 +89,10 @@ function DetailSentence(key: string, value: unknown, lookups: AuditLookups): Loo
     return Prefixed("Evento que motivou: ", lookups.event(value));
   if (key === "shadowBanThreshold" && typeof value === "number")
     return Ok(`Novo limite: ${Plural(value, "denúncia", "denúncias")} para ocultar um evento.`);
+  if (key === "from" || key === "to") {
+    const role = RoleLabel(value);
+    if (role !== null) return Ok(`${key === "from" ? "Papel anterior" : "Novo papel"}: ${role}.`);
+  }
   if (key === "deletedEvents" && typeof value === "number")
     return Ok(`${Plural(value, "evento excluído", "eventos excluídos")} junto com a conta.`);
   return Ok(`Informação adicional “${key}”: ${PlainValue(value)}.`);

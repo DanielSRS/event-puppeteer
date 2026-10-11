@@ -1,6 +1,7 @@
 /**
  * People of the organization: name, e-mail, shadow-ban status, a labelled
- * role selector and a remove button. The logged-in person can't change their
+ * role selector, a remove button and, for a Superadmin, a promote-to-Superadmin
+ * button. The logged-in person can't change their
  * own role or remove themselves (the API refuses it too), and the controls
  * say so.
  *
@@ -10,15 +11,8 @@
  */
 
 import type { OrgRole, User } from "@/lib/api/schemas";
-import { MdPersonRemove } from "react-icons/md";
-
-/** Portuguese label of each role. */
-export const ROLE_LABELS: Record<User["role"], string> = {
-  Member: "Membro",
-  Moderator: "Moderador",
-  Admin: "Administrador",
-  Superadmin: "Superadmin",
-};
+import { MdAdminPanelSettings, MdPersonRemove } from "react-icons/md";
+import { ROLE_LABELS } from "../roleLabels";
 
 /** Roles an Admin can give, lowest first. */
 const ORG_ROLES: OrgRole[] = ["Member", "Moderator", "Admin"];
@@ -32,6 +26,10 @@ export type UserListProps = {
   onChangeRole: (user: User, role: OrgRole) => void;
   /** Asks to remove a person (the container confirms first). */
   onRemove: (user: User) => void;
+  /** Whether the viewer is a Superadmin, the only role that can create other Superadmins. */
+  canPromoteToSuperadmin: boolean;
+  /** Asks to promote a person to Superadmin (the container confirms first). */
+  onPromoteToSuperadmin: (user: User) => void;
 };
 
 /** `"Maria Membro"`. */
@@ -50,7 +48,9 @@ function IsOrgRole(value: string): value is OrgRole {
 }
 
 /** The table of people; the container renders the empty and loading states. */
-export function UserList({ users, currentUserId, busyUserId, onChangeRole, onRemove }: UserListProps) {
+export function UserList({
+  users, currentUserId, busyUserId, onChangeRole, onRemove, canPromoteToSuperadmin, onPromoteToSuperadmin,
+}: UserListProps) {
   return (
     <table className="block w-full text-sm md:table">
       <caption className="sr-only">Pessoas da organização</caption>
@@ -111,6 +111,17 @@ export function UserList({ users, currentUserId, busyUserId, onChangeRole, onRem
                 )}
               </td>
               <td className="block pt-2 md:table-cell md:p-3 md:align-middle md:text-right">
+                <div className="flex flex-col gap-2 md:flex-row md:justify-end">
+                {canPromoteToSuperadmin && user.role !== "Superadmin" && !isMe && (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => onPromoteToSuperadmin(user)}
+                    className="button clean min-h-10 w-full md:w-auto"
+                  >
+                    <MdAdminPanelSettings aria-hidden className="icon" /> Promover<span className="sr-only"> {name}</span> a Superadmin
+                  </button>
+                )}
                 {user.role !== "Superadmin" && (
                   <button
                     type="button"
@@ -122,6 +133,7 @@ export function UserList({ users, currentUserId, busyUserId, onChangeRole, onRem
                     <MdPersonRemove aria-hidden className="icon" /> Remover<span className="sr-only"> {name}</span>
                   </button>
                 )}
+                </div>
                 {isMe && (
                   <p id={selfNoteId} className="mt-1 text-xs text-foreground/70">
                     Você não pode alterar o próprio papel nem remover a própria conta.

@@ -207,6 +207,12 @@ export const api = {
     /** Admin+. */
     changeRole: (orgId: string, userId: string, role: OrgRole) =>
       Request(UserSchema, "PATCH", `/organizations/${seg(orgId)}/users/${seg(userId)}/role`, { role }),
+    /**
+     * Superadmin only. Makes the person a Superadmin: they leave the organization
+     * and gain access to every organization and the global settings. Audited.
+     */
+    promoteToSuperadmin: (orgId: string, userId: string) =>
+      Request(UserSchema, "PATCH", `/organizations/${seg(orgId)}/users/${seg(userId)}/role`, { role: "Superadmin" }),
     /** Admin+. Deactivates the account: it can't log in anymore and its events leave the feed. */
     remove: (orgId: string, userId: string) =>
       Request(SuccessSchema, "DELETE", `/organizations/${seg(orgId)}/users/${seg(userId)}`),
