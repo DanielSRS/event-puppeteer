@@ -69,8 +69,40 @@ A complaint filed by a user against an event. Contains a predefined reason and o
 _Avoid_: Flag, complaint, ticket
 
 **Shadow Ban**:
-A ban where the affected user is unaware — they can still create events and interact normally, but their content is invisible to everyone else. Triggered automatically when a report threshold is reached. A moderator or admin can lift it. Applies to all current and future events of the banned user.
+A ban where the affected user is unaware — they can still create events and interact normally, but their content is invisible to everyone else. Triggered automatically when a report threshold is reached, or by a Confirmed Rejection of one of the user's Images. A moderator or admin can lift it. Applies to all current and future events of the banned user.
 _Avoid_: Soft ban, mute, silent ban
+
+**Image**:
+A picture uploaded to Puppeteer and stored immutably — an Event's banner or an Organization's logo. Users have no avatar. Images are never referenced by external URL. Every Image goes through Screening before anyone other than its uploader can see it. A User may upload at most 10 Images per day.
+_Avoid_: Picture, media, asset, file
+
+**Screening**:
+The automatic analysis of an Image for inappropriate content (nudity, gore, violence, hate speech, extremist symbols, and similar). Ends in one of three verdicts: Approved, Rejected, or In Review. When Screening cannot conclude (service unavailable, quota exhausted), the Image goes to Image Review marked as not screened — it is never shown unscreened.
+_Avoid_: Scan, check, filtering, moderation (moderation is the human side)
+
+**Screening Policy**:
+The system-wide, per-category score cut-offs that decide whether Screening ends Approved, In Review, or Rejected. Set by the Superadmin; the same for every Organization.
+_Avoid_: Thresholds, sensitivity, filter settings
+
+**Pending Image**:
+An Image whose Screening has not concluded as Approved. Everyone except its uploader sees a Placeholder in its place; devices never receive it. The uploader sees it as published from the moment of upload, with no sign that it is being screened or reviewed. A Pending Image never replaces a previously Approved one until it is itself Approved.
+_Avoid_: Unverified image, draft image
+
+**Placeholder**:
+The neutral stand-in shown wherever an Image is not Approved (a default banner or a default logo). The surrounding content (an Event's text, an Organization's name) is shown normally.
+_Avoid_: Fallback image, blank
+
+**Rejected Image**:
+An Image that Screening or Image Review decided must never be shown. Its uploader is never told: they keep seeing it as if it were published, while everyone else sees the Placeholder. A rejection by Screening alone does not affect the uploader in any other way.
+_Avoid_: Blocked image, removed image, flagged image
+
+**Confirmed Rejection**:
+A rejection made by a human in Image Review. Unlike a rejection by Screening alone, it shadow-bans the uploader.
+_Avoid_: Strike, violation
+
+**Image Review**:
+The human decision on an Image whose Screening ended In Review. Performed by the Organization's Moderators and Admins, or by a Superadmin — never by the Image's uploader. When no other eligible reviewer exists, the Image goes to the Superadmins; if none other than the uploader exists, it stays Pending. Previews are blurred until the reviewer chooses to reveal them. Every decision is recorded in the Audit Trail.
+_Avoid_: Manual moderation, approval queue
 
 **Audit Trail**:
 A log of all moderation actions (hide/unhide event, lift shadow ban, etc.) recording who performed the action and when. Exists for accountability and review purposes.
