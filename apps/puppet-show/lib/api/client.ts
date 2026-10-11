@@ -146,6 +146,13 @@ export const api = {
     /** Always succeeds, whether or not the email exists (doesn't reveal accounts). */
     resendVerification: (email: string) => Request(SuccessSchema, "POST", "/auth/resend-verification", { email }),
 
+    /** Emails a link to choose a new password. Always succeeds (doesn't reveal accounts). */
+    requestPasswordReset: (email: string) => Request(SuccessSchema, "POST", "/auth/request-password-reset", { email }),
+
+    /** Sets a new password with the emailed token. 400 = invalid, expired or already used link. */
+    resetPassword: (token: string, password: string) =>
+      Request(SuccessSchema, "POST", "/auth/reset-password", { token, password }),
+
     /** The logged-in user. */
     me: () => Request(UserSchema, "GET", "/auth/me"),
   },

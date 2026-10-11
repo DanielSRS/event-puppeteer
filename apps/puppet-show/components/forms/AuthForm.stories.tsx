@@ -26,6 +26,7 @@ export const Login: Story = {
     await userEvent.type(canvas.getByLabelText("Senha"), "password123");
     await userEvent.click(canvas.getByRole("button", { name: "Entrar" }));
     await expect(args.onSubmit).toHaveBeenCalledWith({ name: "", email: "maria@uefs.br", password: "password123" });
+    await expect(canvas.getByRole("link", { name: "Esqueci minha senha" })).toHaveAttribute("href", "/esqueci-senha");
   },
 };
 
@@ -43,6 +44,7 @@ export const Register: Story = {
     await userEvent.type(canvas.getByLabelText("Nome completo"), " souza");
     await userEvent.click(canvas.getByRole("button", { name: "Criar conta" }));
     await expect(args.onSubmit).toHaveBeenCalledWith({ name: "Maria Souza", email: "maria@uefs.br", password: "password123" });
+    await expect(canvas.queryByRole("link", { name: "Esqueci minha senha" })).not.toBeInTheDocument();
   },
 };
 

@@ -115,6 +115,12 @@ export function AuthForm({
         placeholder: "********",
       })}
 
+      {!isRegister && (
+        <Link href="/esqueci-senha" className="-mt-2 self-end text-sm text-main underline">
+          Esqueci minha senha
+        </Link>
+      )}
+
       <ErrorAlert>{generalError}</ErrorAlert>
       <ErrorAlert>{resendError}</ErrorAlert>
 

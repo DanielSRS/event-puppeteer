@@ -42,7 +42,8 @@ function RegisterErrorMessage(error: ApiError): string {
  * Login keeps `?redirect=` and goes there after success; a 403 (email not
  * confirmed) offers to resend the link. Sign-up joins the public organization
  * and then shows {@link VerifyEmailNotice}. The API sends people back to the
- * login page with `?emailVerified=1|0` after they open the emailed link.
+ * login page with `?emailVerified=1|0` after they open the emailed link; the
+ * password-reset page sends them here with `?senhaRedefinida=1`.
  */
 export function AuthFormContainer({ mode }: AuthFormContainerProps) {
   const isRegister = mode === "register";
@@ -51,7 +52,9 @@ export function AuthFormContainer({ mode }: AuthFormContainerProps) {
   const redirect = SafeRedirect(searchParams.get("redirect"));
 
   const emailVerified = searchParams.get("emailVerified");
-  const notice = emailVerified === "1" ? "E-mail confirmado, faça login." : "";
+  const notice = emailVerified === "1"
+    ? "E-mail confirmado, faça login."
+    : searchParams.get("senhaRedefinida") === "1" ? "Senha alterada. Entre com a nova senha." : "";
   const linkError = emailVerified === "0"
     ? "Link inválido ou expirado. Entre com seu e-mail e senha para receber um novo."
     : "";

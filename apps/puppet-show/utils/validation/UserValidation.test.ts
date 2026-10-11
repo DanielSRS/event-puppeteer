@@ -1,5 +1,5 @@
-import { expect, test } from "vitest";
-import { SafeRedirect, ValidateUser } from "./UserValidation";
+import { describe, expect, test } from "vitest";
+import { SafeRedirect, ValidateEmail, ValidateNewPassword, ValidateUser } from "./UserValidation";
 import { FormatPersonName, SplitName } from "@/utils/text";
 
 test("valid login", () => {
@@ -28,4 +28,27 @@ test("SafeRedirect keeps only internal paths", () => {
   expect(SafeRedirect("//evil.com")).toBe("/");
   expect(SafeRedirect("/\\evil.com")).toBe("/");
   expect(SafeRedirect("https://evil.com")).toBe("/");
+});
+
+describe("ValidateEmail", () => {
+  test("accepts an address and refuses anything else", () => {
+    expect(ValidateEmail(" maria@uefs.br ")).toBeNull();
+    expect(ValidateEmail("")).toBe("Informe um e-mail válido.");
+    expect(ValidateEmail("maria@")).toBe("Informe um e-mail válido.");
+  });
+});
+
+describe("ValidateNewPassword", () => {
+  test("a long enough password typed twice is fine", () => {
+    expect(ValidateNewPassword("nova-senha-1", "nova-senha-1")).toEqual({});
+  });
+
+  test("too short, and a confirmation that doesn't match, are pointed out separately", () => {
+    expect(ValidateNewPassword("curta", "curta")).toEqual({ password: "A senha precisa ter pelo menos 8 caracteres." });
+    expect(ValidateNewPassword("nova-senha-1", "nova-senha-2")).toEqual({ confirmation: "As senhas não são iguais." });
+    expect(ValidateNewPassword("", "x")).toEqual({
+      password: "A senha precisa ter pelo menos 8 caracteres.",
+      confirmation: "As senhas não são iguais.",
+    });
+  });
 });
