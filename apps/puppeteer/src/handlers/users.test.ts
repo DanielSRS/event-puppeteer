@@ -88,6 +88,45 @@ test('Users Handlers & Roles', async (t) => {
     assert.ok(updated);
     assert.equal(updated.role, 'Admin');
   });
+  await t.test('a Superadmin promotes a User to Superadmin: they leave the organization and the change is audited', async () => {
+    const io = await createInMemoryIO();
+    const { org1 } = await setupTestOrgs(io);
+    const { token: superToken, user: superUser } = await registerVerified({ firstName: 'Super', lastName: 'X', email: 's@a.com', password: 'password123' }, org1.id, io);
+    await io.userRepo.update(superUser.id, { role: 'Superadmin' });
+    const { token: targetToken, user: target } = await registerVerified({ firstName: 'Nova', lastName: 'Super', email: 'n@a.com', password: 'password123' }, org1.id, io);
+    const asSuper = new Request('http://localhost/', { headers: { authorization: `Bearer ${superToken}` } });
+
+    const promoted = await assignRoleHandler(asSuper, org1.id, target.id, { role: 'Superadmin' }, io);
+    assert.equal(promoted.role, 'Superadmin');
+    assert.equal('organizationId' in promoted, false);
+
+    const me = await meHandler(new Request('http://localhost/', { headers: { authorization: `Bearer ${targetToken}` } }), io);
+    assert.equal(me.role, 'Superadmin');
+    assert.equal((await listOrgUsersHandler(asSuper, org1.id, io)).some(u => u.id === target.id), false);
+
+    const audit = await listAuditTrailHandler(asSuper, org1.id, io);
+    const entry = audit.find(e => e.action === 'change_role' && e.targetId === target.id);
+    assert.ok(entry);
+    assert.equal(entry.actorId, superUser.id);
+    assert.deepEqual(entry.details, { from: 'Member', to: 'Superadmin' });
+  });
+
+  await t.test('every role change is recorded in the audit trail with the old and new role', async () => {
+    const io = await createInMemoryIO();
+    const { org1 } = await setupTestOrgs(io);
+    const { token: adminToken, user: admin } = await registerVerified({ firstName: 'A', lastName: 'X', email: 'a@a.com', password: 'password123' }, org1.id, io);
+    await io.userRepo.update(admin.id, { role: 'Admin' });
+    const { user: target } = await registerVerified({ firstName: 'T', lastName: 'Y', email: 't@a.com', password: 'password123' }, org1.id, io);
+    const asAdmin = new Request('http://localhost/', { headers: { authorization: `Bearer ${adminToken}` } });
+
+    await assignRoleHandler(asAdmin, org1.id, target.id, { role: 'Moderator' }, io);
+    await assert.rejects(assignRoleHandler(asAdmin, org1.id, target.id, { role: 'Superadmin' }, io), /FORBIDDEN/);
+
+    const changes = (await listAuditTrailHandler(asAdmin, org1.id, io)).filter(e => e.action === 'change_role');
+    assert.equal(changes.length, 1);
+    assert.deepEqual(changes[0]!.details, { from: 'Member', to: 'Moderator' });
+  });
+
   await t.test('removing a User with events, votes and reports deactivates them and keeps the audit trail', async () => {
     const io = await createInMemoryIO();
     const { org1 } = await setupTestOrgs(io);

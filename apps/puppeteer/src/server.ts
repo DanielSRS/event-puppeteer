@@ -510,7 +510,7 @@ export function createServer(io: AppIO, { adapter, appUrl = 'http://localhost:30
                 params: t.Object({ id: t.String(), userId: t.String() }),
                 body: ChangeRoleBody,
                 response: UserSchema,
-                detail: { tags: ['Users'], summary: 'Change a User role', security: asUser }
+                detail: { tags: ['Users'], summary: 'Change a User role', description: 'Admin of the Organization, or Superadmin. Only a Superadmin may assign Superadmin; the User then leaves the Organization. Changes are recorded in the audit trail (change_role).', security: asUser }
               }
             )
             .delete(

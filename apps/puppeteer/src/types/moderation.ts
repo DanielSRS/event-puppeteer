@@ -31,7 +31,8 @@ export const AuditActionSchema = t.Union([
   t.Literal('lift_shadow_ban'),
   t.Literal('promote_tag'),
   t.Literal('update_org_threshold'),
-  t.Literal('remove_user')
+  t.Literal('remove_user'),
+  t.Literal('change_role')
 ]);
 export type AuditAction = Static<typeof AuditActionSchema>;
 

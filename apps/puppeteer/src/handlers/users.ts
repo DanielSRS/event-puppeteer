@@ -36,17 +36,39 @@ export async function listOrgUsersHandler(request: Request, orgId: string, io: A
   return await io.userRepo.listByOrganization(orgId);
 }
 
+/**
+ * Changes the role of a User of an Organization. Admin of the Organization, or Superadmin.
+ * Only a Superadmin may promote someone to Superadmin; the promoted User then leaves the
+ * Organization (Superadmins are system-wide). An actual change is recorded in the audit
+ * trail of the Organization as `change_role` with `{ from, to }`.
+ * @throws FORBIDDEN when the actor may not manage the Organization, or a non-Superadmin
+ * asks for Superadmin.
+ * @throws NOT_FOUND when the User is unknown, removed or not in the Organization.
+ */
 export async function assignRoleHandler(request: Request, orgId: string, userId: string, body: ChangeRoleInput, io: AppIO) {
   const actor = await requireAuth(request, io);
   assertCanManageOrg(actor, orgId, 'Admin');
 
-  // Optional: Prevent Admin from assigning Superadmin or modifying Superadmins
   const targetUser = await io.userRepo.getById(userId);
   if (!targetUser || organizationOf(targetUser) !== orgId) throw new Error('NOT_FOUND');
   if (actor.role !== 'Superadmin' && body.role === 'Superadmin') throw new Error('FORBIDDEN');
 
   const updated = await io.userRepo.update(userId, { role: body.role });
   if (!updated) throw new Error('NOT_FOUND');
+
+  if (targetUser.role !== updated.role) {
+    await io.auditRepo.create({
+      id: randomUUID(),
+      actorId: actor.id,
+      organizationId: orgId,
+      action: 'change_role',
+      targetType: 'user',
+      targetId: userId,
+      details: { from: targetUser.role, to: updated.role },
+      createdAt: new Date().toISOString()
+    });
+  }
+
   return updated;
 }
 
