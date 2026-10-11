@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { registerHandler, loginHandler, meHandler, verifyEmailHandler, resendVerificationHandler } from './auth.ts';
+import { registerHandler, loginHandler, meHandler, verifyEmailHandler, resendVerificationHandler, requestPasswordResetHandler, resetPasswordHandler } from './auth.ts';
+import { removeUserHandler } from './users.ts';
 import { createInMemoryIO } from '../io/in-memory.ts';
 import { organizationOf } from '../types/user.ts';
 import { registerVerified, verificationTokenFor } from '../test-support.ts';
@@ -95,5 +96,59 @@ test('Auth Handlers', async (t) => {
     const req = new Request('http://localhost/', { headers: { authorization: `Bearer ${token}` } });
     const me = await meHandler(req, io);
     assert.equal(me.id, user.id);
+  });
+
+  /** Token of the latest password-reset email sent to `email` (the link points at the frontend). */
+  const resetTokenFor = (io: Awaited<ReturnType<typeof createInMemoryIO>>, email: string) => {
+    const message = io.emailSender.sent.findLast(m => m.to.email === email && m.subject === 'Redefinir sua senha');
+    const link = message?.text.match(/http:\/\/localhost:3000\/redefinir-senha\?token=(\S+)/);
+    if (!link) throw new Error(`No password reset email for ${email}`);
+    return decodeURIComponent(link[1]!);
+  };
+
+  await t.test('a forgotten password is reset through the emailed link; old password and sessions stop working', async () => {
+    const { io, orgId } = await setup();
+    const { token: oldSession } = await registerVerified(body, orgId, io);
+
+    assert.deepEqual(await requestPasswordResetHandler({ email: body.email }, io), { success: true });
+    const token = resetTokenFor(io, body.email);
+
+    assert.deepEqual(await resetPasswordHandler({ token, password: 'new-password-1' }, io), { success: true });
+    await assert.rejects(loginHandler({ email: body.email, password: body.password }, io), /INVALID_CREDENTIALS/);
+    assert.ok((await loginHandler({ email: body.email, password: 'new-password-1' }, io)).token);
+    await assert.rejects(meHandler(new Request('http://localhost/', { headers: { authorization: `Bearer ${oldSession}` } }), io), /UNAUTHORIZED/);
+
+    await assert.rejects(resetPasswordHandler({ token, password: 'another-pass-2' }, io), /INVALID_RESET_TOKEN/);
+  });
+
+  await t.test('asking to reset an unknown email answers the same and sends nothing', async () => {
+    const { io } = await setup();
+    assert.deepEqual(await requestPasswordResetHandler({ email: 'nobody@test.com' }, io), { success: true });
+    assert.equal(io.emailSender.sent.length, 0);
+  });
+
+  await t.test('an invalid reset token changes nothing', async () => {
+    const { io, orgId } = await setup();
+    await registerVerified(body, orgId, io);
+    await assert.rejects(resetPasswordHandler({ token: 'not-a-token', password: 'new-password-1' }, io), /INVALID_RESET_TOKEN/);
+    assert.ok((await loginHandler({ email: body.email, password: body.password }, io)).token);
+  });
+
+  await t.test('a removed account gets no reset email and cannot log in again through a reset', async () => {
+    const { io, orgId } = await setup();
+    const { user } = await registerVerified(body, orgId, io);
+    const admin = await registerVerified({ firstName: 'Ana', lastName: 'Admin', email: 'ana@test.com', password: 'password123' }, orgId, io);
+    await io.userRepo.update(admin.user.id, { role: 'Admin' });
+
+    await requestPasswordResetHandler({ email: body.email }, io);
+    const tokenBeforeRemoval = resetTokenFor(io, body.email);
+    await removeUserHandler(new Request('http://localhost/', { headers: { authorization: `Bearer ${admin.token}` } }), orgId, user.id, io);
+
+    const sentBefore = io.emailSender.sent.length;
+    assert.deepEqual(await requestPasswordResetHandler({ email: body.email }, io), { success: true });
+    assert.equal(io.emailSender.sent.length, sentBefore);
+
+    await assert.rejects(resetPasswordHandler({ token: tokenBeforeRemoval, password: 'new-password-1' }, io), /INVALID_RESET_TOKEN/);
+    await assert.rejects(loginHandler({ email: body.email, password: 'new-password-1' }, io), /INVALID_CREDENTIALS/);
   });
 });

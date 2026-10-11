@@ -64,6 +64,17 @@ export const ResendVerificationBody = t.Object({
 });
 export type ResendVerificationInput = Static<typeof ResendVerificationBody>;
 
+export const RequestPasswordResetBody = t.Object({
+  email: t.String({ format: 'email' })
+});
+export type RequestPasswordResetInput = Static<typeof RequestPasswordResetBody>;
+
+export const ResetPasswordBody = t.Object({
+  token: t.String({ minLength: 1, description: 'Token from the emailed reset link' }),
+  password: t.String({ minLength: 8, description: 'At least 8 characters' })
+});
+export type ResetPasswordInput = Static<typeof ResetPasswordBody>;
+
 export const LoginBody = t.Object({
   email: t.String({ format: 'email' }),
   password: t.String()

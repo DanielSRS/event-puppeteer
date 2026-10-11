@@ -83,6 +83,35 @@ export class BetterAuthProvider implements AuthProvider {
     await context.internalAdapter.deleteAccounts(userId);
   }
 
+  async sendPasswordResetEmail(email: string): Promise<void> {
+    try {
+      await this.authInstance.api.requestPasswordReset({ body: { email } });
+    } catch (e: unknown) {
+      console.error(`[auth] requestPasswordReset ${email} failed → ${describe(e)}`);
+      throw new Error('EMAIL_DELIVERY_FAILED: ' + (e instanceof Error ? e.message : String(e)));
+    }
+  }
+
+  async userIdForResetToken(token: string): Promise<string | null> {
+    const context = await this.authInstance.$context;
+    const verification = await context.internalAdapter.findVerificationValue(`reset-password:${token}`);
+    if (!verification || verification.expiresAt.getTime() <= Date.now()) return null;
+    return verification.value;
+  }
+
+  async resetPassword(token: string, newPassword: string): Promise<boolean> {
+    try {
+      await this.authInstance.api.resetPassword({ body: { token, newPassword } });
+      return true;
+    } catch (e: unknown) {
+      if (isExpected(e, 'INVALID_TOKEN')) {
+        console.warn(`[auth] resetPassword refused → ${describe(e)}`);
+        return false;
+      }
+      throw e;
+    }
+  }
+
   async getSessionUserId(request: Request): Promise<string | null> {
     try {
       const session = await this.authInstance.api.getSession({

@@ -13,8 +13,8 @@ import {
   UpdateOrganizationBody,
   OrganizationSchema
 } from './types/organization.ts';
-import { UserSchema, RegisterBody, LoginBody, ChangeRoleBody, ResendVerificationBody } from './types/user.ts';
-import { registerHandler, loginHandler, meHandler, verifyEmailHandler, resendVerificationHandler } from './handlers/auth.ts';
+import { UserSchema, RegisterBody, LoginBody, ChangeRoleBody, ResendVerificationBody, RequestPasswordResetBody, ResetPasswordBody } from './types/user.ts';
+import { registerHandler, loginHandler, meHandler, verifyEmailHandler, resendVerificationHandler, requestPasswordResetHandler, resetPasswordHandler } from './handlers/auth.ts';
 import { listOrgUsersHandler, assignRoleHandler, removeUserHandler } from './handlers/users.ts';
 import { TagSchema, CreateTagBody, LinkLabelSchema, CreateLinkLabelBody } from './types/tag.ts';
 import { EventSchema, CreateEventBody, FeedEventSchema, EventWithVotesSchema } from './types/event.ts';
@@ -126,6 +126,10 @@ export function createServer(io: AppIO, { adapter, appUrl = 'http://localhost:30
       if (message === 'BAD_REQUEST') {
         set.status = 400;
         return { error: 'Bad Request' };
+      }
+      if (message === 'INVALID_RESET_TOKEN') {
+        set.status = 400;
+        return { error: 'Invalid or expired reset link' };
       }
       if (message === 'ORGANIZATION_SLUG_EXISTS') {
         set.status = 409;
@@ -354,6 +358,36 @@ export function createServer(io: AppIO, { adapter, appUrl = 'http://localhost:30
               tags: ['Auth'],
               summary: 'Send a new verification email',
               description: 'Always answers success, whether or not the email exists or is already verified.'
+            }
+          }
+        )
+        .post(
+          '/request-password-reset',
+          async ({ body, io }) => {
+            return await requestPasswordResetHandler(body, io);
+          },
+          {
+            body: RequestPasswordResetBody,
+            response: t.Object({ success: t.Literal(true) }),
+            detail: {
+              tags: ['Auth'],
+              summary: 'Email a link to choose a new password',
+              description: 'Always answers success, whether or not the email belongs to an account. The link opens $APP_URL/redefinir-senha?token=… and is valid for 60 minutes.'
+            }
+          }
+        )
+        .post(
+          '/reset-password',
+          async ({ body, io }) => {
+            return await resetPasswordHandler(body, io);
+          },
+          {
+            body: ResetPasswordBody,
+            response: t.Object({ success: t.Literal(true) }),
+            detail: {
+              tags: ['Auth'],
+              summary: 'Set a new password with the emailed token',
+              description: 'Ends every session of the account. 400 when the link is invalid, expired or already used.'
             }
           }
         )

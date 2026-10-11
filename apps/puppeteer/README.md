@@ -24,6 +24,8 @@ This project follows the **Functional Core / Imperative Shell** pattern to make 
 
 New accounts must confirm their email before logging in (`POST /auth/login` answers 403 until then). Registration sends a link to `GET /auth/verify-email`, which marks the email as verified and redirects to `$APP_URL/login?emailVerified=1` (or `0` for an invalid/expired link). `POST /auth/resend-verification` sends a new link. Emails go through Brevo (`BREVO_API_KEY`, `EMAIL_FROM`); without a key outside production they are printed to the console. The Superadmin seed creates an already-verified account.
 
+Forgotten passwords: `POST /auth/request-password-reset` (always answers success, so it doesn't reveal accounts) emails a link to `$APP_URL/redefinir-senha?token=…`, valid for 60 minutes. `POST /auth/reset-password` with that token and the new password sets it once and ends every session of the account. Removed accounts never get a link and can't log in again through one.
+
 ### Access rules
 
 - Public: `GET /health`, the docs, `POST /auth/register`, `POST /auth/login`, `POST /devices/connect`, and the read routes behind public screens: event list/feed/details, `GET /organizations/:id` (TV branding), `GET /tags`, `GET /link-labels`. Everything else requires a token; `src/server.test.ts` fails if a route is exposed by mistake.

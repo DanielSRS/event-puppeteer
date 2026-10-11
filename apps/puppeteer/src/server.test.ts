@@ -240,6 +240,21 @@ test('HTTP layer', async (t) => {
     assert.equal((await call('DELETE', `/organizations/${orgId}/users/${user.id}`, adminToken)).status, 404);
   });
 
+  await t.test('password reset over HTTP: request always succeeds, the emailed token sets a new password once', async () => {
+    const { io, call } = await setup();
+    assert.deepEqual((await call('POST', '/auth/request-password-reset', undefined, { email: 'nobody@a.com' })).body, { success: true });
+    assert.deepEqual((await call('POST', '/auth/request-password-reset', undefined, { email: 'a@a.com' })).body, { success: true });
+
+    const message = io.emailSender.sent.findLast(m => m.subject === 'Redefinir sua senha');
+    const token = decodeURIComponent(message?.text.match(/redefinir-senha\?token=(\S+)/)?.[1] ?? '');
+    assert.notEqual(token, '');
+
+    assert.equal((await call('POST', '/auth/reset-password', undefined, { token, password: 'short' })).status, 422);
+    assert.deepEqual(await call('POST', '/auth/reset-password', undefined, { token, password: 'new-password-1' }), { status: 200, body: { success: true } });
+    assert.deepEqual(await call('POST', '/auth/reset-password', undefined, { token, password: 'new-password-2' }), { status: 400, body: { error: 'Invalid or expired reset link' } });
+    assert.equal((await call('POST', '/auth/login', undefined, { email: 'a@a.com', password: 'new-password-1' })).status, 200);
+  });
+
   await t.test('every route except the public ones rejects anonymous requests', async () => {
     const { call } = await setup();
     // Public by decision: event listing (list, feed, details), what the TV display and the
@@ -250,6 +265,8 @@ test('HTTP layer', async (t) => {
       'POST /auth/login',
       'GET /auth/verify-email',
       'POST /auth/resend-verification',
+      'POST /auth/request-password-reset',
+      'POST /auth/reset-password',
       'POST /devices/connect',
       'GET /organizations/{id}',
       'GET /organizations/{id}/feed',

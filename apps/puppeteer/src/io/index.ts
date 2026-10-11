@@ -157,6 +157,12 @@ export interface AuthProvider {
    * tokens stop working and they can no longer log in. The User row is kept.
    */
   revokeAccess(userId: string): Promise<void>;
+  /** Emails a link to choose a new password. No-op for unknown emails (does not reveal which). */
+  sendPasswordResetEmail(email: string): Promise<void>;
+  /** The User a still-valid password-reset token belongs to, or null for an unknown or expired token. */
+  userIdForResetToken(token: string): Promise<string | null>;
+  /** Sets a new password with a reset token and ends every session; false when the token is invalid or expired. */
+  resetPassword(token: string, newPassword: string): Promise<boolean>;
 }
 
 export interface EmailMessage {
@@ -227,6 +233,7 @@ export function createRealIO(): AppIO & { close(): Promise<void> } {
     db,
     emailSender,
     apiUrl: env.BETTER_AUTH_URL,
+    appUrl: env.APP_URL,
     secret: env.BETTER_AUTH_SECRET,
     useSecureCookies: env.NODE_ENV === "production"
   });

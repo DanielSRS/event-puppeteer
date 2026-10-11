@@ -30,7 +30,7 @@ export async function createInMemoryIO(): Promise<AppIO & { emailSender: InMemor
     deviceRepo: new DrizzleDeviceRepository(db),
     telemetryRepo: new DrizzleTelemetryRepository(db),
     commandRepo: new DrizzleCommandRepository(db),
-    auth: new BetterAuthProvider(createAuth({ db, emailSender, apiUrl: 'http://localhost:8080' })),
+    auth: new BetterAuthProvider(createAuth({ db, emailSender, apiUrl: 'http://localhost:8080', appUrl: 'http://localhost:3000' })),
     emailSender
   };
 }

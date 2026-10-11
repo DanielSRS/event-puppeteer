@@ -1,5 +1,5 @@
 import type { AppIO } from '../io/index.ts';
-import type { RegisterInput, LoginInput, NewUser, User, ResendVerificationInput } from '../types/user.ts';
+import type { RegisterInput, LoginInput, NewUser, User, ResendVerificationInput, RequestPasswordResetInput, ResetPasswordInput } from '../types/user.ts';
 import { normalizeName } from '../utils/normalize.ts';
 import { requireAuth } from './users.ts';
 
@@ -36,8 +36,46 @@ export async function resendVerificationHandler(body: ResendVerificationInput, i
   return { success: true as const };
 }
 
+/**
+ * Logs in with email and password.
+ * @throws INVALID_CREDENTIALS for a wrong email or password, and for a removed account
+ * (its new session is ended at once).
+ * @throws EMAIL_NOT_VERIFIED while the email is not confirmed.
+ */
 export async function loginHandler(body: LoginInput, io: AppIO) {
-  return await io.auth.signIn(body.email, body.password);
+  const session = await io.auth.signIn(body.email, body.password);
+  if (!(await io.userRepo.getById(session.userId))) {
+    await io.auth.revokeAccess(session.userId);
+    throw new Error('INVALID_CREDENTIALS');
+  }
+  return session;
+}
+
+/**
+ * Emails a link to choose a new password. Answers the same whether or not the email
+ * belongs to an account, so it can't be used to find accounts; removed accounts get
+ * nothing.
+ * @throws EMAIL_DELIVERY_FAILED when the email could not be sent.
+ */
+export async function requestPasswordResetHandler(body: RequestPasswordResetInput, io: AppIO) {
+  const account = await io.userRepo.getByEmail(body.email);
+  if (account && await io.userRepo.getById(account.id)) {
+    await io.auth.sendPasswordResetEmail(body.email);
+  }
+  return { success: true as const };
+}
+
+/**
+ * Sets a new password with the token from the emailed link. Ends every session of
+ * the account; the link works once.
+ * @throws INVALID_RESET_TOKEN when the token is unknown, expired, already used, or
+ * belongs to a removed account.
+ */
+export async function resetPasswordHandler(body: ResetPasswordInput, io: AppIO) {
+  const userId = await io.auth.userIdForResetToken(body.token);
+  if (!userId || !(await io.userRepo.getById(userId))) throw new Error('INVALID_RESET_TOKEN');
+  if (!(await io.auth.resetPassword(body.token, body.password))) throw new Error('INVALID_RESET_TOKEN');
+  return { success: true as const };
 }
 
 /**
