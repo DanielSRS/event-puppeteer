@@ -11,21 +11,23 @@
  * not checked.
  *
  * Puppeteer's schemas are TypeBox, i.e. JSON Schema objects, read here as
- * plain data.
+ * plain data. Importing them needs Puppeteer's dependencies (elysia), which
+ * the app's build doesn't install, so this folder is left out of the app's
+ * tsconfig and has its own (like `e2e/`).
  *
  * @module
  */
 
 import { describe, expect, test } from "vitest";
 import type { z } from "zod";
-import * as Front from "./schemas";
-import * as ApiUser from "../../../puppeteer/src/types/user.ts";
-import * as ApiModeration from "../../../puppeteer/src/types/moderation.ts";
-import * as ApiDevice from "../../../puppeteer/src/types/device.ts";
-import * as ApiCommand from "../../../puppeteer/src/types/command.ts";
-import * as ApiImage from "../../../puppeteer/src/types/image.ts";
-import * as ApiEvent from "../../../puppeteer/src/types/event.ts";
-import * as ApiOrganization from "../../../puppeteer/src/types/organization.ts";
+import * as Front from "@/lib/api/schemas";
+import * as ApiUser from "../../puppeteer/src/types/user.ts";
+import * as ApiModeration from "../../puppeteer/src/types/moderation.ts";
+import * as ApiDevice from "../../puppeteer/src/types/device.ts";
+import * as ApiCommand from "../../puppeteer/src/types/command.ts";
+import * as ApiImage from "../../puppeteer/src/types/image.ts";
+import * as ApiEvent from "../../puppeteer/src/types/event.ts";
+import * as ApiOrganization from "../../puppeteer/src/types/organization.ts";
 
 /** Whether `value` is a plain object (a JSON Schema node). */
 function IsNode(value: unknown): value is Record<string, unknown> {
