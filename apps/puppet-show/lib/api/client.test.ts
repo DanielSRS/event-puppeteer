@@ -6,6 +6,8 @@ test("an Image error code gets its own message, whatever the status", () => {
     .toBe("A imagem não está na proporção exigida. Recorte-a antes de enviar.");
   expect(ApiErrorMessage({ kind: "http", status: 429, message: "Daily image upload limit reached", code: "IMAGE_DAILY_LIMIT", path: "/x" }))
     .toBe("Você atingiu o limite de 10 imagens por dia. Tente de novo amanhã.");
+  expect(ApiErrorMessage({ kind: "http", status: 409, message: "Image was replaced or removed by its uploader", code: "IMAGE_NO_LONGER_CURRENT", path: "/x" }))
+    .toBe("Quem enviou essa imagem já a substituiu ou removeu: ela não será exibida.");
 });
 
 test("without a known code the status decides", () => {

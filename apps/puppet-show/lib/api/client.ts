@@ -82,6 +82,7 @@ const CODE_MESSAGES: Partial<Record<string, string>> = {
   IMAGE_DAILY_LIMIT: "Você atingiu o limite de 10 imagens por dia. Tente de novo amanhã.",
   IMAGE_STORAGE_FAILED: "Não foi possível guardar a imagem agora. Tente de novo em instantes.",
   IMAGE_ALREADY_DECIDED: "Essa imagem já foi analisada por outra pessoa.",
+  IMAGE_NO_LONGER_CURRENT: "Quem enviou essa imagem já a substituiu ou removeu: ela não será exibida.",
   SCREENING_POLICY_INVALID: "Cada limite deve ficar entre 0% e 100%, e o limite de revisão não pode passar o de recusa.",
 };
 

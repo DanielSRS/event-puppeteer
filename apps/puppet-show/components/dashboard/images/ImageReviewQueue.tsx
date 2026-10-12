@@ -1,8 +1,8 @@
 /**
  * A queue of Images awaiting Image Review wired to the API: loads it, approves
  * at once, and rejects after a confirmation that says the uploader will be
- * shadow-banned. An Image someone else decided meanwhile (409) leaves the
- * queue with a note. Shared by the organization's queue and the Superadmin's
+ * shadow-banned. An Image someone else decided meanwhile, or that its uploader
+ * replaced or removed (409), leaves the queue with a note. Shared by the organization's queue and the Superadmin's
  * escalated one.
  *
  * @module
@@ -25,9 +25,15 @@ export type ImageReviewQueueProps = {
   organizationNames?: ReadonlyMap<string, string>;
 };
 
-/** Whether an API error says the Image was already decided by someone else. */
-function AlreadyDecided(result: ApiResult<unknown>): boolean {
-  return !result.ok && result.error.kind === "http" && result.error.status === 409;
+/**
+ * Why the Image can no longer be decided (someone else decided it, or its uploader replaced
+ * or removed it), or `null` when the API said something else.
+ */
+function Undecidable(result: ApiResult<unknown>, item: ImageReviewItem): string | null {
+  if (result.ok || result.error.kind !== "http" || result.error.status !== 409) return null;
+  return result.error.code === "IMAGE_NO_LONGER_CURRENT"
+    ? `${ImageSubject(item)} foi substituída ou removida por quem enviou e não será exibida.`
+    : `${ImageSubject(item)} já tinha sido analisada por outra pessoa.`;
 }
 
 /** The queue and its decisions. */
@@ -57,9 +63,10 @@ export function ImageReviewQueue({ load, organizationNames }: ImageReviewQueuePr
     setBusyId(item.id);
     const result = await api.images.approve(item.id);
     setBusyId(null);
-    if (AlreadyDecided(result)) {
+    const gone = Undecidable(result, item);
+    if (gone !== null) {
       drop(item);
-      return setStatus(`${ImageSubject(item)} já tinha sido analisada por outra pessoa.`);
+      return setStatus(gone);
     }
     if (!result.ok) return setError(`Não foi possível aprovar a imagem. ${ApiErrorMessage(result.error)}`);
     drop(item);
@@ -73,10 +80,11 @@ export function ImageReviewQueue({ load, organizationNames }: ImageReviewQueuePr
     setBusyId(item.id);
     const result = await api.images.reject(item.id);
     setBusyId(null);
-    if (AlreadyDecided(result)) {
+    const gone = Undecidable(result, item);
+    if (gone !== null) {
       drop(item);
       setRejecting(null);
-      return setStatus(`${ImageSubject(item)} já tinha sido analisada por outra pessoa.`);
+      return setStatus(gone);
     }
     if (!result.ok) return setDialogError(`Não foi possível rejeitar a imagem. ${ApiErrorMessage(result.error)}`);
     drop(item);
