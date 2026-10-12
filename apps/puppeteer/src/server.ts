@@ -98,6 +98,7 @@ const IMAGE_ERRORS: Partial<Record<string, { status: number; error: string }>> =
   IMAGE_DAILY_LIMIT: { status: 429, error: 'Daily image upload limit reached' },
   IMAGE_STORAGE_FAILED: { status: 502, error: 'Image could not be stored; try again' },
   IMAGE_ALREADY_DECIDED: { status: 409, error: 'Image was already decided' },
+  IMAGE_NO_LONGER_CURRENT: { status: 409, error: 'Image was replaced or removed by its uploader' },
   SCREENING_POLICY_INVALID: { status: 400, error: 'Every cut-off must be within 0–1, the lower one not above the upper one' }
 };
 
@@ -475,14 +476,14 @@ export function createServer(io: AppIO, { adapter, appUrl = 'http://localhost:30
         }, {
           params: t.Object({ imageId: t.String() }),
           response: t.Object({ state: t.Literal('approved') }),
-          detail: { tags: ['Images'], summary: 'Approve an Image in Image Review', description: '403 for the Image\'s own uploader or a caller who may not review it; 409 when it was already decided.', security: asUser }
+          detail: { tags: ['Images'], summary: 'Approve an Image in Image Review', description: '403 for the Image\'s own uploader or a caller who may not review it; 409 when it was already decided, or replaced or removed by its uploader.', security: asUser }
         })
         .post('/:imageId/reject', async ({ request, params: { imageId }, io }) => {
           return await rejectImageHandler(request, imageId, io);
         }, {
           params: t.Object({ imageId: t.String() }),
           response: t.Object({ state: t.Literal('rejected') }),
-          detail: { tags: ['Images'], summary: 'Reject an Image in Image Review', description: 'A Confirmed Rejection: the uploader is shadow-banned. 403 for the Image\'s own uploader or a caller who may not review it; 409 when it was already decided.', security: asUser }
+          detail: { tags: ['Images'], summary: 'Reject an Image in Image Review', description: 'A Confirmed Rejection: the uploader is shadow-banned. 403 for the Image\'s own uploader or a caller who may not review it; 409 when it was already decided, or replaced or removed by its uploader.', security: asUser }
         })
     )
     .get('/screening-policy', async ({ request, io }) => {

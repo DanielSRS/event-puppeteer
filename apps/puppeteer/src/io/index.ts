@@ -191,12 +191,17 @@ export interface ImageRepository {
   currentFor(kind: ImageKind, ownerId: string): Promise<{ latest: Image | null; approved: Image | null }>;
   /** Detaches every Image of an owner, so none of them is shown again. */
   detachAll(kind: ImageKind, ownerId: string, at: Date): Promise<void>;
+  /**
+   * Detaches the owner's Images still In Review, except `keepId`: a newer upload supersedes
+   * them, so they leave Image Review and can never be shown.
+   */
+  supersedePending(kind: ImageKind, ownerId: string, keepId: string, at: Date): Promise<void>;
   /** Images In Review that are still attached to their owner, oldest first. */
   listInReview(): Promise<Image[]>;
   /**
-   * Decides an Image that is In Review, atomically: when two reviewers decide at once only
-   * one succeeds.
-   * @returns the decided Image, or null when it is not In Review (any more).
+   * Decides an attached Image that is In Review, atomically: when two reviewers decide at
+   * once, or its owner supersedes or removes it meanwhile, only one thing wins.
+   * @returns the decided Image, or null when it is not In Review or not attached (any more).
    */
   decide(id: string, state: Exclude<ImageState, 'in_review'>, reviewerId: string, at: Date): Promise<Image | null>;
 }

@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, gte, isNull } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gte, isNull, ne } from 'drizzle-orm';
 import type { ImageRepository } from '../index.ts';
 import type { Image, ImageKind, ImageState } from '../../types/image.ts';
 import { image } from '../../db/schema.ts';
@@ -50,6 +50,14 @@ export class DrizzleImageRepository implements ImageRepository {
       .where(and(eq(image.kind, kind), eq(image.ownerId, ownerId), isNull(image.detachedAt)));
   }
 
+  async supersedePending(kind: ImageKind, ownerId: string, keepId: string, at: Date): Promise<void> {
+    await this.db.update(image).set({ detachedAt: at })
+      .where(and(
+        eq(image.kind, kind), eq(image.ownerId, ownerId), eq(image.state, 'in_review'),
+        isNull(image.detachedAt), ne(image.id, keepId)
+      ));
+  }
+
   async listInReview(): Promise<Image[]> {
     const rows = await this.db.select().from(image)
       .where(and(eq(image.state, 'in_review'), isNull(image.detachedAt)))
@@ -60,7 +68,7 @@ export class DrizzleImageRepository implements ImageRepository {
   async decide(id: string, state: Exclude<ImageState, 'in_review'>, reviewerId: string, at: Date): Promise<Image | null> {
     const rows = await this.db.update(image)
       .set({ state, decidedBy: reviewerId, decidedAt: at })
-      .where(and(eq(image.id, id), eq(image.state, 'in_review')))
+      .where(and(eq(image.id, id), eq(image.state, 'in_review'), isNull(image.detachedAt)))
       .returning();
     const row = rows[0];
     return row ? this.mapToDomain(row) : null;

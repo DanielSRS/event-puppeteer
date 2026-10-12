@@ -381,6 +381,23 @@ test('Image Screening', async (t) => {
     assert.equal((await getEventHandler(creator.req, org.id, event.id, io)).banner?.url, replacement.url);
   });
 
+  await t.test('a pending banner replaced by a newer upload leaves Image Review and can no longer be decided', async () => {
+    const { io, org, member } = await setup();
+    const creator = await member('creator@a.com');
+    const moderator = await member('mod@a.com', 'Moderator');
+    const { event, imageId: replaced } = await bannerInReview(io, org.id, creator);
+    io.imageScreener.scores = { ...io.imageScreener.scores, violence: 0.5 };
+    const newest = await uploadEventBannerHandler(creator.req, org.id, event.id, await pictureFile(1920, 1080), io);
+
+    const queue = await listImageReviewsHandler(moderator.req, org.id, io);
+    assert.equal(queue.length, 1);
+    assert.notEqual(queue[0]?.id, replaced);
+    await assert.rejects(approveImageHandler(moderator.req, replaced, io), /IMAGE_NO_LONGER_CURRENT/);
+    await assert.rejects(rejectImageHandler(moderator.req, replaced, io), /IMAGE_NO_LONGER_CURRENT/);
+    assert.deepEqual((await getEventHandler(anonymous, org.id, event.id, io)).banner, { thumbhash: newest.thumbhash });
+    assert.equal((await io.userRepo.getById(creator.user.id))?.isShadowBanned, false);
+  });
+
   await t.test('removing the banner leaves the Event without one, for everyone', async () => {
     const { io, org, member } = await setup();
     const creator = await member('creator@a.com');

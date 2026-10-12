@@ -154,6 +154,7 @@ async function uploadImage(kind: ImageKind, ownerId: string, organizationId: str
     ...outcome
   };
   await io.imageRepo.create(image);
+  await io.imageRepo.supersedePending(kind, ownerId, id, new Date());
   return { url: io.imageStore.signedUrl(id), thumbhash: image.thumbhash };
 }
 
@@ -269,11 +270,12 @@ async function ownerNameOf(image: Image, io: AppIO): Promise<string> {
  * @throws NOT_FOUND for an unknown Image.
  * @throws FORBIDDEN when the actor may not review it (see `mayReview`).
  * @throws IMAGE_ALREADY_DECIDED when the Image is not In Review (any more).
+ * @throws IMAGE_NO_LONGER_CURRENT when its owner replaced or removed it.
  */
 export async function approveImageHandler(request: Request, imageId: string, io: AppIO): Promise<{ state: 'approved' }> {
   const { actor, image } = await reviewableImage(request, imageId, io);
   const decided = await io.imageRepo.decide(image.id, 'approved', actor.id, new Date());
-  if (!decided) throw new Error('IMAGE_ALREADY_DECIDED');
+  if (!decided) throw new Error(await whyUndecidable(image.id, io));
   await logAudit(io, actor.id, image.organizationId, 'approve_image', 'image', image.id);
   return { state: 'approved' };
 }
@@ -284,11 +286,12 @@ export async function approveImageHandler(request: Request, imageId: string, io:
  * @throws NOT_FOUND for an unknown Image.
  * @throws FORBIDDEN when the actor may not review it (see `mayReview`).
  * @throws IMAGE_ALREADY_DECIDED when the Image is not In Review (any more).
+ * @throws IMAGE_NO_LONGER_CURRENT when its owner replaced or removed it.
  */
 export async function rejectImageHandler(request: Request, imageId: string, io: AppIO): Promise<{ state: 'rejected' }> {
   const { actor, image, uploader } = await reviewableImage(request, imageId, io);
   const decided = await io.imageRepo.decide(image.id, 'rejected', actor.id, new Date());
-  if (!decided) throw new Error('IMAGE_ALREADY_DECIDED');
+  if (!decided) throw new Error(await whyUndecidable(image.id, io));
   await logAudit(io, actor.id, image.organizationId, 'reject_image', 'image', image.id);
 
   if (!uploader.isShadowBanned) {
@@ -296,6 +299,12 @@ export async function rejectImageHandler(request: Request, imageId: string, io: 
     await logAudit(io, actor.id, image.organizationId, 'apply_shadow_ban', 'user', uploader.id, { reason: 'confirmed_image_rejection', imageId: image.id });
   }
   return { state: 'rejected' };
+}
+
+/** The error code for an Image `decide` refused: replaced or removed by its owner, or already decided. */
+async function whyUndecidable(imageId: string, io: AppIO): Promise<string> {
+  const current = await io.imageRepo.getById(imageId);
+  return current?.detachedAt !== undefined ? 'IMAGE_NO_LONGER_CURRENT' : 'IMAGE_ALREADY_DECIDED';
 }
 
 /** The Image the actor wants to decide, after checking they may review it. */

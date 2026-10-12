@@ -85,7 +85,7 @@ The system-wide, per-category score cut-offs that decide whether Screening ends 
 _Avoid_: Thresholds, sensitivity, filter settings
 
 **Pending Image**:
-An Image whose Screening has not concluded as Approved. Everyone except its uploader sees a Placeholder in its place; devices never receive it. The uploader sees it as published from the moment of upload, with no sign that it is being screened or reviewed. A Pending Image never replaces a previously Approved one until it is itself Approved.
+An Image whose Screening has not concluded as Approved. Everyone except its uploader sees a Placeholder in its place; devices never receive it. The uploader sees it as published from the moment of upload, with no sign that it is being screened or reviewed. A Pending Image never replaces a previously Approved one until it is itself Approved. A newer upload supersedes it: a superseded Image leaves Image Review and is never shown, so only the latest upload can go live.
 _Avoid_: Unverified image, draft image
 
 **Placeholder**:
