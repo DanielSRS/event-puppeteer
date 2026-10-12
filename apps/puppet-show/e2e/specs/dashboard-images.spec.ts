@@ -1,12 +1,12 @@
 /**
  * Images against the real API: a creator crops and uploads a banner on their
- * event's page; with no Screening Policy it waits in Image Review, so visitors
+ * event's page; Screening suspects violence (the e2e screener answers 50%
+ * against the seeded 30%/80% policy), so it waits in Image Review and visitors
  * see only its Placeholder until a Moderator reveals and approves it. An Admin
- * uploads and removes the logo; the Superadmin sets the Screening Policy.
+ * uploads and removes the logo; the Superadmin edits the Screening Policy.
  *
- * The tests run in this order: the seed has no Screening Policy, and the last
- * test sets one (no other spec uploads Images). The logo ends removed, as
- * seeded.
+ * Seed data is restored: the logo ends removed and the policy's violence
+ * cut-off goes back to 30%.
  *
  * @module
  */
@@ -60,7 +60,7 @@ describe("Imagens: banner, revisão, logo e política de triagem", () => {
     const main = await OpenAdminPage(moderator.page, "/dashboard/images", "Imagens em Revisão");
     const subject = `Banner do evento “${title}”`;
     const card = CardOf(main, subject);
-    await card.getByText(/Não analisada automaticamente/).waitFor();
+    await card.getByRole("list", { name: `Suspeitas: ${subject}` }).getByText("Violência: 50%").waitFor();
     await card.getByRole("button", { name: `Revelar imagem ${subject}` }).click();
     await moderator.page.waitForFunction((alt) => [...document.images].some((img) => img.alt === alt && img.naturalWidth > 0), subject);
     await card.getByRole("button", { name: `Aprovar ${subject}` }).click();
@@ -89,24 +89,30 @@ describe("Imagens: banner, revisão, logo e política de triagem", () => {
     await Finish(admin, false);
   });
 
-  test("superadmin define a política de triagem pela primeira vez", async () => {
+  test("superadmin altera a política de triagem, que recusa limites invertidos, e depois a restaura", async () => {
     const superadmin = await OpenPage("desktop");
     await LoginAs(superadmin.page, "superadmin", "/dashboard/global/screening");
-    const main = await OpenAdminPage(superadmin.page, "/dashboard/global/screening", "Política de Triagem");
-    await main.getByText(/Nenhuma política definida ainda/).waitFor();
+    let main = await OpenAdminPage(superadmin.page, "/dashboard/global/screening", "Política de Triagem");
+    assert.equal(await main.getByText(/Nenhuma política definida ainda/).count(), 0);
+    const violence = main.getByRole("listitem").filter({ has: superadmin.page.getByRole("heading", { name: "Violência", exact: true }) });
+    assert.equal(await violence.getByLabel("Revisar a partir de (%)").inputValue(), "30");
 
+    await violence.getByLabel("Revisar a partir de (%)").fill("90");
     await main.getByRole("button", { name: "Salvar política" }).click();
-    await main.getByText("Informe os dois limites como números inteiros de 0 a 100.").first().waitFor();
+    await violence.getByText("O limite de revisão não pode passar o de recusa.").waitFor();
 
-    for (const field of await main.getByLabel("Revisar a partir de (%)").all()) await field.fill("30");
-    for (const field of await main.getByLabel("Recusar a partir de (%)").all()) await field.fill("80");
+    await violence.getByLabel("Revisar a partir de (%)").fill("25");
     await main.getByRole("button", { name: "Salvar política" }).click();
     await main.getByRole("status").filter({ hasText: "Política de triagem salva." }).waitFor();
 
     await superadmin.page.reload();
-    const reloaded = await OpenAdminPage(superadmin.page, "/dashboard/global/screening", "Política de Triagem");
-    assert.equal(await reloaded.getByText(/Nenhuma política definida ainda/).count(), 0);
-    assert.equal(await reloaded.getByLabel("Recusar a partir de (%)").first().inputValue(), "80");
+    main = await OpenAdminPage(superadmin.page, "/dashboard/global/screening", "Política de Triagem");
+    const reloaded = main.getByRole("listitem").filter({ has: superadmin.page.getByRole("heading", { name: "Violência", exact: true }) });
+    assert.equal(await reloaded.getByLabel("Revisar a partir de (%)").inputValue(), "25");
+
+    await reloaded.getByLabel("Revisar a partir de (%)").fill("30");
+    await main.getByRole("button", { name: "Salvar política" }).click();
+    await main.getByRole("status").filter({ hasText: "Política de triagem salva." }).waitFor();
     await Finish(superadmin, false);
   });
 });

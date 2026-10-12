@@ -27,7 +27,8 @@ const LOGO: ImageReviewItem = {
   ownerName: "Universidade Estadual",
   uploaderName: "Maria Souza",
   notScreened: true,
-  scores: {},
+  unscreenedReason: "OpenAI unreachable: fetch failed",
+  scores: { offensive_gesture: 0.4 },
   previewUrl: LOGO_URL,
   thumbhash: LOGO_THUMBHASH,
 };
@@ -52,6 +53,8 @@ export const Default: Story = {
     await expect(suspicions).toHaveTextContent("Violência: 31%");
     await expect(suspicions).not.toHaveTextContent("Nudez");
     await expect(canvas.getByText(/Não analisada automaticamente/)).toBeInTheDocument();
+    await expect(canvas.getByText("Motivo técnico: OpenAI unreachable: fetch failed")).toBeInTheDocument();
+    await expect(canvas.getByRole("list", { name: "Suspeitas: Logo da organização Universidade Estadual" })).toHaveTextContent("Gestos ofensivos: 40%");
 
     await expect(canvas.getByRole("img", { name: "Banner do evento “Semana de Tecnologia” (oculta até ser revelada)" })).toBeInTheDocument();
     await userEvent.click(canvas.getByRole("button", { name: "Revelar imagem Banner do evento “Semana de Tecnologia”" }));

@@ -10,10 +10,10 @@
  * - devices: one orphan (Superadmin queue), one pending in orgA, one active in
  *   orgA with heartbeat, telemetry and a log.
  *
- * No Screening Policy is set, so every uploaded Image waits in Image Review
- * (the in-memory screener answers clean scores once a policy exists). Stored
- * Images are served by this bridge at `/__e2e/images/<id>.webp`, so pages load
- * real pictures.
+ * The Screening Policy is set to 30% (review) / 80% (reject) in every category
+ * and the in-memory screener answers violence 50% for every Image, so each
+ * upload waits in Image Review. Stored Images are served by this bridge at
+ * `/__e2e/images/<id>.webp`, so pages load real pictures.
  *
  * Accounts register through the real flow (sign-up, open the emailed link, log
  * in). The seeded ids are written to `.state.json` and served at
@@ -98,6 +98,12 @@ function DaysFromToday(days: number) {
 
 await seedSuperadminHandler({ firstName: "Sara", lastName: "Super", email: E2E.users.superadmin, password: E2E.password }, io);
 const superToken = await login(E2E.users.superadmin);
+
+const cutOffs = { lower: 0.3, upper: 0.8 };
+await call("PUT", "/screening-policy", superToken, {
+  nudity: cutOffs, gore: cutOffs, violence: cutOffs, weapons: cutOffs, hate: cutOffs, offensive_gesture: cutOffs, offensive_text: cutOffs,
+});
+io.imageScreener.scores = { ...io.imageScreener.scores, violence: 0.5 };
 
 const orgA = await call("POST", "/organizations", superToken, { name: "Universidade Estadual", slug: "uefs", colorScheme: "#2563eb" });
 const orgB = await call("POST", "/organizations", superToken, { name: "Outra Organização", slug: "outra", colorScheme: "#16a34a" });

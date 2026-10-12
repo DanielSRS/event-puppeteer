@@ -27,7 +27,7 @@ Pré-requisitos: dependências instaladas com `nub install` e o Chromium da vers
 | `membro@e2e.test`, `relator@e2e.test` | Membros da orgA |
 | `outro@e2e.test` | Membro da "Outra Organização" (orgB) |
 
-Além disso: tags Tecnologia/Cultura (oficiais) e robotica (livre); rótulo de link Inscrição; eventos nas duas organizações (um com dois dias, tag, link, voto e denúncia); um dispositivo órfão, um pendente na orgA e um ativo na orgA com telemetria. Os ids ficam em `/__e2e/state` (e em `.state.json`); os e-mails "enviados" em `/__e2e/emails`.
+Além disso: tags Tecnologia/Cultura (oficiais) e robotica (livre); rótulo de link Inscrição; eventos nas duas organizações (um com dois dias, tag, link, voto e denúncia); um dispositivo órfão, um pendente na orgA e um ativo na orgA com telemetria. A política de triagem vale 30% (revisão) / 80% (recusa) em todas as categorias e a análise automática do teste responde violência 50%, então toda imagem enviada aguarda revisão; as imagens guardadas são servidas em `/__e2e/images/<id>.webp`. Os ids ficam em `/__e2e/state` (e em `.state.json`); os e-mails "enviados" em `/__e2e/emails`.
 
 ## Escrevendo specs
 

@@ -343,8 +343,11 @@ export const ImageReviewItemSchema = z.object({
   uploaderId: z.string(),
   uploaderName: z.string(),
   uploadedAt: z.string(),
-  /** Screening could not conclude: no score to go by. */
+  /** Screening could not conclude (an engine failed, or no Screening Policy is set). */
   notScreened: z.boolean(),
+  /** Why Screening could not conclude, in the API's own (technical) words. */
+  unscreenedReason: z.string().optional(),
+  /** Only the scores of the engines that answered, when Screening could not conclude. */
   scores: ScreeningScoresSchema,
   /** Short-lived URL of the picture, for the reviewer to reveal. */
   previewUrl: z.string(),

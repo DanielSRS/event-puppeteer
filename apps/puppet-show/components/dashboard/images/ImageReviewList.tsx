@@ -89,13 +89,17 @@ export function ImageReviewList({ items, busyId, onApprove, onReject, organizati
                 </p>
               </div>
 
-              {item.notScreened ? (
-                <p className="row items-start gap-2 rounded-lg border border-main/40 bg-main/10 p-3 text-sm">
+              {item.notScreened && (
+                <div className="row items-start gap-2 rounded-lg border border-main/40 bg-main/10 p-3 text-sm">
                   <MdWarningAmber aria-hidden className="icon shrink-0" />
-                  Não analisada automaticamente: a análise falhou ou ainda não há política de triagem. Revise com atenção.
-                </p>
-              ) : suspected.length === 0 ? (
-                <p className="text-sm text-foreground/80">A análise automática não apontou nenhuma categoria.</p>
+                  <div className="column gap-1">
+                    <p>Não analisada automaticamente: a análise falhou ou ainda não há política de triagem. Revise com atenção.</p>
+                    {item.unscreenedReason !== undefined && <p className="text-foreground/80 break-words">Motivo técnico: {item.unscreenedReason}</p>}
+                  </div>
+                </div>
+              )}
+              {suspected.length === 0 ? (
+                !item.notScreened && <p className="text-sm text-foreground/80">A análise automática não apontou nenhuma categoria.</p>
               ) : (
                 <div className="column gap-1">
                   <p className="text-sm font-medium">Suspeitas da análise automática</p>
