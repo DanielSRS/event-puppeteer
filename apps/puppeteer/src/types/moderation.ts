@@ -44,7 +44,8 @@ export const AuditEntrySchema = t.Object({
   actorId: t.Optional(t.String()), // absent for automatic actions (e.g. report threshold)
   organizationId: t.Optional(t.String()),
   action: AuditActionSchema,
-  targetType: t.String(), // 'event', 'user', 'tag', 'organization', 'image', 'screening_policy'
+  /** 'event', 'user', 'tag', 'organization', 'image' or 'screening_policy'. */
+  targetType: t.String(),
   targetId: t.String(),
   details: t.Optional(t.Record(t.String(), t.Any())),
   createdAt: t.String({ format: 'date-time' })

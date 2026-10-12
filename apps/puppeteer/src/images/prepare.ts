@@ -63,10 +63,7 @@ export async function prepareImage(bytes: Uint8Array, kind: ImageKind): Promise<
     return err('unsupported_format');
   }
 
-  // Orientations 5 to 8 turn the picture a quarter: its displayed sides swap
-  const turned = (metadata.orientation ?? 1) >= 5;
-  const width = turned ? metadata.height : metadata.width;
-  const height = turned ? metadata.width : metadata.height;
+  const { width, height } = displayedSize(metadata);
   const [across, down] = rules.proportion;
   if (Math.abs(height - (width * down) / across) > PROPORTION_TOLERANCE) return err('wrong_proportion');
   if (width < rules.minimum.width || height < rules.minimum.height) return err('too_small');
@@ -81,6 +78,12 @@ export async function prepareImage(bytes: Uint8Array, kind: ImageKind): Promise<
   } catch {
     return err('unreadable');
   }
+}
+
+/** The picture's size as displayed: EXIF orientations 5 to 8 turn it a quarter, swapping its sides. */
+function displayedSize(metadata: Metadata): { width: number; height: number } {
+  const turned = (metadata.orientation ?? 1) >= 5;
+  return turned ? { width: metadata.height, height: metadata.width } : { width: metadata.width, height: metadata.height };
 }
 
 /** The thumbhash of a picture, computed on a copy scaled to fit 100×100 (the encoder's limit). */

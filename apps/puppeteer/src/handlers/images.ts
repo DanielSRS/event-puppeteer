@@ -106,7 +106,8 @@ const REFUSAL_ERRORS: Record<ImageRefusal, string> = {
  * Prepares, screens and stores an uploaded file as the owner's latest Image.
  *
  * Screening decides the Image's state through the Screening Policy. When Screening cannot
- * conclude, or no Screening Policy is set yet, the Image waits In Review.
+ * conclude (an engine failed, or no Screening Policy is set yet), the Image waits In Review
+ * marked as not screened.
  * @throws IMAGE_DAILY_LIMIT when the uploader already uploaded DAILY_IMAGE_LIMIT Images in the last 24 hours.
  * @throws IMAGE_TOO_LARGE, IMAGE_UNREADABLE, IMAGE_UNSUPPORTED_FORMAT, IMAGE_WRONG_PROPORTION or
  * IMAGE_TOO_SMALL when the file cannot become an Image of `kind` (see `prepareImage`).
@@ -123,7 +124,8 @@ async function uploadImage(kind: ImageKind, ownerId: string, organizationId: str
   const screening = await io.imageScreener.screen(prepared.value.webp);
   const policy = await io.screeningPolicyRepo.get();
   const scores = screening.ok ? screening.value : {};
-  const state = screening.ok && policy ? verdictFor(scores, policy) : 'in_review';
+  const concluded = screening.ok && policy !== null;
+  const state = concluded ? verdictFor(scores, policy) : 'in_review';
 
   const id = randomUUID();
   const stored = await io.imageStore.storeRestricted(id, prepared.value.webp);
@@ -136,7 +138,7 @@ async function uploadImage(kind: ImageKind, ownerId: string, organizationId: str
     width: prepared.value.width,
     height: prepared.value.height,
     state,
-    notScreened: !screening.ok,
+    notScreened: !concluded,
     scores
   };
   await io.imageRepo.create(image);

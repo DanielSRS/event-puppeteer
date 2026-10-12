@@ -55,9 +55,12 @@ export interface Image {
   width: number;
   height: number;
   state: ImageState;
-  /** True when Screening could not conclude and the Image went to Image Review unscreened. */
+  /**
+   * True when Screening could not conclude (an engine failed, or no Screening Policy was set)
+   * and the Image went to Image Review unscreened. Any scores obtained are kept.
+   */
   notScreened: boolean;
-  /** The Screening scores; empty when Screening could not conclude. */
+  /** The Screening scores; empty when an engine failed. */
   scores: ScreeningScores;
   /** Who decided the Image in Image Review, and when. Absent for Screening's own verdicts. */
   decidedBy?: string;

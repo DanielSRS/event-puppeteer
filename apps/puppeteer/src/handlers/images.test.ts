@@ -133,7 +133,7 @@ test('Image Screening', async (t) => {
     assert.equal(queue[0]?.scores.weapons, 0.4);
   });
 
-  await t.test('without a Screening Policy every Image waits in Image Review', async () => {
+  await t.test('without a Screening Policy every Image waits in Image Review, marked as not screened', async () => {
     const { io, org, member } = await setup({ withPolicy: false });
     const creator = await member('creator@a.com');
     const moderator = await member('mod@a.com', 'Moderator');
@@ -141,7 +141,9 @@ test('Image Screening', async (t) => {
 
     await uploadEventBannerHandler(creator.req, org.id, event.id, await pictureFile(1920, 1080), io);
 
-    assert.equal((await listImageReviewsHandler(moderator.req, org.id, io)).length, 1);
+    const queue = await listImageReviewsHandler(moderator.req, org.id, io);
+    assert.equal(queue.length, 1);
+    assert.equal(queue[0]?.notScreened, true);
   });
 
   await t.test('only Moderators and Admins of the Organization, or Superadmins, see its Image Review queue', async () => {

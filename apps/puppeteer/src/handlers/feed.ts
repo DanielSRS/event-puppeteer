@@ -26,6 +26,10 @@ function getNextDateDaysAway(event: Event, todayStr: string): number {
   return Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
 }
 
+/**
+ * The weighted feed kiosks show. Kiosks have no viewer, so each banner is the latest
+ * Approved Image, or only the Placeholder while none is Approved.
+ */
 export async function eventFeedHandler(orgId: string, io: AppIO) {
   const allEvents = await io.eventRepo.listByOrganization(orgId);
   const todayStr = new Date().toISOString().split('T')[0]!;
@@ -50,7 +54,6 @@ export async function eventFeedHandler(orgId: string, io: AppIO) {
     const temporalScore = Math.max(0, 300 - daysAway * 10);
     const weight = voteCount * 100 + temporalScore;
 
-    // Kiosks have no viewer: they get Approved banners, or only the Placeholder
     const banner = await imageViewFor('event_banner', event.id, null, io);
     feedItems.push({
       ...event,

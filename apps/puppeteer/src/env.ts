@@ -8,8 +8,10 @@ const envSchema = z.object({
   BREVO_API_KEY: z.string().min(1).optional(),
   EMAIL_FROM: z.string().email("EMAIL_FROM precisa ser um email válido").optional(),
   EMAIL_FROM_NAME: z.string().default("Puppeteer"),
-  // Image Screening and storage (ADR 0003). Always required: without them an uploaded Image
-  // could be neither screened nor stored, and there is no stand-in
+  /**
+   * Image Screening and storage (ADR 0003): this and the five below are always required.
+   * Without them an uploaded Image could be neither screened nor stored, and there is no stand-in.
+   */
   SIGHTENGINE_API_USER: z.string().min(1, "Obrigatória: Screening de Images (Sightengine)"),
   SIGHTENGINE_API_SECRET: z.string().min(1, "Obrigatória: Screening de Images (Sightengine)"),
   OPENAI_API_KEY: z.string().min(1, "Obrigatória: segunda opinião do Screening de Images (OpenAI omni-moderation)"),
