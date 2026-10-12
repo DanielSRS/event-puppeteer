@@ -1,9 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import type { AppIO } from '../io/index.ts';
-import type { CreateEventInput, Event } from '../types/event.ts';
+import type { CreateEventInput, Event, EventView } from '../types/event.ts';
 import { requireAuth } from './users.ts';
 import { organizationOf, type User } from '../types/user.ts';
 import { hasAtLeastRole } from '../utils/roles.ts';
+import { imageViewFor } from './images.ts';
 
 function isEventExpired(event: Event): boolean {
   if (event.schedule.length === 0) return true;
@@ -45,7 +46,6 @@ export async function createEventHandler(request: Request, orgId: string, body: 
 
   if (body.latitude !== undefined) event.latitude = body.latitude;
   if (body.longitude !== undefined) event.longitude = body.longitude;
-  if (body.bannerImage !== undefined) event.bannerImage = body.bannerImage;
 
   event.schedule.forEach(s => s.eventId = event.id);
   event.tags.forEach(t => t.eventId = event.id);
@@ -69,10 +69,16 @@ export async function listEventsHandler(request: Request, orgId: string, io: App
   }
 
   // remove free-form tags from response
-  return publicEvents.map(e => ({
+  return await Promise.all(publicEvents.map(async e => withBanner({
     ...e,
     tags: e.tags.filter(t => !t.isFreeForm)
-  }));
+  }, viewerId, io)));
+}
+
+/** The Event with its banner resolved for `viewerId` (absent when it never had one). */
+async function withBanner(event: Event, viewerId: string | null, io: AppIO): Promise<EventView> {
+  const banner = await imageViewFor('event_banner', event.id, viewerId, io);
+  return { ...event, ...(banner ? { banner } : {}) };
 }
 
 /**
@@ -83,12 +89,12 @@ export async function listEventsHandler(request: Request, orgId: string, io: App
  * @throws UNAUTHORIZED without a valid session.
  * @throws FORBIDDEN when the actor belongs to another Organization and is not a Superadmin.
  */
-export async function listMyEventsHandler(request: Request, orgId: string, io: AppIO): Promise<Event[]> {
+export async function listMyEventsHandler(request: Request, orgId: string, io: AppIO): Promise<EventView[]> {
   const actor = await requireAuth(request, io);
   if (actor.role !== 'Superadmin' && organizationOf(actor) !== orgId) throw new Error('FORBIDDEN');
 
   const events = await io.eventRepo.listByCreator(orgId, actor.id);
-  return events.filter(e => !e.isDeleted);
+  return await Promise.all(events.filter(e => !e.isDeleted).map(e => withBanner(e, actor.id, io)));
 }
 
 /**
@@ -118,7 +124,7 @@ export async function getEventHandler(request: Request, orgId: string, eventId: 
     }
   }
 
-  return { ...event, voteCount: await io.voteRepo.countByEvent(event.id) };
+  return { ...await withBanner(event, viewerId, io), voteCount: await io.voteRepo.countByEvent(event.id) };
 }
 
 /** Whether `user` moderates `orgId`: a Moderator+ of it, or a Superadmin. */

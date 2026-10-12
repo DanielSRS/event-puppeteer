@@ -33,7 +33,6 @@ test('Organization Handlers', async (t) => {
       name: 'Test Org',
       slug: 'TO', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
       description: 'A test organization',
-      logo: 'logo.png',
       url: 'https://test.org',
       colorScheme: 'dark',
       location: 'Test City',
@@ -47,7 +46,6 @@ test('Organization Handlers', async (t) => {
     assert.equal(org.name, 'Test Org');
     assert.equal(org.slug, 'TO');
     assert.equal(org.description, 'A test organization');
-    assert.equal(org.logo, 'logo.png');
     assert.equal(org.url, 'https://test.org');
     assert.equal(org.colorScheme, 'dark');
     assert.equal(org.location, 'Test City');
@@ -87,14 +85,14 @@ test('Organization Handlers', async (t) => {
     assert.equal(updatedOrg.location, 'Old Location');
 
     // Verify it was actually saved
-    const fetchedOrg = await getOrganizationHandler(org.id, io);
+    const fetchedOrg = await getOrganizationHandler(new Request('http://localhost/'), org.id, io);
     assert.ok(fetchedOrg);
     assert.equal(fetchedOrg.name, 'New Name');
   });
 
   await t.test('getOrganizationHandler returns null for non-existent org', async () => {
     const { io } = await setup();
-    const org = await getOrganizationHandler('non-existent', io);
+    const org = await getOrganizationHandler(new Request('http://localhost/'), 'non-existent', io);
     assert.equal(org, null);
   });
 

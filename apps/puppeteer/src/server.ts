@@ -11,13 +11,27 @@ import {
 import {
   CreateOrganizationBody,
   UpdateOrganizationBody,
-  OrganizationSchema
+  OrganizationSchema,
+  OrganizationViewSchema
 } from './types/organization.ts';
+import { ImageViewSchema, ImageReviewItemSchema, ImageUploadBody, ScreeningPolicySchema } from './types/image.ts';
+import {
+  uploadEventBannerHandler,
+  removeEventBannerHandler,
+  uploadOrganizationLogoHandler,
+  removeOrganizationLogoHandler,
+  listImageReviewsHandler,
+  listEscalatedImageReviewsHandler,
+  approveImageHandler,
+  rejectImageHandler,
+  getScreeningPolicyHandler,
+  setScreeningPolicyHandler
+} from './handlers/images.ts';
 import { UserSchema, RegisterBody, LoginBody, ChangeRoleBody, ResendVerificationBody, RequestPasswordResetBody, ResetPasswordBody } from './types/user.ts';
 import { registerHandler, loginHandler, meHandler, verifyEmailHandler, resendVerificationHandler, requestPasswordResetHandler, resetPasswordHandler } from './handlers/auth.ts';
 import { listOrgUsersHandler, assignRoleHandler, removeUserHandler } from './handlers/users.ts';
 import { TagSchema, CreateTagBody, LinkLabelSchema, CreateLinkLabelBody } from './types/tag.ts';
-import { EventSchema, CreateEventBody, FeedEventSchema, EventWithVotesSchema } from './types/event.ts';
+import { EventSchema, EventViewSchema, CreateEventBody, FeedEventSchema, EventWithVotesSchema } from './types/event.ts';
 import { connectDeviceHandler, getCurrentDeviceHandler, listPendingDevicesGlobalHandler, listPendingDevicesOrgHandler, listActiveDevicesOrgHandler, getDeviceHandler, approveDeviceHandler, rejectDeviceHandler } from './handlers/devices.ts';
 import { PublicDeviceSchema, ConnectDeviceBody, ApproveDeviceBody } from './types/device.ts';
 import { heartbeatHandler, postLogHandler, postTelemetryHandler, pullPendingCommandsHandler, ackCommandHandler, completeCommandHandler, getDeviceStatusHandler, getDeviceLogsHandler, getDetailedTelemetryHandler, sendCommandHandler, requestTelemetryHandler, listCommandsHandler } from './handlers/telemetry.ts';
@@ -50,6 +64,7 @@ const docs = openapi({
       { name: 'Votes', description: 'Votes that weight an event in the kiosk rotation' },
       { name: 'Moderation', description: 'Reports, hidden events, shadow bans, tag promotion, and the audit trail' },
       { name: 'Tags', description: 'System-wide Tags and Link Labels' },
+      { name: 'Images', description: 'Event banners and Organization logos: upload, Screening Policy, and Image Review' },
       { name: 'Device', description: 'Endpoints called by Puppet from the Device itself (device token)' },
       { name: 'Device Management', description: 'Enrollment, telemetry, and Commands, operated by Admins and Superadmins' }
     ],
@@ -69,6 +84,22 @@ const docs = openapi({
     }
   }
 });
+
+/**
+ * Image upload, Image Review and Screening Policy errors. Several share a status, so the
+ * answer also carries the error code for clients to tell them apart.
+ */
+const IMAGE_ERRORS: Partial<Record<string, { status: number; error: string }>> = {
+  IMAGE_TOO_LARGE: { status: 413, error: 'Image file too large' },
+  IMAGE_UNSUPPORTED_FORMAT: { status: 415, error: 'Image must be a still JPEG, PNG or WebP' },
+  IMAGE_UNREADABLE: { status: 400, error: 'File is not a readable image' },
+  IMAGE_WRONG_PROPORTION: { status: 400, error: 'Image is not in the required proportion' },
+  IMAGE_TOO_SMALL: { status: 400, error: 'Image is smaller than the minimum size' },
+  IMAGE_DAILY_LIMIT: { status: 429, error: 'Daily image upload limit reached' },
+  IMAGE_STORAGE_FAILED: { status: 502, error: 'Image could not be stored; try again' },
+  IMAGE_ALREADY_DECIDED: { status: 409, error: 'Image was already decided' },
+  SCREENING_POLICY_INVALID: { status: 400, error: 'Every cut-off must be within 0–1, the lower one not above the upper one' }
+};
 
 // Wire the imperative shell: the HTTP layer assembles real IO and passes it to handlers
 interface ServerOptions {
@@ -142,6 +173,11 @@ export function createServer(io: AppIO, { adapter, appUrl = 'http://localhost:30
       if (message === 'LINK_LABEL_EXISTS') {
         set.status = 409;
         return { error: 'Link label already exists' };
+      }
+      const imageError = IMAGE_ERRORS[message];
+      if (imageError) {
+        set.status = imageError.status;
+        return { error: imageError.error, code: message };
       }
     })
     .get(
@@ -416,6 +452,47 @@ export function createServer(io: AppIO, { adapter, appUrl = 'http://localhost:30
           }
         )
     )
+    .group('/image-reviews', (app) =>
+      app
+        .get('/escalated', async ({ request, io }) => {
+          return await listEscalatedImageReviewsHandler(request, io);
+        }, {
+          response: t.Array(ImageReviewItemSchema),
+          detail: {
+            tags: ['Images'],
+            summary: 'List Images only Superadmins can review',
+            description: "Superadmin only. Superadmins' Images, and Images whose Organization has no Moderator or Admin other than their uploader. The caller's own Images are left out.",
+            security: asUser
+          }
+        })
+        .post('/:imageId/approve', async ({ request, params: { imageId }, io }) => {
+          return await approveImageHandler(request, imageId, io);
+        }, {
+          params: t.Object({ imageId: t.String() }),
+          response: t.Object({ state: t.Literal('approved') }),
+          detail: { tags: ['Images'], summary: 'Approve an Image in Image Review', description: '403 for the Image\'s own uploader or a caller who may not review it; 409 when it was already decided.', security: asUser }
+        })
+        .post('/:imageId/reject', async ({ request, params: { imageId }, io }) => {
+          return await rejectImageHandler(request, imageId, io);
+        }, {
+          params: t.Object({ imageId: t.String() }),
+          response: t.Object({ state: t.Literal('rejected') }),
+          detail: { tags: ['Images'], summary: 'Reject an Image in Image Review', description: 'A Confirmed Rejection: the uploader is shadow-banned. 403 for the Image\'s own uploader or a caller who may not review it; 409 when it was already decided.', security: asUser }
+        })
+    )
+    .get('/screening-policy', async ({ request, io }) => {
+      return { policy: await getScreeningPolicyHandler(request, io) };
+    }, {
+      response: t.Object({ policy: t.Union([ScreeningPolicySchema, t.Null()]) }),
+      detail: { tags: ['Images'], summary: 'Get the Screening Policy', description: 'Superadmin only. null until first set: meanwhile every Image waits in Image Review.', security: asUser }
+    })
+    .put('/screening-policy', async ({ request, body, io }) => {
+      return await setScreeningPolicyHandler(request, body, io);
+    }, {
+      body: ScreeningPolicySchema,
+      response: ScreeningPolicySchema,
+      detail: { tags: ['Images'], summary: 'Replace the Screening Policy', description: 'Superadmin only. Per category, scores below `lower` are Approved, from `upper` on Rejected, in between In Review. Audited; Images already screened keep their state.', security: asUser }
+    })
     .group('/organizations', (app) =>
       app
         .post(
@@ -435,14 +512,14 @@ export function createServer(io: AppIO, { adapter, appUrl = 'http://localhost:30
             return await listOrganizationsHandler(request, io);
           },
           {
-            response: t.Array(OrganizationSchema),
+            response: t.Array(OrganizationViewSchema),
             detail: { tags: ['Organizations'], summary: 'List Organizations', description: 'Superadmin only.', security: asUser }
           }
         )
         .get(
           '/:id',
-          async ({ params: { id }, io, set }) => {
-            const org = await getOrganizationHandler(id, io);
+          async ({ request, params: { id }, io, set }) => {
+            const org = await getOrganizationHandler(request, id, io);
             if (!org) {
               set.status = 404;
               return { error: 'Not Found' };
@@ -452,10 +529,10 @@ export function createServer(io: AppIO, { adapter, appUrl = 'http://localhost:30
           {
             params: t.Object({ id: t.String() }),
             response: {
-              200: OrganizationSchema,
+              200: OrganizationViewSchema,
               404: t.Object({ error: t.String() })
             },
-            detail: { tags: ['Organizations'], summary: 'Get an Organization', description: 'Public: the kiosk TV display reads the branding.' }
+            detail: { tags: ['Organizations'], summary: 'Get an Organization', description: 'Public: the kiosk TV display reads the branding. The logo is resolved for the viewer: its uploader sees their latest logo, everyone else the Approved one, or only its Placeholder (thumbhash).' }
           }
         )
         .patch(
@@ -472,7 +549,7 @@ export function createServer(io: AppIO, { adapter, appUrl = 'http://localhost:30
             params: t.Object({ id: t.String() }),
             body: UpdateOrganizationBody,
             response: {
-              200: OrganizationSchema,
+              200: OrganizationViewSchema,
               404: t.Object({ error: t.String() })
             },
             detail: { tags: ['Organizations'], summary: 'Update an Organization', description: 'Admin of the Organization, or Superadmin. 409 when the new slug belongs to another Organization.', security: asUser }
@@ -493,6 +570,39 @@ export function createServer(io: AppIO, { adapter, appUrl = 'http://localhost:30
             }
           }
         )
+        .put('/:id/logo', async ({ request, params: { id }, body, io }) => {
+          return await uploadOrganizationLogoHandler(request, id, body.file, io);
+        }, {
+          params: t.Object({ id: t.String() }),
+          body: ImageUploadBody,
+          response: ImageViewSchema,
+          detail: {
+            tags: ['Images'],
+            summary: "Upload the Organization's logo",
+            description: 'Admin of the Organization, or Superadmin. Multipart `file`: a still JPEG, PNG or WebP of at most 4 MB, square (±1 px) and at least 256×256. It is normalized (WebP, no metadata, at most 512×512), screened, and answered as its uploader sees it. 400/413/415 with a `code` when the file is refused, 429 after 10 Images in 24 hours.',
+            security: asUser
+          }
+        })
+        .delete('/:id/logo', async ({ request, params: { id }, io }) => {
+          await removeOrganizationLogoHandler(request, id, io);
+          return { success: true };
+        }, {
+          params: t.Object({ id: t.String() }),
+          response: t.Object({ success: t.Literal(true) }),
+          detail: { tags: ['Images'], summary: "Remove the Organization's logo", description: 'Admin of the Organization, or Superadmin.', security: asUser }
+        })
+        .get('/:id/image-reviews', async ({ request, params: { id }, io }) => {
+          return await listImageReviewsHandler(request, id, io);
+        }, {
+          params: t.Object({ id: t.String() }),
+          response: t.Array(ImageReviewItemSchema),
+          detail: {
+            tags: ['Images'],
+            summary: 'List Images awaiting Image Review',
+            description: "Moderators and Admins of the Organization, or Superadmins. Oldest first. The caller's own Images and Superadmins' Images are left out.",
+            security: asUser
+          }
+        })
         .get('/:id/reports', async ({ request, params: { id }, io }) => {
           return await listReportsHandler(request, id, io);
         }, {
@@ -666,14 +776,14 @@ export function createServer(io: AppIO, { adapter, appUrl = 'http://localhost:30
               return await listEventsHandler(request, id, io);
             }, {
               params: t.Object({ id: t.String() }),
-              response: t.Array(EventSchema),
+              response: t.Array(EventViewSchema),
               detail: { tags: ['Events'], summary: 'List Events', security: asUser }
             })
             .get('/mine', async ({ request, params: { id }, io }) => {
               return await listMyEventsHandler(request, id, io);
             }, {
               params: t.Object({ id: t.String() }),
-              response: t.Array(EventSchema),
+              response: t.Array(EventViewSchema),
               detail: {
                 tags: ['Events'],
                 summary: 'List my Events',
@@ -695,6 +805,27 @@ export function createServer(io: AppIO, { adapter, appUrl = 'http://localhost:30
               params: t.Object({ id: t.String(), eventId: t.String() }),
               response: t.Object({ success: t.Literal(true) }),
               detail: { tags: ['Events'], summary: 'Delete an Event (soft delete)', security: asUser }
+            })
+            .put('/:eventId/banner', async ({ request, params: { id, eventId }, body, io }) => {
+              return await uploadEventBannerHandler(request, id, eventId, body.file, io);
+            }, {
+              params: t.Object({ id: t.String(), eventId: t.String() }),
+              body: ImageUploadBody,
+              response: ImageViewSchema,
+              detail: {
+                tags: ['Images'],
+                summary: "Upload an Event's banner",
+                description: 'Event creator only. Multipart `file`: a still JPEG, PNG or WebP of at most 4 MB, 16:9 (±1 px) and at least 960×540. It is normalized (WebP, no metadata, at most 1920×1080), screened, and answered as its uploader sees it. 400/413/415 with a `code` when the file is refused, 429 after 10 Images in 24 hours.',
+                security: asUser
+              }
+            })
+            .delete('/:eventId/banner', async ({ request, params: { id, eventId }, io }) => {
+              await removeEventBannerHandler(request, id, eventId, io);
+              return { success: true };
+            }, {
+              params: t.Object({ id: t.String(), eventId: t.String() }),
+              response: t.Object({ success: t.Literal(true) }),
+              detail: { tags: ['Images'], summary: "Remove an Event's banner", description: 'Event creator only.', security: asUser }
             })
             .post('/:eventId/vote', async ({ request, params: { id, eventId }, io }) => {
               return await voteHandler(request, id, eventId, io);

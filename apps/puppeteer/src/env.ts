@@ -8,6 +8,14 @@ const envSchema = z.object({
   BREVO_API_KEY: z.string().min(1).optional(),
   EMAIL_FROM: z.string().email("EMAIL_FROM precisa ser um email válido").optional(),
   EMAIL_FROM_NAME: z.string().default("Puppeteer"),
+  // Image Screening and storage (ADR 0003). Always required: without them an uploaded Image
+  // could be neither screened nor stored, and there is no stand-in
+  SIGHTENGINE_API_USER: z.string().min(1, "Obrigatória: Screening de Images (Sightengine)"),
+  SIGHTENGINE_API_SECRET: z.string().min(1, "Obrigatória: Screening de Images (Sightengine)"),
+  OPENAI_API_KEY: z.string().min(1, "Obrigatória: segunda opinião do Screening de Images (OpenAI omni-moderation)"),
+  CLOUDINARY_CLOUD_NAME: z.string().min(1, "Obrigatória: armazenamento de Images (Cloudinary)"),
+  CLOUDINARY_API_KEY: z.string().min(1, "Obrigatória: armazenamento de Images (Cloudinary)"),
+  CLOUDINARY_API_SECRET: z.string().min(1, "Obrigatória: armazenamento de Images (Cloudinary)"),
   // Public URL of the frontend: where the verification link lands after confirming
   APP_URL: z.string().url("A url do frontend deve ser válida").default("http://localhost:3000"),
   PORT: z.coerce.number().default(3000),

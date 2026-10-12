@@ -17,7 +17,7 @@ export async function createInMemoryDatabase() {
   if (globalDb) {
     // Clear data for the next test
     await globalClient!.exec(`
-      TRUNCATE "session", "account", "user", "verification", "organization", "tag", "link_label", "event", "vote", "report", "audit", "device", "telemetry_heartbeat", "telemetry_log", "telemetry_data", "command" CASCADE;
+      TRUNCATE "session", "account", "user", "verification", "organization", "tag", "link_label", "event", "vote", "report", "audit", "device", "telemetry_heartbeat", "telemetry_log", "telemetry_data", "command", "image", "screening_policy" CASCADE;
     `);
     return globalDb;
   }

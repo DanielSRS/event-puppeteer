@@ -7,6 +7,8 @@ import type { Heartbeat, DeviceLog, DeviceTelemetry } from '../types/telemetry.t
 import type { Command } from '../types/command.ts';
 import type { Device } from '../types/device.ts';
 import type { Report, AuditEntry } from '../types/moderation.ts';
+import type { Image, ImageKind, ImageState, ScreeningPolicy, ScreeningScores } from '../types/image.ts';
+import type { Result } from '../utils/result.ts';
 
 export interface OrganizationRepository {
   create(org: Omit<Organization, 'id'>): Promise<Organization>;
@@ -176,6 +178,64 @@ export interface EmailSender {
   send(message: EmailMessage): Promise<void>;
 }
 
+/** Images and their Screening and Image Review outcomes. */
+export interface ImageRepository {
+  create(image: Image): Promise<Image>;
+  getById(id: string): Promise<Image | null>;
+  /** How many Images a User uploaded at or after `since`, whatever became of them. */
+  countByUploaderSince(uploaderId: string, since: Date): Promise<number>;
+  /**
+   * The owner's latest Image and latest Approved Image, ignoring detached ones. They are the
+   * same Image when the latest one is Approved; either is null when there is none.
+   */
+  currentFor(kind: ImageKind, ownerId: string): Promise<{ latest: Image | null; approved: Image | null }>;
+  /** Detaches every Image of an owner, so none of them is shown again. */
+  detachAll(kind: ImageKind, ownerId: string, at: Date): Promise<void>;
+  /** Images In Review, oldest first. */
+  listInReview(): Promise<Image[]>;
+  /**
+   * Decides an Image that is In Review, atomically: when two reviewers decide at once only
+   * one succeeds.
+   * @returns the decided Image, or null when it is not In Review (any more).
+   */
+  decide(id: string, state: Exclude<ImageState, 'in_review'>, reviewerId: string, at: Date): Promise<Image | null>;
+}
+
+/** The Screening Policy, stored once for the whole system. */
+export interface ScreeningPolicyRepository {
+  /** @returns null until a Superadmin sets the policy for the first time. */
+  get(): Promise<ScreeningPolicy | null>;
+  set(policy: ScreeningPolicy): Promise<void>;
+}
+
+/** Why Screening could not conclude, in words a reviewer can read. */
+export type ScreeningFailure = string;
+
+/** Analyses an Image for inappropriate content. */
+export interface ImageScreener {
+  /** Scores a normalized WebP Image. A failure means Screening could not conclude. */
+  screen(webp: Uint8Array<ArrayBuffer>): Promise<Result<ScreeningScores, ScreeningFailure>>;
+}
+
+/** Why storing an Image failed. */
+export type ImageStoreFailure = string;
+
+/**
+ * Where Image bytes live. Every asset is stored restricted: nobody can fetch it without a
+ * URL that Puppeteer signs. Puppeteer hands out the public URL only for Approved Images.
+ */
+export interface ImageStore {
+  /** Stores normalized WebP bytes as a restricted asset named `id`. */
+  storeRestricted(id: string, webp: Uint8Array<ArrayBuffer>): Promise<Result<void, ImageStoreFailure>>;
+  /** A permanent, cacheable URL of the asset. Only ever given out for an Approved Image. */
+  publicUrl(id: string): string;
+  /**
+   * A URL that expires after a short while, for a viewer allowed to see the asset whatever
+   * its state (its uploader, or a reviewer). Its shape never depends on the Image's state.
+   */
+  signedUrl(id: string): string;
+}
+
 export interface AppIO {
   orgRepo: OrganizationRepository;
   userRepo: UserRepository;
@@ -188,8 +248,12 @@ export interface AppIO {
   deviceRepo: DeviceRepository;
   telemetryRepo: TelemetryRepository;
   commandRepo: CommandRepository;
+  imageRepo: ImageRepository;
+  screeningPolicyRepo: ScreeningPolicyRepository;
   auth: AuthProvider;
   emailSender: EmailSender;
+  imageScreener: ImageScreener;
+  imageStore: ImageStore;
 }
 
 import postgres from 'postgres';
@@ -212,6 +276,12 @@ import { BetterAuthProvider } from './better-auth-adapter.ts';
 import { createAuth } from '../auth.ts';
 import { BrevoEmailSender } from './email/brevo.ts';
 import { ConsoleEmailSender } from './email/console.ts';
+import { DrizzleImageRepository } from './drizzle/image-repository.ts';
+import { DrizzleScreeningPolicyRepository } from './drizzle/screening-policy-repository.ts';
+import { CombinedImageScreener } from './screening/combined.ts';
+import { SightengineImageScreener } from './screening/sightengine.ts';
+import { OpenAIImageScreener } from './screening/openai.ts';
+import { CloudinaryImageStore } from './image-store/cloudinary.ts';
 
 // close() ends the database pool: an open pool keeps the process alive after the server stops
 export function createRealIO(): AppIO & { close(): Promise<void> } {
@@ -250,8 +320,19 @@ export function createRealIO(): AppIO & { close(): Promise<void> } {
     deviceRepo: new DrizzleDeviceRepository(db),
     telemetryRepo: new DrizzleTelemetryRepository(db),
     commandRepo: new DrizzleCommandRepository(db),
+    imageRepo: new DrizzleImageRepository(db),
+    screeningPolicyRepo: new DrizzleScreeningPolicyRepository(db),
     auth: new BetterAuthProvider(authInstance),
     emailSender,
+    imageScreener: new CombinedImageScreener([
+      new SightengineImageScreener(env.SIGHTENGINE_API_USER, env.SIGHTENGINE_API_SECRET),
+      new OpenAIImageScreener(env.OPENAI_API_KEY)
+    ]),
+    imageStore: new CloudinaryImageStore({
+      cloudName: env.CLOUDINARY_CLOUD_NAME,
+      apiKey: env.CLOUDINARY_API_KEY,
+      apiSecret: env.CLOUDINARY_API_SECRET
+    }),
     close: () => queryClient.end({ timeout: 5 })
   };
 }

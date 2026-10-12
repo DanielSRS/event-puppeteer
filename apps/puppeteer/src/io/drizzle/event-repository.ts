@@ -68,13 +68,12 @@ export class DrizzleEventRepository implements EventRepository {
    * optional fields).
    */
   private mapToDomain(row: EventRow): Event {
-    const { latitude, longitude, bannerImage, createdAt, ...rest } = row;
+    const { latitude, longitude, createdAt, ...rest } = row;
     return {
       ...rest,
       createdAt: createdAt.toISOString(),
       ...(latitude !== null ? { latitude } : {}),
-      ...(longitude !== null ? { longitude } : {}),
-      ...(bannerImage !== null ? { bannerImage } : {})
+      ...(longitude !== null ? { longitude } : {})
     };
   }
 }

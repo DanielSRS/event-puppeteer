@@ -1,4 +1,5 @@
 import { t, type Static } from 'elysia';
+import { ImageViewSchema } from './image.ts';
 
 export const DayEntrySchema = t.Object({
   eventId: t.String(),
@@ -29,7 +30,6 @@ export const EventSchema = t.Object({
   location: t.String(),
   latitude: t.Optional(t.Number()),
   longitude: t.Optional(t.Number()),
-  bannerImage: t.Optional(t.String()),
   creatorId: t.String(),
   organizationId: t.String(),
   isHidden: t.Boolean(),
@@ -47,7 +47,6 @@ export const CreateEventBody = t.Object({
   location: t.String(),
   latitude: t.Optional(t.Number()),
   longitude: t.Optional(t.Number()),
-  bannerImage: t.Optional(t.String()),
   isHidden: t.Boolean(),
   schedule: t.Array(t.Object({
     date: t.String({ format: 'date' }),
@@ -65,9 +64,19 @@ export const CreateEventBody = t.Object({
 });
 export type CreateEventInput = Static<typeof CreateEventBody>;
 
+/**
+ * An Event as one viewer sees it: with its banner Image resolved for that viewer
+ * (absent when the Event never had a banner).
+ */
+export const EventViewSchema = t.Object({
+  ...EventSchema.properties,
+  banner: t.Optional(ImageViewSchema)
+});
+export type EventView = Static<typeof EventViewSchema>;
+
 /** An Event opened by id, with its Vote count. */
 export const EventWithVotesSchema = t.Object({
-  ...EventSchema.properties,
+  ...EventViewSchema.properties,
   voteCount: t.Number()
 });
 export type EventWithVotes = Static<typeof EventWithVotesSchema>;
@@ -78,7 +87,7 @@ export type EventWithVotes = Static<typeof EventWithVotesSchema>;
  * `voteCount`/`weight` properties as unexpected.
  */
 export const FeedEventSchema = t.Object({
-  ...EventSchema.properties,
+  ...EventViewSchema.properties,
   voteCount: t.Number(),
   weight: t.Number()
 });

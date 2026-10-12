@@ -58,7 +58,6 @@ export class DrizzleOrganizationRepository implements OrganizationRepository {
       name: row.name,
       slug: row.slug,
       ...(row.description !== null && { description: row.description }),
-      ...(row.logo !== null && { logo: row.logo }),
       ...(row.url !== null && { url: row.url }),
       ...(row.colorScheme !== null && { colorScheme: row.colorScheme }),
       ...(row.location !== null && { location: row.location }),

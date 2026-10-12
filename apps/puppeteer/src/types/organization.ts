@@ -1,11 +1,11 @@
 import { t, type Static } from 'elysia';
+import { ImageViewSchema } from './image.ts';
 
 export const OrganizationSchema = t.Object({
   id: t.String(),
   name: t.String(),
   slug: t.String(),
   description: t.Optional(t.String()),
-  logo: t.Optional(t.String()),
   url: t.Optional(t.String()),
   colorScheme: t.Optional(t.String()),
   location: t.Optional(t.String()),
@@ -18,11 +18,20 @@ export const OrganizationSchema = t.Object({
 
 export type Organization = Static<typeof OrganizationSchema>;
 
+/**
+ * An Organization as one viewer sees it: with its logo Image resolved for that viewer
+ * (absent when the Organization never had a logo).
+ */
+export const OrganizationViewSchema = t.Object({
+  ...OrganizationSchema.properties,
+  logo: t.Optional(ImageViewSchema)
+});
+export type OrganizationView = Static<typeof OrganizationViewSchema>;
+
 export const CreateOrganizationBody = t.Object({
   name: t.String(),
   slug: t.String(),
   description: t.Optional(t.String()),
-  logo: t.Optional(t.String()),
   url: t.Optional(t.String()),
   colorScheme: t.Optional(t.String()),
   location: t.Optional(t.String()),

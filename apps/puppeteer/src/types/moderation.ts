@@ -32,7 +32,10 @@ export const AuditActionSchema = t.Union([
   t.Literal('promote_tag'),
   t.Literal('update_org_threshold'),
   t.Literal('remove_user'),
-  t.Literal('change_role')
+  t.Literal('change_role'),
+  t.Literal('approve_image'),
+  t.Literal('reject_image'),
+  t.Literal('update_screening_policy')
 ]);
 export type AuditAction = Static<typeof AuditActionSchema>;
 
@@ -41,7 +44,7 @@ export const AuditEntrySchema = t.Object({
   actorId: t.Optional(t.String()), // absent for automatic actions (e.g. report threshold)
   organizationId: t.Optional(t.String()),
   action: AuditActionSchema,
-  targetType: t.String(), // 'event', 'user', 'tag', 'organization'
+  targetType: t.String(), // 'event', 'user', 'tag', 'organization', 'image', 'screening_policy'
   targetId: t.String(),
   details: t.Optional(t.Record(t.String(), t.Any())),
   createdAt: t.String({ format: 'date-time' })

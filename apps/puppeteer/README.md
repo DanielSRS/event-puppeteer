@@ -26,6 +26,15 @@ New accounts must confirm their email before logging in (`POST /auth/login` answ
 
 Forgotten passwords: `POST /auth/request-password-reset` (always answers success, so it doesn't reveal accounts) emails a link to `$APP_URL/redefinir-senha?token=…`, valid for 60 minutes. `POST /auth/reset-password` with that token and the new password sets it once and ends every session of the account. Removed accounts never get a link and can't log in again through one.
 
+### Images (banners and logos)
+
+Event banners (16:9, at least 960×540) and Organization logos (1:1, at least 256×256) are uploaded as multipart `file` to `PUT /organizations/:id/events/:eventId/banner` and `PUT /organizations/:id/logo`, never set as URLs. Each upload is normalized with `sharp` (EXIF orientation applied, metadata stripped, re-encoded as WebP, scaled down to 1920×1080 or 512×512 when larger), screened, given a thumbhash (the Placeholder), and stored in Cloudinary as an `authenticated` asset. See `CONTEXT.md` for the vocabulary and `docs/adr/0003` and `0004` for the decisions.
+
+- Screening combines Sightengine and OpenAI omni-moderation (the most severe score wins) against the Screening Policy (`GET`/`PUT /screening-policy`, Superadmin). Until a policy is set, and whenever Screening fails, Images wait in Image Review.
+- Image Review: `GET /organizations/:id/image-reviews` (Moderator+), `GET /image-reviews/escalated` (Superadmin), `POST /image-reviews/:imageId/approve|reject`. Nobody reviews their own Image; a rejection there shadow-bans the uploader.
+- Responses carry `banner`/`logo` as `{ url?, thumbhash }` resolved per viewer: the uploader always sees their latest Image through an expiring signed URL; everyone else sees the latest Approved Image, or only the thumbhash.
+- Required environment: `SIGHTENGINE_API_USER`, `SIGHTENGINE_API_SECRET`, `OPENAI_API_KEY`, `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`. Tests use in-memory doubles (`createInMemoryIO`) and need none.
+
 ### Access rules
 
 - Public: `GET /health`, the docs, `POST /auth/register`, `POST /auth/login`, `POST /devices/connect`, and the read routes behind public screens: event list/feed/details, `GET /organizations/:id` (TV branding), `GET /tags`, `GET /link-labels`. Everything else requires a token; `src/server.test.ts` fails if a route is exposed by mistake.

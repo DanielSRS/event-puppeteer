@@ -1,13 +1,13 @@
-import { pgTable, text, timestamp, boolean, integer, doublePrecision, jsonb, primaryKey, check } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, boolean, integer, doublePrecision, jsonb, primaryKey, check, index } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import type { DayEntry, EventTag, EventLink } from "../types/event.ts";
+import type { ScreeningScores } from "../types/image.ts";
 
 export const organization = pgTable("organization", {
 	id: text("id").primaryKey(),
 	name: text("name").notNull(),
 	slug: text("slug").notNull().unique(),
 	description: text("description"),
-	logo: text("logo"),
 	url: text("url"),
 	colorScheme: text("colorScheme"),
 	location: text("location"),
@@ -97,7 +97,6 @@ export const event = pgTable("event", {
 	location: text("location").notNull(),
 	latitude: doublePrecision("latitude"),
 	longitude: doublePrecision("longitude"),
-	bannerImage: text("bannerImage"),
 	creatorId: text("creatorId").notNull().references(() => user.id),
 	organizationId: text("organizationId").notNull().references(() => organization.id),
 	isHidden: boolean("isHidden").notNull().default(false),
@@ -181,3 +180,36 @@ export const command = pgTable("command", {
 	issuedAt: timestamp("issuedAt").notNull(),
 	completedAt: timestamp("completedAt")
 });
+
+/** Images (Event banners and Organization logos). Their bytes live in the ImageStore under `id`. */
+export const image = pgTable("image", {
+	id: text("id").primaryKey(),
+	kind: text("kind").notNull(),
+	ownerId: text("ownerId").notNull(),
+	organizationId: text("organizationId").notNull().references(() => organization.id),
+	uploaderId: text("uploaderId").notNull().references(() => user.id),
+	uploadedAt: timestamp("uploadedAt").notNull(),
+	thumbhash: text("thumbhash").notNull(),
+	width: integer("width").notNull(),
+	height: integer("height").notNull(),
+	state: text("state").notNull(),
+	notScreened: boolean("notScreened").notNull(),
+	scores: jsonb("scores").$type<ScreeningScores>().notNull(),
+	decidedBy: text("decidedBy").references(() => user.id),
+	decidedAt: timestamp("decidedAt"),
+	detachedAt: timestamp("detachedAt")
+}, (t) => [
+	index("image_owner").on(t.kind, t.ownerId),
+	index("image_uploader_uploaded_at").on(t.uploaderId, t.uploadedAt),
+	check("image_state", sql`${t.state} IN ('approved', 'in_review', 'rejected')`),
+	check("image_kind", sql`${t.kind} IN ('event_banner', 'organization_logo')`)
+]);
+
+/** The Screening Policy: one row per Screening category. Empty until a Superadmin sets it. */
+export const screeningPolicy = pgTable("screening_policy", {
+	category: text("category").primaryKey(),
+	lower: doublePrecision("lower").notNull(),
+	upper: doublePrecision("upper").notNull()
+}, (t) => [
+	check("screening_policy_cut_offs", sql`0 <= ${t.lower} AND ${t.lower} <= ${t.upper} AND ${t.upper} <= 1`)
+]);

@@ -1,5 +1,6 @@
 import type { AppIO } from '../io/index.ts';
 import type { Event } from '../types/event.ts';
+import { imageViewFor } from './images.ts';
 
 function isEventExpired(event: Event, todayStr: string): boolean {
   if (event.schedule.length === 0) return true;
@@ -49,8 +50,11 @@ export async function eventFeedHandler(orgId: string, io: AppIO) {
     const temporalScore = Math.max(0, 300 - daysAway * 10);
     const weight = voteCount * 100 + temporalScore;
 
+    // Kiosks have no viewer: they get Approved banners, or only the Placeholder
+    const banner = await imageViewFor('event_banner', event.id, null, io);
     feedItems.push({
       ...event,
+      ...(banner ? { banner } : {}),
       tags: event.tags.filter(t => !t.isFreeForm),
       voteCount,
       weight

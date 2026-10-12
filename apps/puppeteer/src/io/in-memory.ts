@@ -13,9 +13,20 @@ import { BetterAuthProvider } from './better-auth-adapter.ts';
 import { createInMemoryDatabase } from '../db/index.ts';
 import { createAuth } from "../auth.ts";
 import { InMemoryEmailSender } from "./email/in-memory.ts";
+import { DrizzleImageRepository } from './drizzle/image-repository.ts';
+import { DrizzleScreeningPolicyRepository } from './drizzle/screening-policy-repository.ts';
+import { InMemoryImageScreener } from './screening/in-memory.ts';
+import { InMemoryImageStore } from './image-store/in-memory.ts';
 import type { AppIO } from './index.ts';
 
-export async function createInMemoryIO(): Promise<AppIO & { emailSender: InMemoryEmailSender }> {
+/** The IO tests run on, with the test doubles exposed so tests can drive and inspect them. */
+export type InMemoryIO = AppIO & {
+  emailSender: InMemoryEmailSender;
+  imageScreener: InMemoryImageScreener;
+  imageStore: InMemoryImageStore;
+};
+
+export async function createInMemoryIO(): Promise<InMemoryIO> {
   const db = await createInMemoryDatabase();
   const emailSender = new InMemoryEmailSender();
   return {
@@ -30,7 +41,11 @@ export async function createInMemoryIO(): Promise<AppIO & { emailSender: InMemor
     deviceRepo: new DrizzleDeviceRepository(db),
     telemetryRepo: new DrizzleTelemetryRepository(db),
     commandRepo: new DrizzleCommandRepository(db),
+    imageRepo: new DrizzleImageRepository(db),
+    screeningPolicyRepo: new DrizzleScreeningPolicyRepository(db),
     auth: new BetterAuthProvider(createAuth({ db, emailSender, apiUrl: 'http://localhost:8080', appUrl: 'http://localhost:3000' })),
-    emailSender
+    emailSender,
+    imageScreener: new InMemoryImageScreener(),
+    imageStore: new InMemoryImageStore()
   };
 }

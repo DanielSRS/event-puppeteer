@@ -1,6 +1,7 @@
 import type { AppIO } from '../io/index.ts';
 import { requireAuth, assertCanManageOrg } from './users.ts';
-import type { CreateOrganizationInput, UpdateOrganizationInput } from '../types/organization.ts';
+import type { CreateOrganizationInput, Organization, OrganizationView, UpdateOrganizationInput } from '../types/organization.ts';
+import { imageViewFor } from './images.ts';
 
 /**
  * Creates an Organization. Superadmin only.
@@ -22,14 +23,27 @@ export async function createOrganizationHandler(request: Request, body: CreateOr
   return await io.orgRepo.create(orgData);
 }
 
-export async function getOrganizationHandler(id: string, io: AppIO) {
-  return await io.orgRepo.getById(id);
+/**
+ * Gets an Organization, with its logo as the viewer sees it. Public: kiosks and visitors
+ * read the branding without a session.
+ * @returns null for an unknown Organization.
+ */
+export async function getOrganizationHandler(request: Request, id: string, io: AppIO): Promise<OrganizationView | null> {
+  const org = await io.orgRepo.getById(id);
+  if (!org) return null;
+  return await withLogo(org, await io.auth.getSessionUserId(request), io);
+}
+
+/** The Organization with its logo resolved for `viewerId` (absent when it never had one). */
+async function withLogo(org: Organization, viewerId: string | null, io: AppIO): Promise<OrganizationView> {
+  const logo = await imageViewFor('organization_logo', org.id, viewerId, io);
+  return { ...org, ...(logo ? { logo } : {}) };
 }
 
 export async function listOrganizationsHandler(request: Request, io: AppIO) {
   const actor = await requireAuth(request, io);
   if (actor.role !== 'Superadmin') throw new Error('FORBIDDEN');
-  return await io.orgRepo.getAll();
+  return await Promise.all((await io.orgRepo.getAll()).map(org => withLogo(org, actor.id, io)));
 }
 
 import { randomUUID } from 'node:crypto';
@@ -64,5 +78,5 @@ export async function updateOrganizationHandler(request: Request, id: string, bo
     });
   }
 
-  return updated;
+  return updated ? await withLogo(updated, actor.id, io) : null;
 }

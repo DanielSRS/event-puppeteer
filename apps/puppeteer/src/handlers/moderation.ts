@@ -4,7 +4,8 @@ import type { CreateReportInput, AuditAction } from '../types/moderation.ts';
 import { requireAuth, assertCanManageOrg } from './users.ts';
 import { organizationOf } from '../types/user.ts';
 
-async function logAudit(io: AppIO, actorId: string | undefined, orgId: string | undefined, action: AuditAction, targetType: string, targetId: string, details?: Record<string, any>) {
+/** Records a moderation action in the Audit Trail; `actorId` is absent for automatic actions. */
+export async function logAudit(io: AppIO, actorId: string | undefined, orgId: string | undefined, action: AuditAction, targetType: string, targetId: string, details?: Record<string, any>) {
   await io.auditRepo.create({
     id: randomUUID(),
     ...(actorId !== undefined ? { actorId } : {}),

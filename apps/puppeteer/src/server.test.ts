@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { registerVerified, verificationTokenFor } from './test-support.ts';
+import { registerVerified, verificationTokenFor, pictureFile } from './test-support.ts';
 import { createInMemoryIO } from './io/in-memory.ts';
 import { createServer } from './server.ts';
 import { loginHandler } from './handlers/auth.ts';
@@ -27,7 +27,7 @@ async function setup() {
     return { status: res.status, body: await res.json() as any };
   };
 
-  return { io, orgId: org.id, adminToken, call };
+  return { io, app, orgId: org.id, adminToken, call };
 }
 
 test('HTTP layer', async (t) => {
@@ -297,5 +297,56 @@ test('HTTP layer', async (t) => {
     const operations = Object.values(spec.body.paths).flatMap((methods: any) => Object.values(methods)) as any[];
     assert.ok(operations.length > 0);
     assert.deepEqual(operations.filter(op => !op.tags?.length || !op.summary), []);
+  });
+
+  await t.test('Images over HTTP: Screening Policy, multipart upload, refusals with a code, Image Review', async () => {
+    const { io, app, orgId, adminToken, call } = await setup();
+    await seedSuperadminHandler({ email: 'root@a.com', password: 'secret-123', firstName: 'R', lastName: 'A' }, io);
+    const rootToken = (await loginHandler({ email: 'root@a.com', password: 'secret-123' }, io)).token;
+    const { token: modToken, user: mod } = await registerVerified({ firstName: 'M', lastName: 'X', email: 'm@a.com', password: 'password123' }, orgId, io);
+    await io.userRepo.update(mod.id, { role: 'Moderator' });
+    const cutOffs = { lower: 0.3, upper: 0.8 };
+    const policy = { nudity: cutOffs, gore: cutOffs, violence: cutOffs, weapons: cutOffs, hate: cutOffs, offensive_gesture: cutOffs, offensive_text: cutOffs };
+    const upload = async (path: string, file: File) => {
+      const form = new FormData();
+      form.set('file', file);
+      const res = await app.handle(new Request(`http://localhost${path}`, { method: 'PUT', headers: { authorization: `Bearer ${adminToken}` }, body: form }));
+      return { status: res.status, body: await res.json() as any };
+    };
+
+    assert.deepEqual((await call('GET', '/screening-policy', rootToken)).body, { policy: null });
+    assert.equal((await call('PUT', '/screening-policy', rootToken, { ...policy, nudity: { lower: 0.9, upper: 0.1 } })).body.code, 'SCREENING_POLICY_INVALID');
+    assert.equal((await call('PUT', '/screening-policy', rootToken, policy)).status, 200);
+    assert.deepEqual((await call('GET', '/screening-policy', rootToken)).body, { policy });
+    assert.equal((await call('GET', '/screening-policy', adminToken)).status, 403);
+
+    const event = (await call('POST', `/organizations/${orgId}/events`, adminToken, {
+      title: 'Ev', description: 'D', location: 'L', isHidden: false, schedule: [{ date: '2100-01-01' }], tags: [], links: []
+    })).body;
+    const uploaded = await upload(`/organizations/${orgId}/events/${event.id}/banner`, await pictureFile(1920, 1080));
+    assert.equal(uploaded.status, 200);
+    assert.equal(typeof uploaded.body.thumbhash, 'string');
+    const seen = await call('GET', `/organizations/${orgId}/events/${event.id}`, modToken);
+    assert.equal(seen.status, 200);
+    assert.match(seen.body.banner.url, /^memory:\/\/public\//);
+    assert.equal((await call('GET', `/organizations/${orgId}/events`)).body[0].banner.thumbhash, uploaded.body.thumbhash);
+    assert.equal((await call('GET', `/organizations/${orgId}/feed`)).status, 200);
+
+    const refused = await upload(`/organizations/${orgId}/events/${event.id}/banner`, await pictureFile(1000, 1000));
+    assert.equal(refused.status, 400);
+    assert.equal(refused.body.code, 'IMAGE_WRONG_PROPORTION');
+
+    io.imageScreener.scores = { ...io.imageScreener.scores, weapons: 0.5 };
+    assert.equal((await upload(`/organizations/${orgId}/logo`, await pictureFile(512, 512))).status, 200);
+    assert.deepEqual(Object.keys((await call('GET', `/organizations/${orgId}`)).body.logo), ['thumbhash']);
+    const queue = await call('GET', `/organizations/${orgId}/image-reviews`, modToken);
+    assert.equal(queue.status, 200);
+    assert.equal(queue.body.length, 1);
+    assert.equal((await call('POST', `/image-reviews/${queue.body[0].id}/approve`, modToken)).status, 200);
+    assert.equal((await call('POST', `/image-reviews/${queue.body[0].id}/reject`, modToken)).status, 409);
+    assert.match((await call('GET', `/organizations/${orgId}`)).body.logo.url, /^memory:\/\/public\//);
+    assert.deepEqual((await call('GET', '/image-reviews/escalated', rootToken)).body, []);
+    assert.equal((await call('DELETE', `/organizations/${orgId}/logo`, adminToken)).status, 200);
+    assert.equal((await call('GET', `/organizations/${orgId}`)).body.logo, undefined);
   });
 });

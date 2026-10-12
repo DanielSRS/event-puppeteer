@@ -18,7 +18,6 @@ test('Event Handlers', async (t) => {
       location: 'Main Hall',
       latitude: 10.5,
       longitude: -20.3,
-      bannerImage: 'http://img.com/a.png',
       isHidden: false,
       schedule: [{ date: '2100-10-01', startTime: '10:00', endTime: '12:00' }],
       tags: [{ tagId: 't1', isFreeForm: false }],
