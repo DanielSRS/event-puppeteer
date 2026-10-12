@@ -24,6 +24,9 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   update_org_threshold: "Limite de denúncias alterado",
   remove_user: "Usuário removido",
   change_role: "Papel alterado",
+  approve_image: "Imagem aprovada na revisão",
+  reject_image: "Imagem rejeitada na revisão",
+  update_screening_policy: "Política de triagem alterada",
 };
 
 /** How actions without an actor (the automatic report threshold) are attributed. */
@@ -61,6 +64,7 @@ export type AuditRow = {
 /** Portuguese text of the `reason` detail. */
 const REASONS: Record<string, string> = {
   auto_threshold_reached: "o evento atingiu o limite de denúncias da organização",
+  confirmed_image_rejection: "uma imagem enviada pela pessoa foi rejeitada na revisão de imagens",
 };
 
 /** `1 evento` / `3 eventos`. */
@@ -93,6 +97,8 @@ function DetailSentence(key: string, value: unknown, lookups: AuditLookups): Loo
     const role = RoleLabel(value);
     if (role !== null) return Ok(`${key === "from" ? "Papel anterior" : "Novo papel"}: ${role}.`);
   }
+  if (key === "imageId" && typeof value === "string")
+    return Ok("A imagem rejeitada fica guardada para a moderação e nunca é exibida.");
   if (key === "deletedEvents" && typeof value === "number")
     return Ok(`${Plural(value, "evento excluído", "eventos excluídos")} junto com a conta.`);
   return Ok(`Informação adicional “${key}”: ${PlainValue(value)}.`);
@@ -111,6 +117,8 @@ export function DescribeTarget(entry: Pick<AuditEntry, "targetType" | "targetId"
     case "user": return Prefixed("Usuário ", lookups.user(entry.targetId));
     case "tag": return Prefixed("Tag ", lookups.tag(entry.targetId));
     case "organization": return Ok("Esta organização");
+    case "image": return Ok("Uma imagem enviada (banner ou logo)");
+    case "screening_policy": return Ok("A política de triagem de imagens");
     default: return Err(`Tipo de alvo desconhecido “${entry.targetType}” (${entry.targetId})`);
   }
 }

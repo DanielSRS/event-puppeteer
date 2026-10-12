@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import type { AuditEntry } from "@/lib/api/schemas";
+import { AuditEntrySchema, type AuditEntry } from "@/lib/api/schemas";
 import { Err, Ok } from "@/lib/result";
 import { DescribeTarget, FormatAuditDetails, NewestFirst, ToAuditRow, type AuditLookups } from "./auditFormat";
 
@@ -88,5 +88,32 @@ describe("NewestFirst", () => {
   test("sorts by creation, newest first", () => {
     const sorted = NewestFirst([entry({ id: "old", createdAt: "2026-01-01T00:00:00Z" }), entry({ id: "new", createdAt: "2026-02-01T00:00:00Z" })]);
     expect(sorted.map((e) => e.id)).toEqual(["new", "old"]);
+  });
+});
+
+describe("Image Review entries", () => {
+  test("the API's audit list with Image decisions is accepted", () => {
+    const answer = [
+      entry({ action: "approve_image", targetType: "image", targetId: "img-1" }),
+      entry({ id: "a2", action: "reject_image", targetType: "image", targetId: "img-2" }),
+      entry({ id: "a3", action: "apply_shadow_ban", targetType: "user", targetId: "u1", details: { reason: "confirmed_image_rejection", imageId: "img-2" } }),
+      { id: "a4", action: "update_screening_policy", targetType: "screening_policy", targetId: "screening_policy", createdAt: "2026-10-07T12:00:00Z" },
+    ];
+    expect(AuditEntrySchema.array().safeParse(answer).success).toBe(true);
+  });
+
+  test("a rejected Image and the shadow ban it caused read as sentences", () => {
+    const rejected = ToAuditRow(entry({ action: "reject_image", targetType: "image", targetId: "img-2" }), lookups);
+    expect([rejected.actionLabel, rejected.target]).toEqual(["Imagem rejeitada na revisão", Ok("Uma imagem enviada (banner ou logo)")]);
+    expect(FormatAuditDetails({ reason: "confirmed_image_rejection", imageId: "img-2" }, lookups)).toEqual([
+      Ok("Motivo: uma imagem enviada pela pessoa foi rejeitada na revisão de imagens."),
+      Ok("A imagem rejeitada fica guardada para a moderação e nunca é exibida."),
+    ]);
+  });
+
+  test("an approved Image and a Screening Policy change have their labels", () => {
+    expect(ToAuditRow(entry({ action: "approve_image", targetType: "image", targetId: "img-1" }), lookups).actionLabel).toBe("Imagem aprovada na revisão");
+    const policy = ToAuditRow(entry({ action: "update_screening_policy", targetType: "screening_policy", targetId: "screening_policy" }), lookups);
+    expect([policy.actionLabel, policy.target]).toEqual(["Política de triagem alterada", Ok("A política de triagem de imagens")]);
   });
 });
