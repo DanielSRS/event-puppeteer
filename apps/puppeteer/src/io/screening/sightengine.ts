@@ -69,13 +69,13 @@ export class SightengineImageScreener implements ImageScreener {
       response = await this.fetchImpl(ENDPOINT, { method: 'POST', body: form });
       body = await response.json();
     } catch (error) {
-      return err(`Sightengine unreachable: ${error instanceof Error ? error.message : String(error)}`);
+      return err({ reason: `Sightengine unreachable: ${error instanceof Error ? error.message : String(error)}`, partialScores: {} });
     }
 
     const answer = answerSchema.safeParse(body);
     if (!response.ok || !answer.success) {
       const failure = failureSchema.safeParse(body);
-      return err(`Sightengine answered ${response.status}: ${failure.success ? failure.data.error.message : 'unexpected answer'}`);
+      return err({ reason: `Sightengine answered ${response.status}: ${failure.success ? failure.data.error.message : 'unexpected answer'}`, partialScores: {} });
     }
 
     const { nudity, weapon, offensive, gore, violence, text } = answer.data;

@@ -10,7 +10,7 @@ import { err, ok, type Result } from '../../utils/result.ts';
 export class InMemoryImageScreener implements ImageScreener {
   /** The scores the next screenings answer with. */
   scores: ScreeningScores = { nudity: 0, gore: 0, violence: 0, weapons: 0, hate: 0, offensive_gesture: 0, offensive_text: 0 };
-  /** When set, screenings fail with this reason instead of answering `scores`. */
+  /** When set, screenings fail with it instead of answering `scores`. */
   failure: ScreeningFailure | null = null;
   /** The bytes of every Image screened, in order. */
   screened: Uint8Array<ArrayBuffer>[] = [];

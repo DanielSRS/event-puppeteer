@@ -86,7 +86,7 @@ test('Sightengine image screener', async (t) => {
   await t.test('a Sightengine failure is a value naming the reason', async () => {
     const refused = fetchAnswering({ status: 'failure', error: { type: 'usage_limit', code: 32, message: 'Daily usage limit reached' } }, 429);
     assert.deepEqual(await new SightengineImageScreener('u', 's', refused.fakeFetch).screen(webp), {
-      ok: false, error: 'Sightengine answered 429: Daily usage limit reached'
+      ok: false, error: { reason: 'Sightengine answered 429: Daily usage limit reached', partialScores: {} }
     });
 
     const garbled = fetchAnswering({ status: 'success' });
@@ -95,7 +95,7 @@ test('Sightengine image screener', async (t) => {
 
     const down = (async () => { throw new TypeError('fetch failed'); }) as unknown as typeof fetch;
     assert.deepEqual(await new SightengineImageScreener('u', 's', down).screen(webp), {
-      ok: false, error: 'Sightengine unreachable: fetch failed'
+      ok: false, error: { reason: 'Sightengine unreachable: fetch failed', partialScores: {} }
     });
   });
 });

@@ -5,7 +5,7 @@ import { InMemoryImageScreener } from './in-memory.ts';
 
 const webp = new Uint8Array([1, 2, 3]);
 
-function engine(scores: InMemoryImageScreener['scores'], failure: string | null = null) {
+function engine(scores: InMemoryImageScreener['scores'], failure: InMemoryImageScreener['failure'] = null) {
   const screener = new InMemoryImageScreener();
   screener.scores = scores;
   screener.failure = failure;
@@ -24,9 +24,12 @@ test('Combined image screener', async (t) => {
     assert.deepEqual(second.screened, [webp]);
   });
 
-  await t.test('Screening cannot conclude when any engine fails', async () => {
-    const result = await new CombinedImageScreener([engine({ nudity: 0 }), engine({}, 'OpenAI answered 500: boom')]).screen(webp);
+  await t.test('Screening cannot conclude when any engine fails, but keeps the scores of those that answered', async () => {
+    const result = await new CombinedImageScreener([
+      engine({ nudity: 0.99, hate: 0.1 }),
+      engine({}, { reason: 'OpenAI answered 500: boom', partialScores: {} })
+    ]).screen(webp);
 
-    assert.deepEqual(result, { ok: false, error: 'OpenAI answered 500: boom' });
+    assert.deepEqual(result, { ok: false, error: { reason: 'OpenAI answered 500: boom', partialScores: { nudity: 0.99, hate: 0.1 } } });
   });
 });

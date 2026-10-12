@@ -73,10 +73,10 @@ test('OpenAI image screener', async (t) => {
   await t.test('an OpenAI failure is a value naming the reason', async () => {
     const refused = fetchAnswering({ error: { message: 'Incorrect API key provided' } }, 401);
     assert.deepEqual(await new OpenAIImageScreener('bad', refused.fakeFetch).screen(webp), {
-      ok: false, error: 'OpenAI answered 401: Incorrect API key provided'
+      ok: false, error: { reason: 'OpenAI answered 401: Incorrect API key provided', partialScores: {} }
     });
 
     const down = (async () => { throw new TypeError('fetch failed'); }) as unknown as typeof fetch;
-    assert.deepEqual(await new OpenAIImageScreener('k', down).screen(webp), { ok: false, error: 'OpenAI unreachable: fetch failed' });
+    assert.deepEqual(await new OpenAIImageScreener('k', down).screen(webp), { ok: false, error: { reason: 'OpenAI unreachable: fetch failed', partialScores: {} } });
   });
 });

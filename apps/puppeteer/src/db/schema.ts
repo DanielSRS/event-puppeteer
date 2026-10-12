@@ -194,6 +194,7 @@ export const image = pgTable("image", {
 	height: integer("height").notNull(),
 	state: text("state").notNull(),
 	notScreened: boolean("notScreened").notNull(),
+	unscreenedReason: text("unscreenedReason"),
 	scores: jsonb("scores").$type<ScreeningScores>().notNull(),
 	decidedBy: text("decidedBy").references(() => user.id),
 	decidedAt: timestamp("decidedAt"),

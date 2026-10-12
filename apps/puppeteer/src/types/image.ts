@@ -60,7 +60,9 @@ export interface Image {
    * and the Image went to Image Review unscreened. Any scores obtained are kept.
    */
   notScreened: boolean;
-  /** The Screening scores; empty when an engine failed. */
+  /** Why Screening could not conclude; present exactly when `notScreened`. */
+  unscreenedReason?: string;
+  /** The Screening scores; only those of the engines that answered when Screening could not conclude. */
   scores: ScreeningScores;
   /** Who decided the Image in Image Review, and when. Absent for Screening's own verdicts. */
   decidedBy?: string;
@@ -91,6 +93,8 @@ export const ImageReviewItemSchema = t.Object({
   uploaderName: t.String(),
   uploadedAt: t.String({ format: 'date-time' }),
   notScreened: t.Boolean(),
+  /** Why Screening could not conclude, as the engines or Puppeteer put it. */
+  unscreenedReason: t.Optional(t.String()),
   scores: ScreeningScoresSchema,
   /** A short-lived URL of the restricted Image, for the reviewer to reveal. */
   previewUrl: t.String(),

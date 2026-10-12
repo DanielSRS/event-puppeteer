@@ -191,7 +191,7 @@ export interface ImageRepository {
   currentFor(kind: ImageKind, ownerId: string): Promise<{ latest: Image | null; approved: Image | null }>;
   /** Detaches every Image of an owner, so none of them is shown again. */
   detachAll(kind: ImageKind, ownerId: string, at: Date): Promise<void>;
-  /** Images In Review, oldest first. */
+  /** Images In Review that are still attached to their owner, oldest first. */
   listInReview(): Promise<Image[]>;
   /**
    * Decides an Image that is In Review, atomically: when two reviewers decide at once only
@@ -208,8 +208,14 @@ export interface ScreeningPolicyRepository {
   set(policy: ScreeningPolicy): Promise<void>;
 }
 
-/** Why Screening could not conclude, in words a reviewer can read. */
-export type ScreeningFailure = string;
+/**
+ * Why Screening could not conclude, in words a reviewer can read, with whatever scores the
+ * engines that did answer gave (empty when none did).
+ */
+export interface ScreeningFailure {
+  reason: string;
+  partialScores: ScreeningScores;
+}
 
 /** Analyses an Image for inappropriate content. */
 export interface ImageScreener {

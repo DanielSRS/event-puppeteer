@@ -101,7 +101,7 @@ test('Image Screening', async (t) => {
     const creator = await member('creator@a.com');
     const moderator = await member('mod@a.com', 'Moderator');
     const event = await eventBy(io, org.id, creator.req);
-    io.imageScreener.failure = 'Sightengine answered 503';
+    io.imageScreener.failure = { reason: 'Sightengine answered 503', partialScores: {} };
 
     const uploaded = await uploadEventBannerHandler(creator.req, org.id, event.id, await pictureFile(1920, 1080), io);
 
@@ -109,6 +109,7 @@ test('Image Screening', async (t) => {
     const queue = await listImageReviewsHandler(moderator.req, org.id, io);
     assert.equal(queue.length, 1);
     assert.equal(queue[0]?.notScreened, true);
+    assert.equal(queue[0]?.unscreenedReason, 'Sightengine answered 503');
     assert.equal(queue[0]?.kind, 'event_banner');
     assert.equal(queue[0]?.ownerName, 'Palestra');
     assert.equal(queue[0]?.uploaderName, 'creator@a.com X');
@@ -133,7 +134,7 @@ test('Image Screening', async (t) => {
     assert.equal(queue[0]?.scores.weapons, 0.4);
   });
 
-  await t.test('without a Screening Policy every Image waits in Image Review, marked as not screened', async () => {
+  await t.test('without a Screening Policy every Image waits in Image Review, marked as not screened, and no quota is spent', async () => {
     const { io, org, member } = await setup({ withPolicy: false });
     const creator = await member('creator@a.com');
     const moderator = await member('mod@a.com', 'Moderator');
@@ -144,6 +145,33 @@ test('Image Screening', async (t) => {
     const queue = await listImageReviewsHandler(moderator.req, org.id, io);
     assert.equal(queue.length, 1);
     assert.equal(queue[0]?.notScreened, true);
+    assert.equal(queue[0]?.unscreenedReason, 'No Screening Policy set');
+    assert.equal(io.imageScreener.screened.length, 0, 'the engines are not called');
+  });
+
+  await t.test("a failing engine keeps the other engine's scores for the reviewer", async () => {
+    const { io, org, member } = await setup();
+    const creator = await member('creator@a.com');
+    const moderator = await member('mod@a.com', 'Moderator');
+    const event = await eventBy(io, org.id, creator.req);
+    io.imageScreener.failure = { reason: 'OpenAI unreachable: fetch failed', partialScores: { nudity: 0.99 } };
+
+    await uploadEventBannerHandler(creator.req, org.id, event.id, await pictureFile(1920, 1080), io);
+
+    const [item] = await listImageReviewsHandler(moderator.req, org.id, io);
+    assert.equal(item?.notScreened, true);
+    assert.deepEqual(item?.scores, { nudity: 0.99 });
+  });
+
+  await t.test('an Image removed by its owner leaves the Image Review queue', async () => {
+    const { io, org, member } = await setup();
+    const creator = await member('creator@a.com');
+    const moderator = await member('mod@a.com', 'Moderator');
+    const { event } = await bannerInReview(io, org.id, creator);
+
+    await removeEventBannerHandler(creator.req, org.id, event.id, io);
+
+    assert.deepEqual(await listImageReviewsHandler(moderator.req, org.id, io), []);
   });
 
   await t.test('only Moderators and Admins of the Organization, or Superadmins, see its Image Review queue', async () => {

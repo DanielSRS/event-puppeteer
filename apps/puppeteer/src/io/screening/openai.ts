@@ -53,22 +53,23 @@ export class OpenAIImageScreener implements ImageScreener {
       });
       body = await response.json();
     } catch (error) {
-      return err(`OpenAI unreachable: ${error instanceof Error ? error.message : String(error)}`);
+      return err({ reason: `OpenAI unreachable: ${error instanceof Error ? error.message : String(error)}`, partialScores: {} });
     }
 
     const answer = answerSchema.safeParse(body);
     if (!response.ok || !answer.success) {
       const failure = failureSchema.safeParse(body);
-      return err(`OpenAI answered ${response.status}: ${failure.success ? failure.data.error.message : 'unexpected answer'}`);
+      return err({ reason: `OpenAI answered ${response.status}: ${failure.success ? failure.data.error.message : 'unexpected answer'}`, partialScores: {} });
     }
 
     const [result] = answer.data.results;
-    if (!result) return err('OpenAI answered without a result');
+    if (!result) return err({ reason: 'OpenAI answered without a result', partialScores: {} });
     const scores: ScreeningScores = {};
     for (const [openAICategory, score] of Object.entries(result.category_scores)) {
       const category = MAPPING[openAICategory];
       if (category === undefined || !result.category_applied_input_types[openAICategory]?.includes('image')) continue;
-      scores[category] = Math.max(scores[category] ?? 0, score);
+      const current = scores[category];
+      scores[category] = current === undefined ? score : Math.max(current, score);
     }
     return ok(scores);
   }

@@ -14,6 +14,7 @@ export class DrizzleImageRepository implements ImageRepository {
     await this.db.insert(image).values({
       ...img,
       uploadedAt: new Date(img.uploadedAt),
+      unscreenedReason: img.unscreenedReason ?? null,
       decidedAt: img.decidedAt !== undefined ? new Date(img.decidedAt) : null,
       detachedAt: img.detachedAt !== undefined ? new Date(img.detachedAt) : null
     });
@@ -50,7 +51,9 @@ export class DrizzleImageRepository implements ImageRepository {
   }
 
   async listInReview(): Promise<Image[]> {
-    const rows = await this.db.select().from(image).where(eq(image.state, 'in_review')).orderBy(asc(image.uploadedAt));
+    const rows = await this.db.select().from(image)
+      .where(and(eq(image.state, 'in_review'), isNull(image.detachedAt)))
+      .orderBy(asc(image.uploadedAt));
     return rows.map(row => this.mapToDomain(row));
   }
 
@@ -65,12 +68,13 @@ export class DrizzleImageRepository implements ImageRepository {
 
   /** Timestamps become ISO strings and null optional columns are left out. */
   private mapToDomain(row: ImageRow): Image {
-    const { decidedBy, decidedAt, detachedAt, uploadedAt, kind, state, ...rest } = row;
+    const { decidedBy, decidedAt, detachedAt, uploadedAt, kind, state, unscreenedReason, ...rest } = row;
     return {
       ...rest,
       kind: kind as ImageKind,
       state: state as ImageState,
       uploadedAt: uploadedAt.toISOString(),
+      ...(unscreenedReason !== null ? { unscreenedReason } : {}),
       ...(decidedBy !== null ? { decidedBy } : {}),
       ...(decidedAt !== null ? { decidedAt: decidedAt.toISOString() } : {}),
       ...(detachedAt !== null ? { detachedAt: detachedAt.toISOString() } : {})

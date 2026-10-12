@@ -311,7 +311,7 @@ test('HTTP layer', async (t) => {
       const form = new FormData();
       form.set('file', file);
       const res = await app.handle(new Request(`http://localhost${path}`, { method: 'PUT', headers: { authorization: `Bearer ${adminToken}` }, body: form }));
-      return { status: res.status, body: await res.json() as any };
+      return { status: res.status, body: await res.json() as Record<string, unknown> };
     };
 
     assert.deepEqual((await call('GET', '/screening-policy', rootToken)).body, { policy: null });

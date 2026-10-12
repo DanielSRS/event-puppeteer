@@ -91,6 +91,24 @@ export async function removeOrganizationLogoHandler(request: Request, orgId: str
   await io.imageRepo.detachAll('organization_logo', orgId, new Date());
 }
 
+/** The state Screening gives an Image, with its scores and, when it could not conclude, why. */
+type ScreeningOutcome = Pick<Image, 'state' | 'notScreened' | 'unscreenedReason' | 'scores'>;
+
+/**
+ * Screens a normalized Image against the Screening Policy. Without a policy the engines are
+ * not called (their answer could decide nothing, and each call spends quota): the Image
+ * waits In Review unscreened, as when an engine fails.
+ */
+async function screen(webp: Uint8Array<ArrayBuffer>, io: AppIO): Promise<ScreeningOutcome> {
+  const policy = await io.screeningPolicyRepo.get();
+  if (policy === null) return { state: 'in_review', notScreened: true, unscreenedReason: 'No Screening Policy set', scores: {} };
+  const screening = await io.imageScreener.screen(webp);
+  if (!screening.ok) {
+    return { state: 'in_review', notScreened: true, unscreenedReason: screening.error.reason, scores: screening.error.partialScores };
+  }
+  return { state: verdictFor(screening.value, policy), notScreened: false, scores: screening.value };
+}
+
 /** How many Images a User may upload within any 24 hours. */
 export const DAILY_IMAGE_LIMIT = 10;
 
@@ -121,11 +139,7 @@ async function uploadImage(kind: ImageKind, ownerId: string, organizationId: str
   const prepared = await prepareImage(new Uint8Array(await file.arrayBuffer()), kind);
   if (!prepared.ok) throw new Error(REFUSAL_ERRORS[prepared.error]);
 
-  const screening = await io.imageScreener.screen(prepared.value.webp);
-  const policy = await io.screeningPolicyRepo.get();
-  const scores = screening.ok ? screening.value : {};
-  const concluded = screening.ok && policy !== null;
-  const state = concluded ? verdictFor(scores, policy) : 'in_review';
+  const outcome = await screen(prepared.value.webp, io);
 
   const id = randomUUID();
   const stored = await io.imageStore.storeRestricted(id, prepared.value.webp);
@@ -137,9 +151,7 @@ async function uploadImage(kind: ImageKind, ownerId: string, organizationId: str
     thumbhash: prepared.value.thumbhash,
     width: prepared.value.width,
     height: prepared.value.height,
-    state,
-    notScreened: !concluded,
-    scores
+    ...outcome
   };
   await io.imageRepo.create(image);
   return { url: io.imageStore.signedUrl(id), thumbhash: image.thumbhash };
@@ -231,6 +243,7 @@ async function reviewItemOf(image: Image, uploader: User, io: AppIO): Promise<Im
     uploaderName: `${uploader.firstName} ${uploader.lastName}`,
     uploadedAt: image.uploadedAt,
     notScreened: image.notScreened,
+    ...(image.unscreenedReason !== undefined ? { unscreenedReason: image.unscreenedReason } : {}),
     scores: image.scores,
     previewUrl: io.imageStore.signedUrl(image.id),
     thumbhash: image.thumbhash

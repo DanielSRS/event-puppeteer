@@ -179,6 +179,11 @@ export function createServer(io: AppIO, { adapter, appUrl = 'http://localhost:30
         set.status = imageError.status;
         return { error: imageError.error, code: message };
       }
+      if (message.startsWith('IMAGE_OWNER_MISSING')) {
+        console.error(`❌ ${message}`);
+        set.status = 500;
+        return { error: 'An Image belongs to an Event or Organization that no longer exists', code: 'IMAGE_OWNER_MISSING' };
+      }
     })
     .get(
       '/health',
