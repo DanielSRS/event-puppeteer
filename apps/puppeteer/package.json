@@ -14,7 +14,8 @@
     "start": "nub main.ts",
     "test": "nub --test",
     "db:migrate": "nub src/scripts/migrate.ts",
-    "db:seed:superadmin": "nub src/scripts/seed-superadmin.ts"
+    "db:seed:superadmin": "nub src/scripts/seed-superadmin.ts",
+    "screen:image": "nub src/scripts/screen-image.ts"
   },
   "devDependencies": {
     "@nubjs/types": ">=0.4.13 <=0.9.0",

@@ -18,6 +18,7 @@ This project follows the **Functional Core / Imperative Shell** pattern to make 
 - `nub run start`: Starts the application server.
 - `nub run test`: Runs the test suite using the Node.js native test runner.
 - `nub run db:migrate`: Applies pending migrations using `MIGRATION_DATABASE_URL` (or `DATABASE_URL`) from `.env`. On Supabase, point it at the Session pooler or direct connection (port 5432).
+- `nub run screen:image <arquivo> --kind banner|logo [--crop] [--ignore-size] [--policy 30,80] [--raw]`: Screens one picture with the real Sightengine and OpenAI engines and prints each engine's scores, the combined ones and the verdict under `--policy` (review,reject in percent). Writes nothing (no database, no Cloudinary). `--crop` crops the largest centred area of the kind's proportion first; `--ignore-size` skips the proportion, minimum-size and 4 MB checks (screening only; the app still refuses such pictures) and, without `--crop`, keeps the whole picture, only scaled down to fit the kind's maximum; `--raw` prints the engines' JSON answers. Needs `SIGHTENGINE_API_USER`, `SIGHTENGINE_API_SECRET` and `OPENAI_API_KEY`; each picture spends about 4 Sightengine operations (`--raw` shows `request.operations`).
 - `nub run db:seed:superadmin`: Creates the first Superadmin (or promotes an existing user) from `SUPERADMIN_EMAIL` and `SUPERADMIN_PASSWORD` in `.env`. Idempotent. Registration only creates Members, so this is how the first Superadmin is bootstrapped.
 
 ### Email verification

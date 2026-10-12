@@ -68,10 +68,22 @@ export async function prepareImage(bytes: Uint8Array, kind: ImageKind): Promise<
   if (Math.abs(height - (width * down) / across) > PROPORTION_TOLERANCE) return err('wrong_proportion');
   if (width < rules.minimum.width || height < rules.minimum.height) return err('too_small');
 
+  return await normalizeImage(bytes, kind);
+}
+
+/**
+ * The normalization step of `prepareImage` alone, without its checks: re-encodes the
+ * picture as WebP without metadata (EXIF orientation applied), scaled down to exactly the
+ * kind's maximum when larger, with its thumbhash. Only for a picture already in the kind's
+ * proportion; uploads always go through `prepareImage`.
+ */
+export async function normalizeImage(bytes: Uint8Array, kind: ImageKind): Promise<Result<PreparedImage, 'unreadable'>> {
+  const { maximum } = IMAGE_RULES[kind];
   try {
+    const { width, height } = displayedSize(await sharp(bytes, { limitInputPixels: MAX_INPUT_PIXELS }).metadata());
     let pipeline = sharp(bytes, { limitInputPixels: MAX_INPUT_PIXELS }).autoOrient();
-    if (width > rules.maximum.width || height > rules.maximum.height) {
-      pipeline = pipeline.resize(rules.maximum.width, rules.maximum.height, { fit: 'fill' });
+    if (width > maximum.width || height > maximum.height) {
+      pipeline = pipeline.resize(maximum.width, maximum.height, { fit: 'fill' });
     }
     const { data, info } = await pipeline.webp({ quality: 80 }).toBuffer({ resolveWithObject: true });
     return ok({ webp: Uint8Array.from(data), width: info.width, height: info.height, thumbhash: await thumbhashOf(data) });

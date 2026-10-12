@@ -59,7 +59,10 @@ export class OpenAIImageScreener implements ImageScreener {
     const answer = answerSchema.safeParse(body);
     if (!response.ok || !answer.success) {
       const failure = failureSchema.safeParse(body);
-      return err({ reason: `OpenAI answered ${response.status}: ${failure.success ? failure.data.error.message : 'unexpected answer'}`, partialScores: {} });
+      const detail = failure.success
+        ? failure.data.error.message
+        : `unexpected answer (${answer.success ? 'none' : answer.error.issues.map(issue => `${issue.path.join('.') || '(root)'} (${issue.message})`).join(', ')})`;
+      return err({ reason: `OpenAI answered ${response.status}: ${detail}`, partialScores: {} });
     }
 
     const [result] = answer.data.results;

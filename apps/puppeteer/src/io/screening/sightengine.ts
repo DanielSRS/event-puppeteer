@@ -5,7 +5,7 @@ import { err, ok, type Result } from '../../utils/result.ts';
 
 const ENDPOINT = 'https://api.sightengine.com/1.0/check.json';
 
-/** One operation per model per Image counts against the plan's quota. */
+/** The models Screening runs. Their call cost 4 operations of the plan's quota in a real answer (`request.operations`). */
 const MODELS = ['nudity-2.1', 'weapon', 'offensive-2.0', 'gore-2.0', 'violence', 'text-content-2.0'];
 
 /** The text categories that make written text in an Image offensive. */
@@ -29,11 +29,24 @@ const answerSchema = z.object({
   gore: z.object({ prob: z.number() }),
   violence: z.object({ prob: z.number() }),
   text: z.object({
-    detections: z.record(z.object({ severity: severity.optional(), details: z.array(z.object({ severity: severity.optional() })) }))
+    /**
+     * Keyed by category when something was detected. With no text detected, Sightengine
+     * answers an empty array instead (seen in a real answer; the docs only show the object).
+     */
+    detections: z.union([
+      z.record(z.object({ severity: severity.optional(), details: z.array(z.object({ severity: severity.optional() })) })),
+      z.array(z.unknown()).length(0)
+    ])
   })
 });
 
 const failureSchema = z.object({ error: z.object({ message: z.string() }) });
+
+/** The fields of an answer that didn't match what Screening reads, e.g. "nudity.erotica (Required)". */
+function unexpectedFields(answer: z.SafeParseReturnType<unknown, unknown>): string {
+  if (answer.success) return 'none';
+  return answer.error.issues.map(issue => `${issue.path.join('.') || '(root)'} (${issue.message})`).join(', ');
+}
 
 /**
  * Screens Images with Sightengine (https://sightengine.com/docs/reference).
@@ -75,7 +88,8 @@ export class SightengineImageScreener implements ImageScreener {
     const answer = answerSchema.safeParse(body);
     if (!response.ok || !answer.success) {
       const failure = failureSchema.safeParse(body);
-      return err({ reason: `Sightengine answered ${response.status}: ${failure.success ? failure.data.error.message : 'unexpected answer'}`, partialScores: {} });
+      const detail = failure.success ? failure.data.error.message : `unexpected answer (${unexpectedFields(answer)})`;
+      return err({ reason: `Sightengine answered ${response.status}: ${detail}`, partialScores: {} });
     }
 
     const { nudity, weapon, offensive, gore, violence, text } = answer.data;
@@ -86,7 +100,7 @@ export class SightengineImageScreener implements ImageScreener {
       offensive_gesture: offensive.middle_finger,
       gore: gore.prob,
       violence: violence.prob,
-      offensive_text: Math.max(0, ...Object.values(text.detections).map(detection => {
+      offensive_text: Array.isArray(text.detections) ? 0 : Math.max(0, ...Object.values(text.detections).map(detection => {
         const levels = [detection.severity, ...detection.details.map(d => d.severity)];
         return Math.max(...levels.map(level => level === undefined ? SEVERITY_SCORES.high : SEVERITY_SCORES[level]));
       }))

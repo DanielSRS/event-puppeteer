@@ -78,6 +78,13 @@ test('Sightengine image screener', async (t) => {
     const cleanResult = await new SightengineImageScreener('u', 's', clean.fakeFetch).screen(webp);
     assert.equal(cleanResult.ok && cleanResult.value.offensive_text, 0);
 
+    const noText = fetchAnswering({ ...ANSWER, text: { language: null, detected_categories: [], detections: [] } });
+    const noTextResult = await new SightengineImageScreener('u', 's', noText.fakeFetch).screen(webp);
+    assert.equal(noTextResult.ok && noTextResult.value.offensive_text, 0, 'a real answer for a picture without text sends an empty array');
+
+    const listed = fetchAnswering({ ...ANSWER, text: { language: 'pt', detected_categories: ['insult'], detections: [{ match: 'x' }] } });
+    assert.equal((await new SightengineImageScreener('u', 's', listed.fakeFetch).screen(webp)).ok, false, 'a non-empty array is not guessed at');
+
     const unrated = fetchAnswering({ ...ANSWER, text: { language: 'pt', detected_categories: ['extremism'], detections: { extremism: { details: [{ match: 'x' }] } } } });
     const unratedResult = await new SightengineImageScreener('u', 's', unrated.fakeFetch).screen(webp);
     assert.equal(unratedResult.ok && unratedResult.value.offensive_text, 0.95);
@@ -89,9 +96,11 @@ test('Sightengine image screener', async (t) => {
       ok: false, error: { reason: 'Sightengine answered 429: Daily usage limit reached', partialScores: {} }
     });
 
-    const garbled = fetchAnswering({ status: 'success' });
+    const garbled = fetchAnswering({ ...ANSWER, nudity: { ...ANSWER.nudity, erotica: undefined } });
     const garbledResult = await new SightengineImageScreener('u', 's', garbled.fakeFetch).screen(webp);
-    assert.equal(garbledResult.ok, false);
+    assert.deepEqual(garbledResult, {
+      ok: false, error: { reason: 'Sightengine answered 200: unexpected answer (nudity.erotica (Required))', partialScores: {} }
+    });
 
     const down = (async () => { throw new TypeError('fetch failed'); }) as unknown as typeof fetch;
     assert.deepEqual(await new SightengineImageScreener('u', 's', down).screen(webp), {
