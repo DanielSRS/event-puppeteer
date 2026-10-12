@@ -9,6 +9,7 @@
  * @module
  */
 
+import { crc32, deflateSync } from "node:zlib";
 import { chromium, devices, type Browser, type BrowserContext, type Page } from "playwright";
 import { E2E, type E2EState } from "./config.ts";
 
@@ -144,4 +145,42 @@ export async function CreateEvent(role: Role, orgId: string, title: string, extr
 /** True when the page scrolls sideways (a responsive-layout bug). */
 export async function HasHorizontalScroll(page: Page): Promise<boolean> {
   return page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
+}
+
+/** One PNG chunk: length, type, data and the CRC of type and data. */
+function PngChunk(type: string, data: Buffer): Buffer {
+  const length = Buffer.alloc(4);
+  length.writeUInt32BE(data.length);
+  const body = Buffer.concat([Buffer.from(type, "ascii"), data]);
+  const crc = Buffer.alloc(4);
+  crc.writeUInt32BE(crc32(body));
+  return Buffer.concat([length, body, crc]);
+}
+
+/**
+ * A real PNG photo of `width`×`height` pixels (a colour gradient), ready for
+ * `setInputFiles`, as a person would pick from their device. 8 bits per RGB
+ * channel, not interlaced; every row starts with filter type 0 (none).
+ */
+export function PictureFile(width: number, height: number): { name: string; mimeType: string; buffer: Buffer } {
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(width, 0);
+  header.writeUInt32BE(height, 4);
+  header.set([8, 2, 0, 0, 0], 8);
+  const rows = Buffer.alloc(height * (1 + width * 3));
+  for (let y = 0; y < height; y++) {
+    const row = y * (1 + width * 3);
+    for (let x = 0; x < width; x++) {
+      rows[row + 1 + x * 3] = Math.round((x / width) * 255);
+      rows[row + 2 + x * 3] = Math.round((y / height) * 255);
+      rows[row + 3 + x * 3] = 160;
+    }
+  }
+  const png = Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    PngChunk("IHDR", header),
+    PngChunk("IDAT", deflateSync(rows)),
+    PngChunk("IEND", Buffer.alloc(0)),
+  ]);
+  return { name: "foto.png", mimeType: "image/png", buffer: png };
 }

@@ -9,7 +9,7 @@
  * @module
  */
 
-import type { Event, FeedEvent, LinkLabel, Tag } from "./schemas";
+import type { Event, FeedEvent, ImageView, LinkLabel, Tag } from "./schemas";
 import type { CardTag, FeedCard } from "@/domain/feed";
 import { ShownVoteFor, type PendingVote } from "@/domain/likes";
 import { SortedDays, type ScheduleDay } from "@/domain/schedule";
@@ -78,7 +78,8 @@ export type EventDetail = {
   location: string;
   /** Present only when the event has both latitude and longitude. */
   coordinates: Coordinates | null;
-  bannerImage: string | null;
+  /** The banner as this viewer may see it; `null` when the event never had one. */
+  banner: ImageView | null;
   isHidden: boolean;
   schedule: ScheduleDay[];
   tags: CardTag[];
@@ -100,7 +101,7 @@ export function ToEventDetail(event: Event, tags: readonly Tag[], labels: readon
     description: event.description,
     location: event.location,
     coordinates,
-    bannerImage: event.bannerImage === undefined || event.bannerImage === "" ? null : event.bannerImage,
+    banner: event.banner === undefined ? null : event.banner,
     isHidden: event.isHidden,
     schedule: Schedule(event),
     tags: PublicTags(event, tags),

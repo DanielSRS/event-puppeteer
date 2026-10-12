@@ -1,5 +1,6 @@
 /**
- * Step 3 of the event editor: tags, external links and the banner image.
+ * Step 3 of the event editor: tags, external links and the banner, picked and
+ * cropped to 16:9 here and uploaded once the event is published.
  *
  * System-defined tags are toggle chips. A free-form tag is created by name
  * (any logged-in person may suggest one); it is attached to the event but
@@ -12,11 +13,13 @@
 
 import { useState } from "react";
 import { MdAdd, MdClose, MdDelete } from "react-icons/md";
-import { ErrorAlert } from "@/components/ui/Feedback";
+import { BlobPreview } from "@/components/ui/BlobPreview";
+import { ImageCropper } from "@/components/ui/ImageCropper";
+import { BANNER_RULES } from "@/utils/crop";
 import type { LinkLabel, Tag } from "@/lib/api/schemas";
 import type { Result } from "@/lib/result";
 import {
-  IsHttpUrl, ValidateNewTag, type EventFormData, type EventFormErrors, type EventLinkForm,
+  ValidateNewTag, type EventFormData, type EventFormErrors, type EventLinkForm,
 } from "@/utils/validation/EventValidation";
 import { FieldA11y, FieldError, FieldId } from "./EventFormField";
 
@@ -49,14 +52,12 @@ export function EventFormMedia({
   const [newTag, setNewTag] = useState("");
   const [newTagError, setNewTagError] = useState("");
   const [creatingTag, setCreatingTag] = useState(false);
-  const [bannerFailed, setBannerFailed] = useState(false);
 
   const id = (path: string) => FieldId(idPrefix, path);
   const systemTags = tags.filter((tag) => tag.isSystemDefined);
   const selectedIds = new Set(data.tags.map((tag) => tag.id));
   const freeFormSelected = data.tags.filter((tag) => !tag.isSystemDefined);
   const freeFormHint = id("newTag-hint");
-  const banner = data.bannerImage.trim();
 
   function toggleTag(tag: Tag) {
     onChange({ tags: selectedIds.has(tag.id) ? data.tags.filter((t) => t.id !== tag.id) : [...data.tags, tag] });
@@ -227,33 +228,22 @@ export function EventFormMedia({
         )}
       </fieldset>
 
-      <div className="column gap-2">
-        <label htmlFor={id("bannerImage")}>Endereço da imagem de banner (opcional)</label>
-        <input
-          {...FieldA11y(id("bannerImage"), errors.bannerImage)}
-          type="url"
-          inputMode="url"
-          value={data.bannerImage}
-          disabled={disabled}
-          onChange={(event) => { onChange({ bannerImage: event.target.value }); setBannerFailed(false); }}
-          className={`input ${errors.bannerImage ? "input-error" : ""}`}
-          placeholder="https://exemplo.org/banner.jpg"
-        />
-        <FieldError fieldId={id("bannerImage")} error={errors.bannerImage} />
-        {IsHttpUrl(banner) && (
-          bannerFailed
-            ? <ErrorAlert>Não foi possível carregar a imagem desse endereço. Confira se ele aponta para uma imagem pública.</ErrorAlert>
-            : (
-              // eslint-disable-next-line @next/next/no-img-element -- arbitrary external address typed by the person; next/image would need every host allow-listed
-              <img
-                src={banner}
-                alt="Prévia do banner do evento"
-                onError={() => setBannerFailed(true)}
-                className="max-h-48 w-full rounded-lg border border-muted object-cover"
-              />
-            )
+      <fieldset className="column gap-3 min-w-0">
+        <legend className="mb-2 text-sm font-semibold">Banner (opcional)</legend>
+        {data.banner === null ? (
+          <ImageCropper rules={BANNER_RULES} purpose="banner do evento" disabled={disabled} onCropped={(banner) => onChange({ banner })} />
+        ) : (
+          <div className="column gap-2">
+            <BlobPreview picture={data.banner} alt="Prévia do banner do evento" className="aspect-video w-full rounded-lg border border-muted object-cover" />
+            <p className="text-sm text-foreground/80">
+              O banner é enviado quando o evento for publicado e passa por uma análise automática antes de aparecer para todos.
+            </p>
+            <button type="button" disabled={disabled} onClick={() => onChange({ banner: null })} className="button clean self-start min-h-10">
+              <MdDelete aria-hidden className="icon" /> Remover banner
+            </button>
+          </div>
         )}
-      </div>
+      </fieldset>
     </div>
   );
 }

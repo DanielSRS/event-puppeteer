@@ -79,9 +79,9 @@ export function RefusedRequest(status: number, text: string): string {
 
 /** Every admin route; compiled ahead so `next dev` compiling a route doesn't eat a test's time. */
 export const ADMIN_PATHS = [
-  "/dashboard/reports", "/dashboard/bans", "/dashboard/tags", "/dashboard/audit", "/dashboard/users",
+  "/dashboard/reports", "/dashboard/images", "/dashboard/bans", "/dashboard/tags", "/dashboard/audit", "/dashboard/users",
   "/dashboard/devices", "/dashboard/settings", "/dashboard/global/orgs", "/dashboard/global/devices",
-  "/dashboard/global/tags", "/dashboard/global/links",
+  "/dashboard/global/tags", "/dashboard/global/links", "/dashboard/global/images", "/dashboard/global/screening",
 ];
 
 /** Requests each route once so the dev server compiles it before the tests time it. */

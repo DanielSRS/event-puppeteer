@@ -39,7 +39,7 @@ export function NavbarContainer() {
     api.organizations.get(orgId).then((org) => {
       if (!active) return;
       setLoaded(org.ok
-        ? { orgId, brand: { name: org.value.name, logo: org.value.logo === undefined || org.value.logo === "" ? null : org.value.logo } }
+        ? { orgId, brand: { name: org.value.name, logo: org.value.logo === undefined ? null : org.value.logo } }
         : { orgId, error: `Não foi possível carregar a organização. ${ApiErrorMessage(org.error)}` });
     });
     return () => { active = false; };

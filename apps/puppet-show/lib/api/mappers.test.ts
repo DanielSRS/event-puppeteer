@@ -47,14 +47,15 @@ describe("ToFeedCard", () => {
 });
 
 test("ToEventDetail resolves labels and coordinates", () => {
-  const detail = ToEventDetail({ ...EVENT, latitude: -12.2, longitude: -38.9, bannerImage: "https://img" }, TAGS, LABELS);
+  const banner = { url: "https://img", thumbhash: "1QcSHQRnh493V4dIh4eXh1h4kJUI" };
+  const detail = ToEventDetail({ ...EVENT, latitude: -12.2, longitude: -38.9, banner }, TAGS, LABELS);
   expect(detail.coordinates).toEqual({ latitude: -12.2, longitude: -38.9 });
-  expect(detail.bannerImage).toBe("https://img");
+  expect(detail.banner).toEqual(banner);
   expect(detail.links).toEqual([{ label: "Inscrição", url: "https://example.org" }, { label: null, url: "https://x.org" }]);
 
   const plain = ToEventDetail({ ...EVENT, latitude: -12.2 }, TAGS, LABELS);
   expect(plain.coordinates).toBeNull();
-  expect(plain.bannerImage).toBeNull();
+  expect(plain.banner).toBeNull();
 });
 
 test("ToTvEvent", () => {

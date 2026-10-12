@@ -13,7 +13,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import {
   MdBlock, MdDevices, MdEvent, MdHistory, MdLabel, MdLink, MdPeople, MdPublic, MdReport, MdSettings,
-  MdDevicesOther, MdNewLabel,
+  MdDevicesOther, MdNewLabel, MdImageSearch, MdPolicy, MdPhotoLibrary,
 } from "react-icons/md";
 import type { UserRole } from "@/lib/api/schemas";
 import { ContextSwitcher, type ContextOrganization } from "./ContextSwitcher";
@@ -23,6 +23,7 @@ import { AccessibleSections, SectionForPath, type DashboardSection } from "./Das
 const ICONS: Record<DashboardSection, ReactNode> = {
   "events": <MdEvent aria-hidden className="icon" />,
   "reports": <MdReport aria-hidden className="icon" />,
+  "images": <MdImageSearch aria-hidden className="icon" />,
   "bans": <MdBlock aria-hidden className="icon" />,
   "tags": <MdNewLabel aria-hidden className="icon" />,
   "audit": <MdHistory aria-hidden className="icon" />,
@@ -33,6 +34,8 @@ const ICONS: Record<DashboardSection, ReactNode> = {
   "global-devices": <MdDevicesOther aria-hidden className="icon" />,
   "global-tags": <MdLabel aria-hidden className="icon" />,
   "global-links": <MdLink aria-hidden className="icon" />,
+  "global-images": <MdPhotoLibrary aria-hidden className="icon" />,
+  "global-screening": <MdPolicy aria-hidden className="icon" />,
 };
 
 /** Props of {@link DashboardSidebar}. */

@@ -18,9 +18,10 @@ import { Err, Ok, type Result } from "@/lib/result";
 import { GetToken } from "./session";
 import {
   ApiErrorBodySchema, AuditEntrySchema, CommandSchema, DeviceLogSchema, DeviceSchema, DeviceStatusSchema,
-  DeviceTelemetryResponseSchema, EventSchema, EventWithVotesSchema, FeedEventSchema, LinkLabelSchema, LoginResponseSchema, OrganizationSchema,
-  RegisterResponseSchema, ReportSchema, ReportStatusSchema, SuccessSchema, TagSchema, UserSchema, VoteResponseSchema, VoteStatusSchema,
-  type CreateCommandInput, type CreateEventInput, type OrgRole, type OrganizationInput, type ReportReason,
+  DeviceTelemetryResponseSchema, EventSchema, EventWithVotesSchema, FeedEventSchema, ImageDecisionSchema, ImageReviewItemSchema,
+  ImageViewSchema, LinkLabelSchema, LoginResponseSchema, OrganizationSchema, RegisterResponseSchema, ReportSchema, ReportStatusSchema,
+  ScreeningPolicyResponseSchema, ScreeningPolicySchema, SuccessSchema, TagSchema, UserSchema, VoteResponseSchema, VoteStatusSchema,
+  type CreateCommandInput, type CreateEventInput, type OrgRole, type OrganizationInput, type ReportReason, type ScreeningPolicy,
 } from "./schemas";
 
 /** Same-origin prefix that `next.config.ts` proxies to Puppeteer. */
@@ -32,8 +33,11 @@ export type ApiError =
   | { kind: "storage-unavailable" }
   /** The request never got an answer (offline, server down, DNS…). */
   | { kind: "network"; path: string }
-  /** The API answered with an error status; `message` is the API's own `error` text when it sent one. */
-  | { kind: "http"; status: number; message: string | null; path: string }
+  /**
+   * The API answered with an error status; `message` is the API's own `error` text and
+   * `code` its error code (sent for Image errors), when present.
+   */
+  | { kind: "http"; status: number; message: string | null; code: string | null; path: string }
   /** The API answered 2xx with a body that doesn't match the contract. */
   | { kind: "invalid-response"; path: string; detail: string };
 
@@ -53,16 +57,33 @@ export function ApiErrorMessage(error: ApiError): string {
       return "Não foi possível falar com o servidor. Verifique sua conexão e tente de novo.";
     case "invalid-response":
       return "O servidor respondeu em um formato inesperado. Avise o suporte.";
-    case "http":
+    case "http": {
+      const coded = error.code === null ? undefined : CODE_MESSAGES[error.code];
+      if (coded !== undefined) return coded;
       if (error.status === 401) return "Sua sessão expirou ou você não está conectado. Entre novamente.";
       if (error.status === 403) return "Você não tem permissão para fazer isso.";
       if (error.status === 404) return "Não encontrado. Talvez tenha sido removido.";
       if (error.status === 409) return "Já existe um registro com esses dados.";
       if (error.status === 400 || error.status === 422) return "Os dados enviados foram recusados pelo servidor. Revise o formulário.";
       if (error.status >= 500) return "O servidor encontrou um erro. Tente de novo em instantes.";
+      if (error.status === 429) return "Muitas tentativas. Espere um pouco e tente de novo.";
       return `O servidor recusou o pedido (erro ${error.status}).`;
+    }
   }
 }
+
+/** Text for the person for each error `code` the API sends. */
+const CODE_MESSAGES: Partial<Record<string, string>> = {
+  IMAGE_TOO_LARGE: "A imagem passa de 4 MB. Escolha um arquivo menor.",
+  IMAGE_UNSUPPORTED_FORMAT: "Formato não aceito. Envie uma imagem JPEG, PNG ou WebP (sem animação).",
+  IMAGE_UNREADABLE: "Não foi possível ler esse arquivo como imagem.",
+  IMAGE_WRONG_PROPORTION: "A imagem não está na proporção exigida. Recorte-a antes de enviar.",
+  IMAGE_TOO_SMALL: "A imagem é pequena demais. Escolha uma imagem maior.",
+  IMAGE_DAILY_LIMIT: "Você atingiu o limite de 10 imagens por dia. Tente de novo amanhã.",
+  IMAGE_STORAGE_FAILED: "Não foi possível guardar a imagem agora. Tente de novo em instantes.",
+  IMAGE_ALREADY_DECIDED: "Essa imagem já foi analisada por outra pessoa.",
+  SCREENING_POLICY_INVALID: "Cada limite deve ficar entre 0% e 100%, e o limite de revisão não pode passar o de recusa.",
+};
 
 /** Calls `fetch`, turning a rejected promise into a value. */
 async function SafeFetch(url: string, init: RequestInit): Promise<Result<Response, null>> {
@@ -82,12 +103,13 @@ async function SafeJson(response: Response): Promise<Result<unknown, string>> {
   }
 }
 
-/** The API's `{ error }` text, or `null` when the body is absent or has another shape. */
-async function ErrorText(response: Response): Promise<string | null> {
+/** The API's `{ error, code }`, each `null` when the body is absent or has another shape. */
+async function ErrorBody(response: Response): Promise<{ message: string | null; code: string | null }> {
   const body = await SafeJson(response);
-  if (!body.ok) return null;
+  if (!body.ok) return { message: null, code: null };
   const parsed = ApiErrorBodySchema.safeParse(body.value);
-  return parsed.success ? parsed.data.error : null;
+  if (!parsed.success) return { message: null, code: null };
+  return { message: parsed.data.error, code: parsed.data.code === undefined ? null : parsed.data.code };
 }
 
 /**
@@ -96,11 +118,11 @@ async function ErrorText(response: Response): Promise<string | null> {
  * @param schema - Contract the 2xx body must match.
  * @param path - Path under the API, e.g. `/organizations/abc/feed`.
  * @param method - HTTP method.
- * @param body - Sent as JSON when present.
+ * @param body - Sent as multipart when it is `FormData`, as JSON otherwise (when present).
  */
 async function Request<S extends z.ZodType>(
   schema: S,
-  method: "GET" | "POST" | "PATCH" | "DELETE",
+  method: "GET" | "POST" | "PATCH" | "PUT" | "DELETE",
   path: string,
   body?: unknown,
 ): Promise<ApiResult<z.infer<S>>> {
@@ -108,18 +130,19 @@ async function Request<S extends z.ZodType>(
   if (!token.ok) return Err({ kind: "storage-unavailable" });
 
   const headers: Record<string, string> = {};
-  if (body !== undefined) headers["Content-Type"] = "application/json";
+  const multipart = body instanceof FormData;
+  if (body !== undefined && !multipart) headers["Content-Type"] = "application/json";
   if (token.value !== null) headers.Authorization = `Bearer ${token.value}`;
 
   const response = await SafeFetch(`${API_PREFIX}${path}`, {
     method,
     headers,
-    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    ...(body !== undefined ? { body: multipart ? body : JSON.stringify(body) } : {}),
   });
   if (!response.ok) return Err({ kind: "network", path });
 
   if (!response.value.ok)
-    return Err({ kind: "http", status: response.value.status, message: await ErrorText(response.value), path });
+    return Err({ kind: "http", status: response.value.status, ...await ErrorBody(response.value), path });
 
   const json = await SafeJson(response.value);
   if (!json.ok) return Err({ kind: "invalid-response", path, detail: json.error });
@@ -132,6 +155,13 @@ async function Request<S extends z.ZodType>(
 
 /** Encodes one path segment (ids come from the API or the URL). */
 const seg = encodeURIComponent;
+
+/** A picture as the multipart body Image uploads take. */
+function ImageForm(picture: Blob): FormData {
+  const form = new FormData();
+  form.set("file", picture, "image");
+  return form;
+}
 
 /** Every Puppeteer endpoint puppet-show uses, grouped by resource. */
 export const api = {
@@ -235,6 +265,39 @@ export const api = {
       Request(UserSchema, "DELETE", `/organizations/${seg(orgId)}/shadow-bans/${seg(userId)}`),
     /** Admin+. */
     listAudit: (orgId: string) => Request(AuditEntrySchema.array(), "GET", `/organizations/${seg(orgId)}/audit`),
+  },
+
+  images: {
+    /**
+     * Event creator only. A cropped 16:9 picture of at least 960×540. Answers the banner
+     * as its uploader sees it (always as published).
+     */
+    uploadBanner: (orgId: string, eventId: string, picture: Blob) =>
+      Request(ImageViewSchema, "PUT", `/organizations/${seg(orgId)}/events/${seg(eventId)}/banner`, ImageForm(picture)),
+    /** Event creator only. */
+    removeBanner: (orgId: string, eventId: string) =>
+      Request(SuccessSchema, "DELETE", `/organizations/${seg(orgId)}/events/${seg(eventId)}/banner`),
+    /** Admin+. A cropped square picture of at least 256×256. */
+    uploadLogo: (orgId: string, picture: Blob) =>
+      Request(ImageViewSchema, "PUT", `/organizations/${seg(orgId)}/logo`, ImageForm(picture)),
+    /** Admin+. */
+    removeLogo: (orgId: string) => Request(SuccessSchema, "DELETE", `/organizations/${seg(orgId)}/logo`),
+    /** Moderator+: the organization's Images awaiting Image Review (never the caller's own). */
+    reviews: (orgId: string) =>
+      Request(ImageReviewItemSchema.array(), "GET", `/organizations/${seg(orgId)}/image-reviews`),
+    /** Superadmin: Images only Superadmins can review. */
+    escalated: () => Request(ImageReviewItemSchema.array(), "GET", "/image-reviews/escalated"),
+    /** 409 when someone else already decided it. */
+    approve: (imageId: string) => Request(ImageDecisionSchema, "POST", `/image-reviews/${seg(imageId)}/approve`),
+    /** A Confirmed Rejection: the uploader is shadow-banned. 409 when someone else already decided it. */
+    reject: (imageId: string) => Request(ImageDecisionSchema, "POST", `/image-reviews/${seg(imageId)}/reject`),
+  },
+
+  screeningPolicy: {
+    /** Superadmin only. `{ policy: null }` until first set. */
+    get: () => Request(ScreeningPolicyResponseSchema, "GET", "/screening-policy"),
+    /** Superadmin only. Audited. */
+    set: (policy: ScreeningPolicy) => Request(ScreeningPolicySchema, "PUT", "/screening-policy", policy),
   },
 
   tags: {

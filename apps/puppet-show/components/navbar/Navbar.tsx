@@ -11,13 +11,15 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { MdAdd, MdClose, MdDashboard, MdEvent, MdLogin, MdLogout, MdMenu, MdPersonAdd, MdTv } from "react-icons/md";
 import type { IconType } from "react-icons";
 import { ErrorAlert } from "@/components/ui/Feedback";
+import { ImageWithPlaceholder } from "@/components/ui/ImageWithPlaceholder";
 import type { AuthState } from "@/hooks/useAuth";
+import type { ImageView } from "@/lib/api/schemas";
 
 /** The product's name, shown for the Superadmin (who belongs to no organization) and next to an org name. */
 export const APP_NAME = "Mural de Eventos";
 
-/** Organization shown in the bar. */
-export type NavBrand = { name: string; logo: string | null };
+/** Organization shown in the bar; `logo` is `null` when it never had one. */
+export type NavBrand = { name: string; logo: ImageView | null };
 
 export type NavbarProps = {
   auth: AuthState;
@@ -126,7 +128,9 @@ export function Navbar({ auth, brand, brandError, pathname, logoutError, onLogou
       <nav aria-label="Principal" className="between gap-3 max-w-6xl mx-auto px-4 h-16">
         <Link href="/" className="row gap-2 min-w-0 focus-ring rounded-lg">
           {brand !== null && brand.logo !== null && (
-            <span aria-hidden className="w-9 h-9 shrink-0 rounded bg-contain bg-center bg-no-repeat" style={{ backgroundImage: `url(${JSON.stringify(brand.logo)})` }} />
+            <span aria-hidden className="shrink-0">
+              <ImageWithPlaceholder image={brand.logo} alt={`Logo de ${brand.name}`} className="w-9 h-9 rounded" compact />
+            </span>
           )}
           <span className="column min-w-0">
             <span className="font-semibold truncate">{brand === null ? APP_NAME : brand.name}</span>

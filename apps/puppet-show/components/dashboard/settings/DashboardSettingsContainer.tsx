@@ -2,7 +2,7 @@
  * Organization settings page (Admin+, and a Superadmin inside an
  * organization): edits the organization's profile and its report threshold.
  * Only changed fields are sent, so the threshold change is audited only when
- * it really changed.
+ * it really changed. The logo is uploaded and removed on its own.
  *
  * @module
  */
@@ -17,6 +17,7 @@ import { ErrorAlert, LoadingMessage, StatusMessage } from "@/components/ui/Feedb
 import { SectionDenialFor, SelectOrgNotice, useDashboard } from "../DashboardContext";
 import { AccessNotice } from "../global/AccessNotice";
 import { OrganizationForm } from "./OrganizationForm";
+import { LogoPanel } from "./LogoPanel";
 
 /** Loads the organization being managed. */
 async function LoadOrganization(orgId: string): Promise<Result<Organization, string>> {
@@ -40,6 +41,9 @@ function Settings({ orgId }: { orgId: string }) {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [saved, setSaved] = useState("");
+  const [logoBusy, setLogoBusy] = useState(false);
+  const [logoNotice, setLogoNotice] = useState("");
+  const [logoError, setLogoError] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -64,6 +68,28 @@ function Settings({ orgId }: { orgId: string }) {
       : `Configurações salvas. Novo limite: ${updated.value.shadowBanThreshold} ${updated.value.shadowBanThreshold === 1 ? "denúncia" : "denúncias"}.`);
   };
 
+  /** Sends a logo change and applies the logo the API answers. */
+  const changeLogo = async (send: () => Promise<{ ok: true; logo: Organization["logo"] } | { ok: false; error: string }>, notice: string) => {
+    setLogoBusy(true);
+    setLogoNotice("");
+    setLogoError("");
+    const result = await send();
+    setLogoBusy(false);
+    if (!result.ok) return setLogoError(result.error);
+    setOrg((current) => current !== null && current.ok ? Ok({ ...current.value, logo: result.logo }) : current);
+    setLogoNotice(notice);
+  };
+
+  const uploadLogo = (picture: Blob) => changeLogo(async () => {
+    const answer = await api.images.uploadLogo(orgId, picture);
+    return answer.ok ? { ok: true, logo: answer.value } : { ok: false, error: `Não foi possível enviar o logo. ${ApiErrorMessage(answer.error)}` };
+  }, "Logo atualizado.");
+
+  const removeLogo = () => changeLogo(async () => {
+    const answer = await api.images.removeLogo(orgId);
+    return answer.ok ? { ok: true, logo: undefined } : { ok: false, error: `Não foi possível remover o logo. ${ApiErrorMessage(answer.error)}` };
+  }, "Logo removido.");
+
   if (org === null) return <LoadingMessage>Carregando configurações...</LoadingMessage>;
   if (!org.ok) return <ErrorAlert>{org.error}</ErrorAlert>;
 
@@ -82,6 +108,15 @@ function Settings({ orgId }: { orgId: string }) {
           onUpdate={handleUpdate}
         />
       </div>
+      <LogoPanel
+        orgName={org.value.name}
+        logo={org.value.logo === undefined ? null : org.value.logo}
+        busy={logoBusy}
+        notice={logoNotice}
+        error={logoError}
+        onUpload={(picture) => void uploadLogo(picture)}
+        onRemove={() => void removeLogo()}
+      />
     </div>
   );
 }

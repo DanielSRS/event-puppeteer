@@ -12,9 +12,9 @@ import { HasHorizontalScroll, type ViewportName } from "../support.ts";
 
 /** Sections each role sees, in navigation order. */
 export const SECTIONS = {
-  global: ["Organizações", "Dispositivos Órfãos", "Tags Globais", "Links Globais"],
-  admin: ["Meus Eventos", "Denúncias", "Usuários Banidos", "Tags Sugeridas", "Auditoria", "Usuários", "Dispositivos", "Configurações"],
-  moderator: ["Meus Eventos", "Denúncias", "Usuários Banidos", "Tags Sugeridas"],
+  global: ["Organizações", "Dispositivos Órfãos", "Tags Globais", "Links Globais", "Imagens Escalonadas", "Política de Triagem"],
+  admin: ["Meus Eventos", "Denúncias", "Imagens em Revisão", "Usuários Banidos", "Tags Sugeridas", "Auditoria", "Usuários", "Dispositivos", "Configurações"],
+  moderator: ["Meus Eventos", "Denúncias", "Imagens em Revisão", "Usuários Banidos", "Tags Sugeridas"],
   member: ["Meus Eventos"],
 } as const;
 

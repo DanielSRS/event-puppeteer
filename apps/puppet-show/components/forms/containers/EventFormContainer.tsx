@@ -1,7 +1,11 @@
 /**
  * Connects the {@link EventForm} to the API: loads the tag and link-label
- * catalogs, creates free-form tags, reads the device position and publishes
- * the event in the given organization.
+ * catalogs, creates free-form tags, reads the device position, publishes the
+ * event in the given organization and then uploads its banner.
+ *
+ * The banner can only be uploaded once the event exists. When that upload
+ * fails the event is already published: the person is told so (and that the
+ * banner can be sent again from the event's page) before moving on.
  *
  * Used by the dashboard (inside the organization being managed) and by
  * `/eventos/novo` (the person's own organization).
@@ -76,6 +80,8 @@ export function EventFormContainer({ orgId, onCreated, onCancel }: EventFormCont
   const [catalog, setCatalog] = useState<Catalog>({ status: "loading" });
   const [busy, setBusy] = useState(false);
   const [generalError, setGeneralError] = useState("");
+  /** The event published without its banner, and why the banner upload failed. */
+  const [bannerFailure, setBannerFailure] = useState<{ event: Event; message: string } | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -115,16 +121,36 @@ export function EventFormContainer({ orgId, onCreated, onCancel }: EventFormCont
     return Ok(existing);
   }
 
-  async function submit(input: CreateEventInput) {
+  async function submit(input: CreateEventInput, banner: Blob | null) {
     setBusy(true);
     setGeneralError("");
     const created = await api.events.create(orgId, input);
-    setBusy(false);
     if (!created.ok) {
+      setBusy(false);
       setGeneralError(`Não foi possível publicar o evento. ${ApiErrorMessage(created.error)}`);
       return;
     }
+    if (banner !== null) {
+      const uploaded = await api.images.uploadBanner(orgId, created.value.id, banner);
+      if (!uploaded.ok) {
+        setBusy(false);
+        setBannerFailure({ event: created.value, message: ApiErrorMessage(uploaded.error) });
+        return;
+      }
+    }
+    setBusy(false);
     onCreated(created.value);
+  }
+
+  if (bannerFailure !== null) {
+    return (
+      <div className="column gap-3">
+        <ErrorAlert>
+          O evento foi publicado, mas o banner não pôde ser enviado. {bannerFailure.message} Você pode enviar o banner de novo na página do evento.
+        </ErrorAlert>
+        <button type="button" onClick={() => onCreated(bannerFailure.event)} className="button self-start min-h-10">Continuar</button>
+      </div>
+    );
   }
 
   if (catalog.status === "loading") return <LoadingMessage>Carregando tags e tipos de link...</LoadingMessage>;

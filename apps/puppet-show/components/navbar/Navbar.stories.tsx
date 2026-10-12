@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 import { expect, fn, userEvent } from "storybook/test";
 import type { User } from "@/lib/api/schemas";
 import { Navbar } from "./Navbar";
+import { LOGO_THUMBHASH, LOGO_URL } from "@/components/ui/storyImages";
 
 const MEMBER: User = {
   id: "1",
@@ -49,6 +50,15 @@ export const Anonymous: Story = {
     const links = Visible(canvas.getAllByRole("link")).map((link) => link.textContent);
     await expect(links).toEqual(["Universidade EstadualMural de Eventos", "Mural", "Modo TV", "Entrar", "Criar conta"]);
     await expect(Visible(canvas.getAllByRole("link", { name: "Mural" }))[0]).toHaveAttribute("aria-current", "page");
+  },
+};
+
+/** The organization's logo sits next to its name, drawn over its Placeholder. */
+export const WithLogo: Story = {
+  args: { brand: { name: "Universidade Estadual", logo: { url: LOGO_URL, thumbhash: LOGO_THUMBHASH } } },
+  play: async ({ canvas }) => {
+    const home = canvas.getByRole("link", { name: /Universidade Estadual/ });
+    await expect(home.querySelector("img")).toHaveAttribute("src", LOGO_URL);
   },
 };
 

@@ -39,7 +39,7 @@ export function TvDisplayContainer({ qr }: TvDisplayContainerProps) {
 
     api.organizations.get(orgId).then((org) => {
       if (!active) return;
-      if (org.ok) setBranding({ name: org.value.name, logo: org.value.logo === undefined || org.value.logo === "" ? null : org.value.logo });
+      if (org.ok) setBranding({ name: org.value.name, logo: org.value.logo === undefined ? null : org.value.logo });
       else setBrandingError(`Não foi possível carregar a organização. ${ApiErrorMessage(org.error)}`);
     });
 

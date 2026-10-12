@@ -4,10 +4,10 @@
  * The rules mirror the API exactly, so the dashboard never offers a page whose
  * requests would be refused:
  * - Meus Eventos: any organization role, and a Superadmin inside an organization.
- * - Denúncias, Usuários Banidos, Tags Sugeridas: Moderator and above.
+ * - Denúncias, Imagens em Revisão, Usuários Banidos, Tags Sugeridas: Moderator and above.
  * - Auditoria, Usuários, Dispositivos, Configurações: Admin and above (issue #7).
- * - Organizações, Dispositivos Órfãos, Tags Globais, Links Globais: Superadmin
- *   in the global context only.
+ * - Organizações, Dispositivos Órfãos, Tags Globais, Links Globais, Imagens
+ *   Escalonadas, Política de Triagem: Superadmin in the global context only.
  *
  * A Superadmin can do everything an Admin can in any organization (spec story
  * 30), so organization sections open for them whenever an organization is
@@ -22,6 +22,7 @@ import type { UserRole } from "@/lib/api/schemas";
 export type DashboardSection =
   | "events"
   | "reports"
+  | "images"
   | "bans"
   | "tags"
   | "audit"
@@ -31,7 +32,9 @@ export type DashboardSection =
   | "global-orgs"
   | "global-devices"
   | "global-tags"
-  | "global-links";
+  | "global-links"
+  | "global-images"
+  | "global-screening";
 
 /** Where a section lives and what it is called in the navigation. */
 export type DashboardSectionInfo = {
@@ -55,6 +58,7 @@ type SectionDefinition = DashboardSectionInfo & { requires: SectionRequirement }
 const SECTIONS: Record<DashboardSection, SectionDefinition> = {
   "events": { id: "events", label: "Meus Eventos", href: "/dashboard/events", requires: "Member" },
   "reports": { id: "reports", label: "Denúncias", href: "/dashboard/reports", requires: "Moderator" },
+  "images": { id: "images", label: "Imagens em Revisão", href: "/dashboard/images", requires: "Moderator" },
   "bans": { id: "bans", label: "Usuários Banidos", href: "/dashboard/bans", requires: "Moderator" },
   "tags": { id: "tags", label: "Tags Sugeridas", href: "/dashboard/tags", requires: "Moderator" },
   "audit": { id: "audit", label: "Auditoria", href: "/dashboard/audit", requires: "Admin" },
@@ -65,6 +69,8 @@ const SECTIONS: Record<DashboardSection, SectionDefinition> = {
   "global-devices": { id: "global-devices", label: "Dispositivos Órfãos", href: "/dashboard/global/devices", requires: "global" },
   "global-tags": { id: "global-tags", label: "Tags Globais", href: "/dashboard/global/tags", requires: "global" },
   "global-links": { id: "global-links", label: "Links Globais", href: "/dashboard/global/links", requires: "global" },
+  "global-images": { id: "global-images", label: "Imagens Escalonadas", href: "/dashboard/global/images", requires: "global" },
+  "global-screening": { id: "global-screening", label: "Política de Triagem", href: "/dashboard/global/screening", requires: "global" },
 };
 
 /** Every section in navigation order. */

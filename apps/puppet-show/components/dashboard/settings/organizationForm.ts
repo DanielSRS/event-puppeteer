@@ -19,7 +19,6 @@ export type OrganizationFormValues = {
   name: string;
   slug: string;
   description: string;
-  logo: string;
   url: string;
   colorScheme: string;
   location: string;
@@ -34,12 +33,12 @@ export type OrganizationFormField = keyof OrganizationFormValues;
 export type OrganizationFormErrors = Partial<Record<OrganizationFormField, string>>;
 
 /** Fields the API may leave out (everything but name, slug and threshold). */
-const OPTIONAL_FIELDS = ["description", "logo", "url", "colorScheme", "location", "latitude", "longitude"] as const;
+const OPTIONAL_FIELDS = ["description", "url", "colorScheme", "location", "latitude", "longitude"] as const;
 
 /** An empty form for a new organization. The threshold starts at the API's own default (5). */
 export function EmptyOrganizationForm(): OrganizationFormValues {
   return {
-    name: "", slug: "", description: "", logo: "", url: "", colorScheme: "",
+    name: "", slug: "", description: "", url: "", colorScheme: "",
     location: "", latitude: "", longitude: "", shadowBanThreshold: "5",
   };
 }
@@ -50,7 +49,6 @@ export function OrganizationToForm(org: Organization): OrganizationFormValues {
     name: org.name,
     slug: org.slug,
     description: org.description === undefined ? "" : org.description,
-    logo: org.logo === undefined ? "" : org.logo,
     url: org.url === undefined ? "" : org.url,
     colorScheme: org.colorScheme === undefined ? "" : org.colorScheme,
     location: org.location === undefined ? "" : org.location,
@@ -111,7 +109,6 @@ export function ValidateOrganizationForm(values: OrganizationFormValues, options
   const errors: OrganizationFormErrors = {};
   const name = values.name.trim();
   const slug = values.slug.trim();
-  const logo = values.logo.trim();
   const url = values.url.trim();
   const colorScheme = values.colorScheme.trim();
   const latitudeText = values.latitude.trim();
@@ -123,7 +120,6 @@ export function ValidateOrganizationForm(values: OrganizationFormValues, options
   else if (!SLUG_PATTERN.test(slug)) errors.slug = "Use apenas letras minúsculas sem acento, números e hífens entre eles (ex.: universidade-estadual).";
   else if (options.takenSlugs.includes(slug)) errors.slug = "Já existe uma organização com esse identificador.";
 
-  if (logo !== "" && !IsHttpUrl(logo)) errors.logo = "Informe um endereço completo começando com http:// ou https://.";
   if (url !== "" && !IsHttpUrl(url)) errors.url = "Informe um endereço completo começando com http:// ou https://.";
   if (colorScheme !== "" && !COLOR_PATTERN.test(colorScheme)) errors.colorScheme = "Use o formato #rrggbb (ex.: #2563eb).";
 
@@ -143,7 +139,6 @@ export function ValidateOrganizationForm(values: OrganizationFormValues, options
   const description = values.description.trim();
   const location = values.location.trim();
   if (description !== "") body.description = description;
-  if (logo !== "") body.logo = logo;
   if (url !== "") body.url = url;
   if (colorScheme !== "") body.colorScheme = colorScheme;
   if (location !== "") body.location = location;
@@ -171,7 +166,6 @@ export function OrganizationChanges(original: Organization, body: OrganizationIn
   if (body.slug !== original.slug) changes.slug = body.slug;
   if (body.shadowBanThreshold !== original.shadowBanThreshold) changes.shadowBanThreshold = body.shadowBanThreshold;
   if (body.description !== original.description) changes.description = body.description;
-  if (body.logo !== original.logo) changes.logo = body.logo;
   if (body.url !== original.url) changes.url = body.url;
   if (body.colorScheme !== original.colorScheme) changes.colorScheme = body.colorScheme;
   if (body.location !== original.location) changes.location = body.location;

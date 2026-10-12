@@ -1,8 +1,9 @@
 /**
  * Form with every organization field the API accepts: name, identifier
- * (slug), description, logo, site, colour, location, coordinates and the
- * report threshold. Used to create and edit organizations (Superadmin) and by
- * an Admin to edit their own organization (without the slug).
+ * (slug), description, site, colour, location, coordinates and the report
+ * threshold. Used to create and edit organizations (Superadmin) and by an
+ * Admin to edit their own organization (without the slug). The logo is an
+ * uploaded Image, managed apart (see `LogoPanel`).
  *
  * Problems are shown next to each field after the first submit attempt and
  * update as the person types.
@@ -139,9 +140,6 @@ export function OrganizationForm(props: OrganizationFormProps) {
 
       <fieldset className="column gap-4">
         <legend className="mb-2 font-medium">Aparência e site</legend>
-        <Field id="org-logo" label="Endereço do logo (opcional)" hint="Endereço completo de uma imagem, começando com https://." error={errors.logo}>
-          <input {...wire("logo", true)} type="url" inputMode="url" placeholder="https://..." />
-        </Field>
         <Field id="org-url" label="Site (opcional)" hint="Endereço completo, começando com https://." error={errors.url}>
           <input {...wire("url", true)} type="url" inputMode="url" placeholder="https://..." />
         </Field>

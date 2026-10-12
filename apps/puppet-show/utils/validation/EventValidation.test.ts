@@ -6,7 +6,7 @@
 
 import { describe, expect, test } from "vitest";
 import {
-  ErrorsOfStep, HasEventErrors, IsHttpUrl, StepOfField, ToCreateEventInput, ValidateBanner, ValidateBasics,
+  ErrorsOfStep, HasEventErrors, IsHttpUrl, StepOfField, ToCreateEventInput, ValidateBasics,
   ValidateCoordinates, ValidateEvent, ValidateLinks, ValidateNewTag, ValidateSchedule,
   type DayEntryForm, type EventFormData,
 } from "./EventValidation";
@@ -29,7 +29,7 @@ function ValidForm(): EventFormData {
     days: [Day("2026-10-10", "09:00", "17:00")],
     tags: [],
     links: [],
-    bannerImage: "",
+    banner: null,
   };
 }
 
@@ -130,14 +130,6 @@ describe("ValidateLinks", () => {
   });
 });
 
-describe("ValidateBanner", () => {
-  test("optional, but must be http(s) when set", () => {
-    expect(ValidateBanner("")).toEqual({});
-    expect(ValidateBanner("https://example.org/banner.png")).toEqual({});
-    expect(ValidateBanner("javascript:alert(1)").bannerImage).toBeDefined();
-  });
-});
-
 describe("ValidateNewTag", () => {
   test("needs a name of up to 40 characters", () => {
     expect(ValidateNewTag("  ").newTag).toBeDefined();
@@ -161,10 +153,10 @@ describe("ValidateEvent and steps", () => {
   });
 
   test("collects errors of every step and splits them by step", () => {
-    const errors = ValidateEvent({ ...ValidForm(), title: "", days: [], bannerImage: "x" }, TODAY);
+    const errors = ValidateEvent({ ...ValidForm(), title: "", days: [], links: [{ key: "k", labelId: "", url: "x" }] }, TODAY);
     expect(Object.keys(ErrorsOfStep(errors, 0))).toEqual(["title"]);
     expect(Object.keys(ErrorsOfStep(errors, 1))).toEqual(["days"]);
-    expect(Object.keys(ErrorsOfStep(errors, 2))).toEqual(["bannerImage"]);
+    expect(Object.keys(ErrorsOfStep(errors, 2))).toEqual(["links.0.labelId", "links.0.url"]);
   });
 
   test("StepOfField maps every field path", () => {
@@ -201,7 +193,7 @@ describe("ToCreateEventInput", () => {
         { id: "t2", name: "robotica", isSystemDefined: false },
       ],
       links: [{ key: "k", labelId: "l1", url: " https://example.org/inscricao " }],
-      bannerImage: " https://example.org/banner.png ",
+      banner: new Blob(["picture"], { type: "image/jpeg" }),
     });
 
     expect(input).toEqual({
@@ -210,7 +202,6 @@ describe("ToCreateEventInput", () => {
       location: "Pavilhão",
       latitude: -12.2,
       longitude: -38.96,
-      bannerImage: "https://example.org/banner.png",
       isHidden: false,
       schedule: [
         { date: "2026-10-10", startTime: "09:00", endTime: "12:00" },

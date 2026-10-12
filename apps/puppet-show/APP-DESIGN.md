@@ -30,10 +30,12 @@ This document defines the screen topology and UI architecture for `puppet-show`,
 - **My Events (`/dashboard/events`)**: Table/list of events created by the logged-in user. Allows soft-deletion and viewing status.
 - **Event Creation Wizard (Drawer)**: A multi-step side drawer to create/edit events.
   - **Steps**: Basic Info, Multi-day Schedule, Media (Banner), Links & Tags.
+  - **Banner**: picked from the device and cropped to 16:9 in the browser, uploaded once the event exists. The creator changes or removes it on the event page. Until the banner is Approved, everyone else sees its blurred Placeholder (thumbhash).
   - **Validation**: Strict Zod validation on each step; users cannot proceed without resolving inline errors.
 
 ### 3.2. Moderator Section
 - **Report Queue (`/dashboard/reports`)**: Review events flagged by users. Actions: Hide or Unhide.
+- **Image Review (`/dashboard/images`)**: Banners and logos Screening had doubts about (or could not analyse). Pictures stay blurred until revealed; the suspected categories show first. Actions: Approve, or Reject (shadow-bans the uploader). Nobody sees their own Images here.
 - **Shadow Bans (`/dashboard/bans`)**: List of shadow-banned users (triggered automatically by report threshold). Action: Lift ban.
 - **Tags Management (`/dashboard/tags`)**: Review free-form tags submitted by users and promote them to the predefined public set.
 - **Audit Trail (`/dashboard/audit`)**: Immutable log of all moderation actions (actor, timestamp, action type).
@@ -53,7 +55,9 @@ This document defines the screen topology and UI architecture for `puppet-show`,
 *Accessed via the "Context Switcher" dropdown at the top of the Unified Dashboard. Allows system-wide management and impersonation of any organization's Admin dashboard.*
 
 - **Context Switcher**: Dropdown to toggle between "Global System" and specific organizations.
-- **Organizations (`/dashboard/global/orgs`)**: Create and configure tenants (name, acronym, logo, primary color, domain/URL).
+- **Organizations (`/dashboard/global/orgs`)**: Create and configure tenants (name, acronym, primary color, domain/URL). The logo is uploaded (cropped square) in the organization's settings.
+- **Escalated Images (`/dashboard/global/images`)**: Image Review for Images only Superadmins can decide (sent by Superadmins, or from organizations without another reviewer).
+- **Screening Policy (`/dashboard/global/screening`)**: Per-category cut-offs, in percent, that decide whether Screening approves an Image, sends it to Image Review or rejects it.
 - **Orphan Devices (`/dashboard/global/devices`)**: Queue of new kiosks that connected without an Organization ID. Action: Assign to a specific organization.
 - **Global Tags (`/dashboard/global/tags`)**: Manage the master set of system-wide predefined tags.
 - **Global Links (`/dashboard/global/links`)**: Manage the predefined labels for external event links (e.g., "Registration", "Social Media").

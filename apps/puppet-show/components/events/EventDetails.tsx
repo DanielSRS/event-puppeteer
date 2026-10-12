@@ -1,7 +1,7 @@
 /**
  * Everything about one event: schedule, place and map, tags, links and the
- * actions people can take (like, share, report; hide for moderators; delete
- * for the creator).
+ * actions people can take (like, share, report; hide for moderators; delete,
+ * and change or remove the banner, for the creator).
  *
  * @module
  */
@@ -14,6 +14,9 @@ import {
   MdOndemandVideo, MdPeople, MdShare, MdVisibility, MdVisibilityOff,
 } from "react-icons/md";
 import { ErrorAlert, StatusMessage } from "@/components/ui/Feedback";
+import { ImageCropper } from "@/components/ui/ImageCropper";
+import { ImageWithPlaceholder } from "@/components/ui/ImageWithPlaceholder";
+import { BANNER_RULES } from "@/utils/crop";
 import type { ShownVote } from "@/domain/likes";
 import { IsSafeHttpUrl, LinkKindFor, OsmEmbedUrl, OsmPageUrl, type LinkKind } from "@/domain/links";
 import { FullDate, TimeRange } from "@/domain/schedule";
@@ -58,6 +61,12 @@ export type EventDetailsProps = {
   onHide: () => void;
   onUnhide: () => void;
   onDelete: () => void;
+  /** While the creator's banner change is being sent. */
+  bannerBusy: boolean;
+  /** The creator picked and cropped a new banner. */
+  onReplaceBanner: (picture: Blob) => void;
+  /** The creator removed the banner. */
+  onRemoveBanner: () => void;
 };
 
 /** A titled block of the page. */
@@ -99,17 +108,12 @@ function LinkButton({ link }: { link: DetailLink }) {
 /** The details page body. */
 export function EventDetails({
   event, likes, likeBusy = false, canModerate, isCreator, reported, loginPrompt, loginRedirect, notice, error,
-  onToggleLike, onShare, onReport, onHide, onUnhide, onDelete,
+  onToggleLike, onShare, onReport, onHide, onUnhide, onDelete, bannerBusy, onReplaceBanner, onRemoveBanner,
 }: EventDetailsProps) {
   return (
     <article aria-labelledby="event-title" className="w-full max-w-4xl mx-auto bg-surface rounded-xl border border-muted overflow-hidden">
-      {event.bannerImage !== null && (
-        <div
-          role="img"
-          aria-label={`Banner do evento ${event.title}`}
-          className="h-48 sm:h-64 w-full bg-cover bg-center bg-muted"
-          style={{ backgroundImage: `url(${JSON.stringify(event.bannerImage)})` }}
-        />
+      {event.banner !== null && (
+        <ImageWithPlaceholder image={event.banner} alt={`Banner do evento ${event.title}`} className="aspect-video w-full" />
       )}
 
       <div className="column gap-6 p-4 sm:p-8">
@@ -170,6 +174,21 @@ export function EventDetails({
         )}
         <StatusMessage>{notice}</StatusMessage>
         <ErrorAlert>{error}</ErrorAlert>
+
+        {isCreator && (
+          <details className="rounded-lg border border-muted p-3">
+            <summary className="cursor-pointer font-medium">{event.banner === null ? "Adicionar banner" : "Trocar ou remover o banner"}</summary>
+            <div className="column gap-3 pt-3">
+              <ImageCropper rules={BANNER_RULES} purpose="banner do evento" disabled={bannerBusy} onCropped={onReplaceBanner} />
+              {event.banner !== null && (
+                <button type="button" disabled={bannerBusy} onClick={onRemoveBanner} className="button clean self-start min-h-10 text-danger hover:border-danger">
+                  <MdDeleteOutline aria-hidden className="icon" />
+                  Remover banner
+                </button>
+              )}
+            </div>
+          </details>
+        )}
 
         <p className="whitespace-pre-line break-words">{event.description}</p>
 

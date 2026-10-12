@@ -19,13 +19,13 @@ describe("AccessibleSections", () => {
     expect(Labels("Member", ORG)).toEqual(["Meus Eventos"]);
   });
 
-  test("a moderator adds reports, bans and suggested tags, but not the audit trail", () => {
-    expect(Labels("Moderator", ORG)).toEqual(["Meus Eventos", "Denúncias", "Usuários Banidos", "Tags Sugeridas"]);
+  test("a moderator adds reports, bans, suggested tags and Image Review, but not the audit trail", () => {
+    expect(Labels("Moderator", ORG)).toEqual(["Meus Eventos", "Denúncias", "Imagens em Revisão", "Usuários Banidos", "Tags Sugeridas"]);
   });
 
   test("an admin sees every organization section", () => {
     expect(Labels("Admin", ORG)).toEqual([
-      "Meus Eventos", "Denúncias", "Usuários Banidos", "Tags Sugeridas",
+      "Meus Eventos", "Denúncias", "Imagens em Revisão", "Usuários Banidos", "Tags Sugeridas",
       "Auditoria", "Usuários", "Dispositivos", "Configurações",
     ]);
   });
@@ -35,7 +35,9 @@ describe("AccessibleSections", () => {
   });
 
   test("a Superadmin in the global context sees only the global sections", () => {
-    expect(Labels("Superadmin", null)).toEqual(["Organizações", "Dispositivos Órfãos", "Tags Globais", "Links Globais"]);
+    expect(Labels("Superadmin", null)).toEqual([
+      "Organizações", "Dispositivos Órfãos", "Tags Globais", "Links Globais", "Imagens Escalonadas", "Política de Triagem",
+    ]);
   });
 });
 
@@ -50,6 +52,10 @@ describe("CanAccess / SectionDenialFor", () => {
     ["global-orgs", "Superadmin", null, null],
     ["events", "Superadmin", null, "needs-org"],
     ["settings", "Superadmin", ORG, null],
+    ["images", "Member", ORG, "role"],
+    ["images", "Moderator", ORG, null],
+    ["global-images", "Superadmin", null, null],
+    ["global-screening", "Admin", ORG, "role"],
   ];
 
   test.each(cases)("%s for %s in %s → %s", (section, role, orgId, denial) => {

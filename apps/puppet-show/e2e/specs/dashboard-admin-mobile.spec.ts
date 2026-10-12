@@ -19,6 +19,7 @@ const PAGES: Array<{ role: Role; pages: Array<[path: string, heading: string]> }
     role: "admin",
     pages: [
       ["/dashboard/reports", "Denúncias"],
+      ["/dashboard/images", "Imagens em Revisão"],
       ["/dashboard/bans", "Usuários Banidos"],
       ["/dashboard/tags", "Tags Sugeridas"],
       ["/dashboard/audit", "Auditoria"],
@@ -34,6 +35,8 @@ const PAGES: Array<{ role: Role; pages: Array<[path: string, heading: string]> }
       ["/dashboard/global/devices", "Dispositivos Órfãos"],
       ["/dashboard/global/tags", "Tags Globais"],
       ["/dashboard/global/links", "Rótulos de Links"],
+      ["/dashboard/global/images", "Imagens Escalonadas"],
+      ["/dashboard/global/screening", "Política de Triagem"],
     ],
   },
 ];

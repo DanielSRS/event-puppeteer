@@ -10,6 +10,11 @@
  * - devices: one orphan (Superadmin queue), one pending in orgA, one active in
  *   orgA with heartbeat, telemetry and a log.
  *
+ * No Screening Policy is set, so every uploaded Image waits in Image Review
+ * (the in-memory screener answers clean scores once a policy exists). Stored
+ * Images are served by this bridge at `/__e2e/images/<id>.webp`, so pages load
+ * real pictures.
+ *
  * Accounts register through the real flow (sign-up, open the emailed link, log
  * in). The seeded ids are written to `.state.json` and served at
  * `/__e2e/state`; the email outbox at `/__e2e/emails`. After seeding, it starts
@@ -28,13 +33,26 @@ import { writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { createInMemoryIO } from "../../puppeteer/src/io/in-memory.ts";
+import { InMemoryImageStore } from "../../puppeteer/src/io/image-store/in-memory.ts";
 import { createServer } from "../../puppeteer/src/server.ts";
 import { seedSuperadminHandler } from "../../puppeteer/src/handlers/seed.ts";
 import { E2E, type E2EState } from "./config.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
+/** The in-memory image store, with URLs this bridge serves. */
+class BridgedImageStore extends InMemoryImageStore {
+  override publicUrl(id: string): string {
+    return `http://localhost:${E2E.apiPort}/__e2e/images/${id}.webp`;
+  }
+
+  override signedUrl(id: string): string {
+    return `http://localhost:${E2E.apiPort}/__e2e/images/${id}.webp?signed`;
+  }
+}
+
 const io = await createInMemoryIO();
+io.imageStore = new BridgedImageStore();
 const app = createServer(io, { appUrl: `http://localhost:${E2E.webPort}` });
 
 type Json = Record<string, unknown> | unknown[];
@@ -162,6 +180,13 @@ async function ReadBody(req: IncomingMessage) {
  */
 const bridge = createHttpServer(async (req, res) => {
   const url = `http://localhost:${E2E.apiPort}${req.url}`;
+  const image = /^\/__e2e\/images\/([^/.]+)\.webp$/.exec(new URL(url).pathname);
+  if (image !== null) {
+    const bytes = io.imageStore.assets.get(image[1]);
+    res.writeHead(bytes === undefined ? 404 : 200, { "content-type": "image/webp" });
+    res.end(bytes === undefined ? undefined : Buffer.from(bytes));
+    return;
+  }
   const extra = TestRoute(new URL(url).pathname);
   if (extra) {
     res.writeHead(200, { "content-type": "application/json" });

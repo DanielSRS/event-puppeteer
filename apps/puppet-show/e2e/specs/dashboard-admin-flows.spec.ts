@@ -256,7 +256,6 @@ describe("Painel admin: fluxos de moderação, administração e superadmin (des
     await form.getByLabel("Nome").fill(name);
     await form.getByLabel("Identificador (slug)").fill("uefs");
     await form.getByLabel("Descrição (opcional)").fill("Criada pelo teste.");
-    await form.getByLabel("Endereço do logo (opcional)").fill("https://example.org/logo.png");
     await form.getByLabel("Site (opcional)").fill("https://example.org");
     await form.getByLabel("Cor principal (opcional)").fill("#16a34a");
     await form.getByLabel("Local (opcional)").fill("Salvador, BA");
@@ -278,8 +277,8 @@ describe("Painel admin: fluxos de moderação, administração e superadmin (des
     const orgs = await Api("superadmin", "GET", "/organizations") as Array<Record<string, unknown>>;
     const created = orgs.find((o) => o.name === name);
     assert.deepEqual(
-      created && [created.slug, created.description, created.logo, created.url, created.colorScheme, created.location, created.latitude, created.longitude, created.shadowBanThreshold],
-      [`faculdade-${suffix}`, "Criada pelo teste.", "https://example.org/logo.png", "https://example.org", "#16a34a", "Feira de Santana, BA", -12.97, -38.5, 4],
+      created && [created.slug, created.description, created.url, created.colorScheme, created.location, created.latitude, created.longitude, created.shadowBanThreshold],
+      [`faculdade-${suffix}`, "Criada pelo teste.", "https://example.org", "#16a34a", "Feira de Santana, BA", -12.97, -38.5, 4],
     );
 
     main = await OpenAdminPage(page, "/dashboard/global/devices", "Dispositivos Órfãos");

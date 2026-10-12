@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 import { expect, fn, userEvent } from "storybook/test";
 import type { EventDetail } from "@/lib/api/mappers";
 import { EventDetails } from "./EventDetails";
+import { APPROVED_BANNER, PENDING_BANNER } from "@/components/ui/storyImages";
 
 const EVENT: EventDetail = {
   id: "evt-1",
@@ -11,7 +12,7 @@ const EVENT: EventDetail = {
   description: "Palestras, minicursos e hackathon.\nAberto a toda a comunidade.",
   location: "Auditório Central, Módulo 2",
   coordinates: null,
-  bannerImage: null,
+  banner: null,
   isHidden: false,
   schedule: [
     { date: "2026-10-15", startTime: "08:00", endTime: "12:00" },
@@ -48,6 +49,9 @@ const meta = {
     onHide: fn(),
     onUnhide: fn(),
     onDelete: fn(),
+    bannerBusy: false,
+    onReplaceBanner: fn(),
+    onRemoveBanner: fn(),
   },
 } satisfies Meta<typeof EventDetails>;
 
@@ -80,7 +84,7 @@ export const WithMapAndBanner: Story = {
     event: {
       ...EVENT,
       coordinates: { latitude: -12.2, longitude: -38.97 },
-      bannerImage: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='4'><rect width='10' height='4' fill='%23f59e0b'/></svg>",
+      banner: APPROVED_BANNER,
     },
   },
   play: async ({ canvasElement, canvas }) => {
@@ -92,6 +96,16 @@ export const WithMapAndBanner: Story = {
   },
 };
 
+/** A banner not yet Approved: only its blurred Placeholder shows. */
+export const PendingBanner: Story = {
+  args: { event: { ...EVENT, banner: PENDING_BANNER } },
+  play: async ({ canvas }) => {
+    const banner = canvas.getByRole("img", { name: "Banner do evento Semana de Tecnologia" });
+    await expect(banner.tagName).toBe("DIV");
+    await expect(banner.style.backgroundImage).toContain("data:image/png");
+  },
+};
+
 /** The creator: "Excluir", no report. */
 export const Creator: Story = {
   args: { isCreator: true },
@@ -99,6 +113,17 @@ export const Creator: Story = {
     await expect(canvas.queryByRole("button", { name: "Denunciar" })).toBeNull();
     await userEvent.click(canvas.getByRole("button", { name: "Excluir" }));
     await expect(args.onDelete).toHaveBeenCalled();
+  },
+};
+
+/** The creator of an event with a banner can remove it, or pick another one to crop. */
+export const CreatorWithBanner: Story = {
+  args: { isCreator: true, event: { ...EVENT, banner: APPROVED_BANNER } },
+  play: async ({ canvas, args }) => {
+    await userEvent.click(canvas.getByText("Trocar ou remover o banner"));
+    await expect(canvas.getByLabelText("Escolher imagem para o banner do evento")).toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Remover banner" }));
+    await expect(args.onRemoveBanner).toHaveBeenCalled();
   },
 };
 

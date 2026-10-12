@@ -6,7 +6,7 @@
  * and the API (an end time needs a start time; dates can't be in the past).
  *
  * Errors are keyed by field path so each message can sit next to its control:
- * `title`, `description`, `location`, `latitude`, `longitude`, `bannerImage`,
+ * `title`, `description`, `location`, `latitude`, `longitude`,
  * `days` (the schedule as a whole), `days.<i>.date|startTime|endTime`,
  * `links.<i>.labelId|url`, and `newTag` (the free-form tag field).
  *
@@ -49,8 +49,11 @@ export type EventFormData = {
   /** Tags picked for the event (system-defined or free-form). */
   tags: Tag[];
   links: EventLinkForm[];
-  /** Address of the banner image; empty for none. */
-  bannerImage: string;
+  /**
+   * The banner, already cropped to 16:9; `null` for none. Uploaded once the event
+   * exists, so it is not part of the request body.
+   */
+  banner: Blob | null;
 };
 
 /** Error messages by field path (see the module docs). A missing key means the field is fine. */
@@ -62,7 +65,7 @@ export const EVENT_FORM_STEPS = ["Informações", "Data e horário", "Mídia e l
 /** Index of the editor step that shows the field at `path`. */
 export function StepOfField(path: string): number {
   if (path === "days" || path.startsWith("days.")) return 1;
-  if (path === "bannerImage" || path === "newTag" || path.startsWith("links.")) return 2;
+  if (path === "newTag" || path.startsWith("links.")) return 2;
   return 0;
 }
 
@@ -184,13 +187,6 @@ export function ValidateLinks(links: EventLinkForm[]): EventFormErrors {
   return errors;
 }
 
-/** Checks the optional banner address. */
-export function ValidateBanner(bannerImage: string): EventFormErrors {
-  const url = bannerImage.trim();
-  if (url === "" || IsHttpUrl(url)) return {};
-  return { bannerImage: "O endereço da imagem deve começar com http:// ou https://." };
-}
-
 /** Checks a free-form tag name before it is created. */
 export function ValidateNewTag(name: string): EventFormErrors {
   const trimmed = name.trim();
@@ -210,7 +206,6 @@ export function ValidateEvent(data: EventFormData, today: string): EventFormErro
     ...ValidateCoordinates(data),
     ...ValidateSchedule(data.days, today),
     ...ValidateLinks(data.links),
-    ...ValidateBanner(data.bannerImage),
   };
 }
 
@@ -232,14 +227,12 @@ export function HasEventErrors(errors: EventFormErrors): boolean {
 export function ToCreateEventInput(data: EventFormData): CreateEventInput {
   const latitude = data.latitude.trim();
   const longitude = data.longitude.trim();
-  const bannerImage = data.bannerImage.trim();
 
   return {
     title: data.title.trim(),
     description: data.description.trim(),
     location: data.location.trim(),
     ...(latitude !== "" && longitude !== "" ? { latitude: Number(latitude), longitude: Number(longitude) } : {}),
-    ...(bannerImage !== "" ? { bannerImage } : {}),
     isHidden: false,
     schedule: [...data.days]
       .sort((a, b) => a.date.localeCompare(b.date))

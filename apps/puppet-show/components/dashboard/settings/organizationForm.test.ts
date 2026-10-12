@@ -50,22 +50,22 @@ describe("ValidateOrganizationForm", () => {
 
   test("every field filled", () => {
     const result = ValidateOrganizationForm(form({
-      description: " Campus ", logo: "https://x.org/l.png", url: "https://x.org", colorScheme: "#2563eb",
+      description: " Campus ", url: "https://x.org", colorScheme: "#2563eb",
       location: "Feira de Santana", latitude: "-12,2", longitude: "-38.97", shadowBanThreshold: "2",
     }), { takenSlugs: [] });
     expect(result).toEqual({ ok: true, value: {
-      name: "Universidade Estadual", slug: "uefs", shadowBanThreshold: 2, description: "Campus", logo: "https://x.org/l.png",
+      name: "Universidade Estadual", slug: "uefs", shadowBanThreshold: 2, description: "Campus",
       url: "https://x.org", colorScheme: "#2563eb", location: "Feira de Santana", latitude: -12.2, longitude: -38.97,
     } });
   });
 
   test("reports each problem on its field", () => {
     const result = ValidateOrganizationForm(form({
-      name: "U", slug: "Com Espaço", logo: "logo.png", url: "x", colorScheme: "azul", latitude: "100", shadowBanThreshold: "",
+      name: "U", slug: "Com Espaço", url: "x", colorScheme: "azul", latitude: "100", shadowBanThreshold: "",
     }), { takenSlugs: [] });
     expect(result.ok).toBe(false);
     if (result.ok) return;
-    expect(Object.keys(result.error).sort()).toEqual(["colorScheme", "latitude", "logo", "longitude", "name", "shadowBanThreshold", "slug", "url"]);
+    expect(Object.keys(result.error).sort()).toEqual(["colorScheme", "latitude", "longitude", "name", "shadowBanThreshold", "slug", "url"]);
     expect(result.error.longitude).toBe("Informe a longitude junto com a latitude.");
   });
 

@@ -45,12 +45,21 @@ export function UserOrgId(user: User): string | null {
   return user.role === "Superadmin" ? null : user.organizationId;
 }
 
+/**
+ * An Image (Event banner or Organization logo) as the viewer may see it. `thumbhash`
+ * always comes and draws the Placeholder; `url` is absent while the viewer may only see
+ * the Placeholder (an Image not yet Approved, uploaded by someone else).
+ */
+export const ImageViewSchema = z.object({ url: z.string().optional(), thumbhash: z.string() });
+export type ImageView = z.infer<typeof ImageViewSchema>;
+
 export const OrganizationSchema = z.object({
   id: z.string(),
   name: z.string(),
   slug: z.string(),
   description: z.string().optional(),
-  logo: z.string().optional(),
+  /** Absent when the organization never had a logo. */
+  logo: ImageViewSchema.optional(),
   url: z.string().optional(),
   colorScheme: z.string().optional(),
   location: z.string().optional(),
@@ -62,12 +71,11 @@ export const OrganizationSchema = z.object({
 });
 export type Organization = z.infer<typeof OrganizationSchema>;
 
-/** Body of `POST /organizations`; `PATCH` takes any subset of it. */
+/** Body of `POST /organizations`; `PATCH` takes any subset of it. The logo is uploaded apart. */
 export type OrganizationInput = {
   name: string;
   slug: string;
   description?: string;
-  logo?: string;
   url?: string;
   colorScheme?: string;
   location?: string;
@@ -101,7 +109,8 @@ export const EventSchema = z.object({
   location: z.string(),
   latitude: z.number().optional(),
   longitude: z.number().optional(),
-  bannerImage: z.string().optional(),
+  /** Absent when the event never had a banner. */
+  banner: ImageViewSchema.optional(),
   creatorId: z.string(),
   organizationId: z.string(),
   isHidden: z.boolean(),
@@ -121,14 +130,13 @@ export type EventWithVotes = z.infer<typeof EventWithVotesSchema>;
 export const FeedEventSchema = EventSchema.extend({ voteCount: z.number(), weight: z.number() });
 export type FeedEvent = z.infer<typeof FeedEventSchema>;
 
-/** Body of `POST /organizations/:id/events`. */
+/** Body of `POST /organizations/:id/events`. The banner is uploaded apart, once the event exists. */
 export type CreateEventInput = {
   title: string;
   description: string;
   location: string;
   latitude?: number;
   longitude?: number;
-  bannerImage?: string;
   isHidden: boolean;
   schedule: Array<{ date: string; startTime?: string; endTime?: string }>;
   tags: Array<{ tagId: string; isFreeForm: boolean }>;
@@ -300,5 +308,49 @@ export const VoteStatusSchema = z.object({ voted: z.boolean() });
 /** Answer of `GET .../report`: whether the logged-in user already reported the event. */
 export const ReportStatusSchema = z.object({ reported: z.boolean() });
 
-/** Body of every API error answer. */
-export const ApiErrorBodySchema = z.object({ error: z.string() });
+/** Body of every API error answer. Image errors also carry a `code` telling them apart. */
+export const ApiErrorBodySchema = z.object({ error: z.string(), code: z.string().optional() });
+
+/** The kinds of inappropriate content Screening looks for, in the API's order. */
+export const SCREENING_CATEGORIES = [
+  "nudity", "gore", "violence", "weapons", "hate", "offensive_gesture", "offensive_text",
+] as const;
+export type ScreeningCategory = typeof SCREENING_CATEGORIES[number];
+
+/** Scores from 0 to 1; a category no engine measured is absent. */
+export const ScreeningScoresSchema = z.partialRecord(z.enum(SCREENING_CATEGORIES), z.number());
+export type ScreeningScores = z.infer<typeof ScreeningScoresSchema>;
+
+/** Cut-offs of one category: below `lower` Approved, from `upper` on Rejected, in between In Review. */
+export const CategoryCutOffsSchema = z.object({ lower: z.number(), upper: z.number() });
+export type CategoryCutOffs = z.infer<typeof CategoryCutOffsSchema>;
+
+/** The Screening Policy: cut-offs for every category. */
+export const ScreeningPolicySchema = z.record(z.enum(SCREENING_CATEGORIES), CategoryCutOffsSchema);
+export type ScreeningPolicy = z.infer<typeof ScreeningPolicySchema>;
+
+/** Answer of `GET /screening-policy`: `null` until a Superadmin sets it. */
+export const ScreeningPolicyResponseSchema = z.object({ policy: ScreeningPolicySchema.nullable() });
+
+/** An Image awaiting Image Review, with what a reviewer needs to judge it. */
+export const ImageReviewItemSchema = z.object({
+  id: z.string(),
+  kind: z.enum(["event_banner", "organization_logo"]),
+  ownerId: z.string(),
+  /** The event's title or the organization's name. */
+  ownerName: z.string(),
+  organizationId: z.string(),
+  uploaderId: z.string(),
+  uploaderName: z.string(),
+  uploadedAt: z.string(),
+  /** Screening could not conclude: no score to go by. */
+  notScreened: z.boolean(),
+  scores: ScreeningScoresSchema,
+  /** Short-lived URL of the picture, for the reviewer to reveal. */
+  previewUrl: z.string(),
+  thumbhash: z.string(),
+});
+export type ImageReviewItem = z.infer<typeof ImageReviewItemSchema>;
+
+/** Answer of approving or rejecting an Image. */
+export const ImageDecisionSchema = z.object({ state: z.enum(["approved", "rejected"]) });

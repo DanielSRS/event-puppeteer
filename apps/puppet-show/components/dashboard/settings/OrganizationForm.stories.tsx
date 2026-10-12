@@ -71,14 +71,14 @@ export const ValidationErrors: Story = {
   args: { mode: "create", onCreate: fn() },
   play: async ({ canvas, args }) => {
     await userEvent.type(canvas.getByLabelText("Nome"), "Outra");
-    await userEvent.type(canvas.getByLabelText("Endereço do logo (opcional)"), "logo.png");
+    await userEvent.type(canvas.getByLabelText("Site (opcional)"), "site");
     await userEvent.type(canvas.getByLabelText("Latitude (opcional)"), "95");
     await userEvent.clear(canvas.getByLabelText("Limite de denúncias"));
     await userEvent.click(canvas.getByRole("button", { name: "Criar organização" }));
 
     await expect(CreateSpy(args)).not.toHaveBeenCalled();
     await expect(canvas.getByLabelText("Identificador (slug)")).toHaveAccessibleDescription(/Já existe uma organização com esse identificador/);
-    await expect(canvas.getByLabelText("Endereço do logo (opcional)")).toHaveAttribute("aria-invalid", "true");
+    await expect(canvas.getByLabelText("Site (opcional)")).toHaveAttribute("aria-invalid", "true");
     await expect(canvas.getByText("Latitude deve ser um número entre -90 e 90.")).toBeInTheDocument();
     await expect(canvas.getByText("Informe a longitude junto com a latitude.")).toBeInTheDocument();
     await expect(canvas.getByText("Informe um número inteiro de denúncias, a partir de 1.")).toBeInTheDocument();

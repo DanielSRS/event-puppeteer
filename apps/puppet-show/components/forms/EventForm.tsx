@@ -40,8 +40,11 @@ export type EventFormProps = {
   busy: boolean;
   /** Why the last attempt to publish failed. */
   generalError: string;
-  /** Receives the request body once every rule passes. */
-  onSubmit: (input: CreateEventInput) => void;
+  /**
+   * Receives the request body once every rule passes, with the cropped banner to upload
+   * once the event exists (`null` for none).
+   */
+  onSubmit: (input: CreateEventInput, banner: Blob | null) => void;
   /** Shows a "Cancelar" button on the first step when given. */
   onCancel?: () => void;
   /** Creates (or finds) a free-form tag by name. */
@@ -68,7 +71,6 @@ function FieldLabel(path: string): string {
     latitude: "Latitude",
     longitude: "Longitude",
     days: "Programação",
-    bannerImage: "Imagem de banner",
   };
   return names[path];
 }
@@ -91,7 +93,7 @@ export function EventForm({
     days: [{ key: "day-0", date: "", startTime: "", endTime: "" }],
     tags: [],
     links: [],
-    bannerImage: "",
+    banner: null,
   });
   const [step, setStep] = useState(0);
   const [checkedSteps, setCheckedSteps] = useState<ReadonlySet<number>>(new Set());
@@ -159,7 +161,7 @@ export function EventForm({
       return;
     }
     setShowSummary(false);
-    onSubmit(ToCreateEventInput(data));
+    onSubmit(ToCreateEventInput(data), data.banner);
   }
 
   function jumpToField(path: string) {

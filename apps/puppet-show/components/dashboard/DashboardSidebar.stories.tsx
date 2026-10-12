@@ -41,7 +41,7 @@ export const Member: Story = {
 export const Moderator: Story = {
   args: { role: "Moderator", pathname: "/dashboard/reports" },
   play: async ({ canvas }) => {
-    await expect(Sections(canvas)).toEqual(["Meus Eventos", "Denúncias", "Usuários Banidos", "Tags Sugeridas"]);
+    await expect(Sections(canvas)).toEqual(["Meus Eventos", "Denúncias", "Imagens em Revisão", "Usuários Banidos", "Tags Sugeridas"]);
     await expect(canvas.getByRole("link", { name: "Denúncias" })).toHaveAttribute("aria-current", "page");
   },
 };
@@ -50,7 +50,7 @@ export const Admin: Story = {
   args: { role: "Admin", pathname: "/dashboard/devices/abc" },
   play: async ({ canvas }) => {
     await expect(Sections(canvas)).toEqual([
-      "Meus Eventos", "Denúncias", "Usuários Banidos", "Tags Sugeridas", "Auditoria", "Usuários", "Dispositivos", "Configurações",
+      "Meus Eventos", "Denúncias", "Imagens em Revisão", "Usuários Banidos", "Tags Sugeridas", "Auditoria", "Usuários", "Dispositivos", "Configurações",
     ]);
     await expect(canvas.getByRole("link", { name: "Dispositivos" })).toHaveAttribute("aria-current", "page");
   },
@@ -59,7 +59,7 @@ export const Admin: Story = {
 export const SuperadminGlobal: Story = {
   args: { role: "Superadmin", orgId: null, contextName: "Sistema Global", organizations: ORGS, pathname: "/dashboard/global/orgs" },
   play: async ({ canvas }) => {
-    await expect(Sections(canvas)).toEqual(["Organizações", "Dispositivos Órfãos", "Tags Globais", "Links Globais"]);
+    await expect(Sections(canvas)).toEqual(["Organizações", "Dispositivos Órfãos", "Tags Globais", "Links Globais", "Imagens Escalonadas", "Política de Triagem"]);
     await expect(canvas.getByRole("button", { name: /Sistema Global/ })).toHaveAttribute("aria-expanded", "false");
   },
 };
@@ -68,7 +68,7 @@ export const SuperadminInOrganization: Story = {
   args: { role: "Superadmin", orgId: "org-a", organizations: ORGS, pathname: "/dashboard/settings" },
   play: async ({ canvas }) => {
     await expect(Sections(canvas)).toEqual([
-      "Meus Eventos", "Denúncias", "Usuários Banidos", "Tags Sugeridas", "Auditoria", "Usuários", "Dispositivos", "Configurações",
+      "Meus Eventos", "Denúncias", "Imagens em Revisão", "Usuários Banidos", "Tags Sugeridas", "Auditoria", "Usuários", "Dispositivos", "Configurações",
     ]);
   },
 };

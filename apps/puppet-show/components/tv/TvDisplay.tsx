@@ -13,13 +13,15 @@ import { DateBadge } from "@/components/events/EventParts";
 import { QrCodePanel } from "@/components/qrcode/QrCodePanel";
 import type { SiteQr } from "@/components/qrcode/siteQrCode";
 import { ErrorAlert, LoadingMessage } from "@/components/ui/Feedback";
+import { ImageWithPlaceholder } from "@/components/ui/ImageWithPlaceholder";
+import type { ImageView } from "@/lib/api/schemas";
 import type { TvEvent } from "@/lib/api/mappers";
 import { FeaturedDay, MultiDayLabel, TimeRange } from "@/domain/schedule";
 import { NextWindowIndex, TvWindows, ValidWindowIndex, WindowDurationMs } from "@/domain/tv";
 import { LikesLabel } from "@/components/events/EventParts";
 
 /** Branding of the organization shown on top. */
-export type TvBranding = { name: string; logo: string | null };
+export type TvBranding = { name: string; logo: ImageView | null };
 
 export type TvDisplayProps = {
   /** `null` while loading or when it failed (see `errors`). */
@@ -116,7 +118,7 @@ export function TvDisplay({ branding, status, events, errors, qr, today }: TvDis
       <section aria-labelledby="tv-title" className="flex-1 min-w-0 column gap-6 p-4 lg:p-8">
         <header className="row gap-4 border-b border-muted pb-4 min-w-0">
           {branding !== null && branding.logo !== null && (
-            <div role="img" aria-label={`Logo de ${branding.name}`} className="w-14 h-14 shrink-0 rounded-lg bg-contain bg-center bg-no-repeat" style={{ backgroundImage: `url(${JSON.stringify(branding.logo)})` }} />
+            <ImageWithPlaceholder image={branding.logo} alt={`Logo de ${branding.name}`} className="w-14 h-14 shrink-0 rounded-lg" compact />
           )}
           <h1 id="tv-title" className="text-3xl lg:text-4xl font-bold break-words min-w-0">
             {branding === null ? "Mural de Eventos" : `Eventos · ${branding.name}`}

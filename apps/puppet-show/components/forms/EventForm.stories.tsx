@@ -3,6 +3,7 @@ import { expect, fireEvent, fn, userEvent, waitFor } from "storybook/test";
 import { Err, Ok, type Result } from "@/lib/result";
 import type { LinkLabel, Tag } from "@/lib/api/schemas";
 import { EventForm } from "./EventForm";
+import { PictureFile } from "@/components/ui/storyImages";
 import type { Coordinates } from "./EventFormBasics";
 
 /** Tags the API would list: two official ones and an unpromoted suggestion. */
@@ -131,7 +132,7 @@ export const ScheduleErrors: Story = {
   },
 };
 
-/** Full flow: two days, an official tag, a new free-form tag, a link and a banner. */
+/** Full flow: two days, an official tag, a new free-form tag, a link and a banner cropped to 16:9. */
 export const PublishFullEvent: Story = {
   play: async ({ args, canvas }) => {
     await userEvent.type(canvas.getByLabelText("Latitude"), "-12.2");
@@ -161,6 +162,10 @@ export const PublishFullEvent: Story = {
     await userEvent.selectOptions(canvas.getByLabelText("Tipo do link 1"), "Inscrição");
     await userEvent.type(canvas.getByLabelText("Endereço do link 1"), "https://example.org/inscricao");
 
+    await userEvent.upload(canvas.getByLabelText("Escolher imagem para o banner do evento"), await PictureFile(1600, 1200));
+    await userEvent.click(await canvas.findByRole("button", { name: /Usar este recorte/ }));
+    await expect(await canvas.findByRole("img", { name: "Prévia do banner do evento" })).toBeInTheDocument();
+
     await userEvent.click(canvas.getByRole("button", { name: /Publicar evento/ }));
     await expect(args.onSubmit).toHaveBeenCalledWith({
       title: "Feira de Robótica",
@@ -172,7 +177,7 @@ export const PublishFullEvent: Story = {
       schedule: [{ date: "2026-10-10" }, { date: "2026-10-12", startTime: "09:00", endTime: "12:00" }],
       tags: [{ tagId: "tag-tec", isFreeForm: false }, { tagId: "tag-drones", isFreeForm: true }],
       links: [{ labelId: "label-ins", url: "https://example.org/inscricao" }],
-    });
+    }, expect.any(Blob));
   },
 };
 
@@ -185,12 +190,11 @@ export const SubmitSummary: Story = {
     await userEvent.click(canvas.getByRole("button", { name: /Avançar/ }));
     await userEvent.click(await canvas.findByRole("button", { name: "Adicionar link" }));
     await userEvent.type(canvas.getByLabelText("Endereço do link 1"), "example.org");
-    await userEvent.type(canvas.getByLabelText(/imagem de banner/), "ftp://example.org/a.png");
     await userEvent.click(canvas.getByRole("button", { name: /Publicar evento/ }));
 
     const summary = await canvas.findByRole("alert");
     await expect(summary).toHaveFocus();
-    await expect(summary).toHaveTextContent(/Corrija os 3 campos/);
+    await expect(summary).toHaveTextContent(/Corrija os 2 campos/);
     await expect(args.onSubmit).not.toHaveBeenCalled();
     await expect(canvas.getByLabelText("Endereço do link 1")).toHaveAccessibleDescription(/http/);
 

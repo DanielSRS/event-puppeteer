@@ -76,6 +76,7 @@ export function EventDetailsContainer({ eventId }: EventDetailsContainerProps) {
   const [confirm, setConfirm] = useState<Confirm>(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
   const [confirmError, setConfirmError] = useState("");
+  const [bannerBusy, setBannerBusy] = useState(false);
 
   useEffect(() => {
     if (!ready || orgId === null) return;
@@ -217,6 +218,30 @@ export function EventDetailsContainer({ eventId }: EventDetailsContainerProps) {
     setNotice("Denúncia enviada. Obrigado por ajudar a moderar o mural.");
   };
 
+  /** Applies the banner as the API now answers it to the loaded event. */
+  const showBanner = (banner: EventDetail["banner"]) =>
+    setLoad((current) => current.kind === "ready" ? { ...current, event: { ...current.event, banner } } : current);
+
+  const replaceBanner = async (picture: Blob) => {
+    clearMessages();
+    setBannerBusy(true);
+    const answer = await api.images.uploadBanner(org, event.id, picture);
+    setBannerBusy(false);
+    if (!answer.ok) return setError(`Não foi possível enviar o banner. ${ApiErrorMessage(answer.error)}`);
+    showBanner(answer.value);
+    setNotice("Banner atualizado.");
+  };
+
+  const removeBanner = async () => {
+    clearMessages();
+    setBannerBusy(true);
+    const answer = await api.images.removeBanner(org, event.id);
+    setBannerBusy(false);
+    if (!answer.ok) return setError(`Não foi possível remover o banner. ${ApiErrorMessage(answer.error)}`);
+    showBanner(null);
+    setNotice("Banner removido.");
+  };
+
   const runConfirmed = async () => {
     if (confirm === null) return;
     setConfirmBusy(true);
@@ -258,6 +283,9 @@ export function EventDetailsContainer({ eventId }: EventDetailsContainerProps) {
         onHide={() => { clearMessages(); setConfirmError(""); setConfirm("hide"); }}
         onUnhide={() => { clearMessages(); setConfirmError(""); setConfirm("hide"); }}
         onDelete={() => { clearMessages(); setConfirmError(""); setConfirm("delete"); }}
+        bannerBusy={bannerBusy}
+        onReplaceBanner={(picture) => void replaceBanner(picture)}
+        onRemoveBanner={() => void removeBanner()}
       />
 
       <Drawer isOpen={reporting} onClose={() => { if (!reportSending) setReporting(false); }} title="Denunciar evento">
