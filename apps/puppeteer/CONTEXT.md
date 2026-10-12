@@ -73,7 +73,7 @@ A ban where the affected user is unaware — they can still create events and in
 _Avoid_: Soft ban, mute, silent ban
 
 **Image**:
-A picture uploaded to Puppeteer and stored immutably — an Event's banner or an Organization's logo. Users have no avatar. Images are never referenced by external URL. Every Image goes through Screening before anyone other than its uploader can see it. A User may upload at most 10 Images per day.
+A picture uploaded to Puppeteer and stored immutably — an Event's banner (always 16:9) or an Organization's logo (always 1:1). Users have no avatar. Images are never referenced by external URL. Every Image goes through Screening before anyone other than its uploader can see it. A User may upload at most 10 Images per day.
 _Avoid_: Picture, media, asset, file
 
 **Screening**:
@@ -89,8 +89,8 @@ An Image whose Screening has not concluded as Approved. Everyone except its uplo
 _Avoid_: Unverified image, draft image
 
 **Placeholder**:
-The neutral stand-in shown wherever an Image is not Approved (a default banner or a default logo). The surrounding content (an Event's text, an Organization's name) is shown normally.
-_Avoid_: Fallback image, blank
+The blurred preview of an Image, decoded from its thumbhash — a few dozen bytes that describe only colours and rough shapes. Shown in place of an Image that is not Approved, and while an Approved one loads. Available to everyone whatever the Image's state, since it carries too little detail to show content. An Event or Organization that never had an Image shows the default banner or logo instead.
+_Avoid_: Fallback image, blank, thumbnail
 
 **Rejected Image**:
 An Image that Screening or Image Review decided must never be shown. Its uploader is never told: they keep seeing it as if it were published, while everyone else sees the Placeholder. A rejection by Screening alone does not affect the uploader in any other way.
