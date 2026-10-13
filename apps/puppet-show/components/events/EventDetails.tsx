@@ -45,6 +45,8 @@ export type EventDetailsProps = {
   canModerate: boolean;
   /** The viewer created the event. */
   isCreator: boolean;
+  /** The viewer may delete the event: its creator or a Superadmin. */
+  canDelete: boolean;
   /** The viewer already reported this event (from the API's report status). */
   reported: boolean;
   /** Set after an anonymous visitor tried an action that needs an account. */
@@ -107,7 +109,7 @@ function LinkButton({ link }: { link: DetailLink }) {
 
 /** The details page body. */
 export function EventDetails({
-  event, likes, likeBusy = false, canModerate, isCreator, reported, loginPrompt, loginRedirect, notice, error,
+  event, likes, likeBusy = false, canModerate, isCreator, canDelete, reported, loginPrompt, loginRedirect, notice, error,
   onToggleLike, onShare, onReport, onHide, onUnhide, onDelete, bannerBusy, onReplaceBanner, onRemoveBanner,
 }: EventDetailsProps) {
   return (
@@ -156,7 +158,7 @@ export function EventDetails({
             </button>
           ))}
 
-          {isCreator && (
+          {canDelete && (
             <button type="button" onClick={onDelete} className="button clean touch text-danger hover:border-danger">
               <MdDeleteOutline aria-hidden className="icon" />
               Excluir

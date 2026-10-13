@@ -34,15 +34,20 @@ test("PublicTags keeps only system-defined tags", () => {
 
 describe("ToFeedCard", () => {
   test("anonymous viewer", () => {
-    const card = ToFeedCard(EVENT, TAGS, { viewerId: null, viewerVoted: false, pending: undefined });
-    expect(card).toMatchObject({ id: "e1", voteCount: 4, voted: false, isOwn: false, tags: [{ id: "tech", name: "Tecnologia" }] });
+    const card = ToFeedCard(EVENT, TAGS, { viewerId: null, viewerIsSuperadmin: false, viewerVoted: false, pending: undefined });
+    expect(card).toMatchObject({ id: "e1", voteCount: 4, voted: false, canDelete: false, tags: [{ id: "tech", name: "Tecnologia" }] });
     expect(card.schedule.map((d) => d.date)).toEqual(["2026-10-11", "2026-10-12"]);
     expect(card.schedule[0]).toEqual({ date: "2026-10-11" });
   });
 
   test("creator who voted, with a pending unlike", () => {
-    const card = ToFeedCard(EVENT, TAGS, { viewerId: "u1", viewerVoted: true, pending: { voted: false, before: true, settlesAt: null } });
-    expect(card).toMatchObject({ voteCount: 3, voted: false, isOwn: true });
+    const card = ToFeedCard(EVENT, TAGS, { viewerId: "u1", viewerIsSuperadmin: false, viewerVoted: true, pending: { voted: false, before: true, settlesAt: null } });
+    expect(card).toMatchObject({ voteCount: 3, voted: false, canDelete: true });
+  });
+
+  test("Superadmin who did not create it may delete", () => {
+    const card = ToFeedCard(EVENT, TAGS, { viewerId: "root", viewerIsSuperadmin: true, viewerVoted: false, pending: undefined });
+    expect(card.canDelete).toBe(true);
   });
 });
 

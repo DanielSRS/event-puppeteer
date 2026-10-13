@@ -13,7 +13,7 @@ function Card(overrides: Partial<FeedCard> & { id: string }): FeedCard {
     tags: [],
     voteCount: 0,
     voted: false,
-    isOwn: false,
+    canDelete: false,
     ...overrides,
   };
 }

@@ -13,12 +13,12 @@ const BASE: FeedCard = {
   tags: [],
   voteCount: 2,
   voted: false,
-  isOwn: false,
+  canDelete: false,
 };
 
 const CARDS: FeedCard[] = [
   BASE,
-  { ...BASE, id: "b", title: "Palestra de IA", isOwn: true, voteCount: 0 },
+  { ...BASE, id: "b", title: "Palestra de IA", canDelete: true, voteCount: 0 },
 ];
 
 /** The feed's cards with the delete confirmation. */

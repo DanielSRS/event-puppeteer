@@ -272,6 +272,7 @@ export function EventDetailsContainer({ eventId }: EventDetailsContainerProps) {
         likeBusy={IsVoteInFlight(likes.pending)}
         canModerate={CanModerate(user, org)}
         isCreator={viewerId !== null && event.creatorId === viewerId}
+        canDelete={(viewerId !== null && event.creatorId === viewerId) || (user !== null && user.role === "Superadmin")}
         reported={reported}
         loginPrompt={loginPrompt}
         loginRedirect={`/eventos/${event.id}`}

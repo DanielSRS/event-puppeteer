@@ -39,6 +39,8 @@ function Schedule(event: Pick<Event, "schedule">): ScheduleDay[] {
 export type ViewerContext = {
   /** Logged-in user's id, `null` for anonymous visitors. */
   viewerId: string | null;
+  /** Whether the viewer is a Superadmin, who may delete any event. */
+  viewerIsSuperadmin: boolean;
   /** The viewer's confirmed vote for this event. */
   viewerVoted: boolean;
   /** The viewer's click not counted by the server yet, if any. */
@@ -57,7 +59,7 @@ export function ToFeedCard(event: FeedEvent, catalog: readonly Tag[], viewer: Vi
     tags: PublicTags(event, catalog),
     voteCount: vote.count,
     voted: vote.voted,
-    isOwn: viewer.viewerId !== null && event.creatorId === viewer.viewerId,
+    canDelete: viewer.viewerIsSuperadmin || (viewer.viewerId !== null && event.creatorId === viewer.viewerId),
   };
 }
 

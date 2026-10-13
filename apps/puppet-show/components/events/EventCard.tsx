@@ -21,7 +21,7 @@ export type EventCardProps = {
   /** Path to come back to after logging in. */
   loginRedirect?: string;
   onToggleLike: (eventId: string) => void;
-  /** Asks to delete the event; only offered on the viewer's own events. */
+  /** Asks to delete the event; only offered to the event's creator and to a Superadmin. */
   onDelete: (eventId: string) => void;
 };
 
@@ -83,7 +83,7 @@ export function EventCard({
           Ver detalhes
         </Link>
 
-        {card.isOwn && (
+        {card.canDelete && (
           <button
             type="button"
             onClick={() => onDelete(card.id)}

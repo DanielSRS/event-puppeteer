@@ -16,7 +16,7 @@ const CARD: FeedCard = {
   tags: [{ id: "t1", name: "Tecnologia" }, { id: "t2", name: "Cultura" }],
   voteCount: 4,
   voted: false,
-  isOwn: false,
+  canDelete: false,
 };
 
 /** One event in the public feed. */
@@ -62,9 +62,9 @@ export const LikeInFlight: Story = {
   },
 };
 
-/** The creator sees "Excluir". */
+/** The creator (or a Superadmin) sees "Excluir". */
 export const OwnEvent: Story = {
-  args: { card: { ...CARD, isOwn: true } },
+  args: { card: { ...CARD, canDelete: true } },
   play: async ({ canvas, args }) => {
     await userEvent.click(canvas.getByRole("button", { name: "Excluir “Feira de Ciências”" }));
     await expect(args.onDelete).toHaveBeenCalledWith("evt-1");

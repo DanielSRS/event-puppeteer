@@ -27,8 +27,8 @@ export type FeedCard = {
   voteCount: number;
   /** Whether the viewer voted; always `false` for anonymous visitors. */
   voted: boolean;
-  /** Whether the viewer created the event (they may delete it). */
-  isOwn: boolean;
+  /** Whether the viewer may delete the event: its creator or a Superadmin. */
+  canDelete: boolean;
 };
 
 /** Which pill is selected. */

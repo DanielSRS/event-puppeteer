@@ -38,6 +38,7 @@ const meta = {
     likes: { voted: false, count: 3 },
     canModerate: false,
     isCreator: false,
+    canDelete: false,
     reported: false,
     loginPrompt: null,
     loginRedirect: "/eventos/evt-1",
@@ -108,7 +109,7 @@ export const PendingBanner: Story = {
 
 /** The creator: "Excluir", no report. */
 export const Creator: Story = {
-  args: { isCreator: true },
+  args: { isCreator: true, canDelete: true },
   play: async ({ canvas, args }) => {
     await expect(canvas.queryByRole("button", { name: "Denunciar" })).toBeNull();
     await userEvent.click(canvas.getByRole("button", { name: "Excluir" }));
@@ -116,9 +117,19 @@ export const Creator: Story = {
   },
 };
 
+/** A Superadmin who did not create the event: "Excluir" and "Denunciar" both show. */
+export const SuperadminNotCreator: Story = {
+  args: { canModerate: true, canDelete: true },
+  play: async ({ canvas, args }) => {
+    await expect(canvas.getByRole("button", { name: "Denunciar" })).toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Excluir" }));
+    await expect(args.onDelete).toHaveBeenCalled();
+  },
+};
+
 /** The creator of an event with a banner can remove it, or pick another one to crop. */
 export const CreatorWithBanner: Story = {
-  args: { isCreator: true, event: { ...EVENT, banner: APPROVED_BANNER } },
+  args: { isCreator: true, canDelete: true, event: { ...EVENT, banner: APPROVED_BANNER } },
   play: async ({ canvas, args }) => {
     await userEvent.click(canvas.getByText("Trocar ou remover o banner"));
     await expect(canvas.getByLabelText("Escolher imagem para o banner do evento")).toBeInTheDocument();

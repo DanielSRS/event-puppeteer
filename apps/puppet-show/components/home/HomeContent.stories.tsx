@@ -15,7 +15,7 @@ const BASE: FeedCard = {
   tags: [{ id: "tech", name: "Tecnologia" }],
   voteCount: 1,
   voted: false,
-  isOwn: false,
+  canDelete: false,
 };
 
 /** In the API's ranking. */

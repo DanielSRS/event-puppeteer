@@ -170,6 +170,7 @@ export function useEvents() {
   const { state: auth, user } = useAuth();
   const orgId = FeedOrgId(user);
   const viewerId = user === null ? null : user.id;
+  const viewerIsSuperadmin = user !== null && user.role === "Superadmin";
 
   const [state, dispatch] = useReducer(Reduce, INITIAL);
   const [tags, setTags] = useState<TagsState>({ kind: "loading" });
@@ -264,7 +265,7 @@ export function useEvents() {
     void load();
   }, [viewerId, orgId, load]);
 
-  /** Deletes one of the viewer's own events; the error text is for the person. */
+  /** Deletes an event the viewer may delete (their own, or any as Superadmin); the error text is for the person. */
   const deleteEvent = useCallback(async (eventId: string): Promise<Result<void, string>> => {
     if (orgId === null) return Err(MISSING_ORG_MESSAGE);
     const answer = await api.events.delete(orgId, eventId);
@@ -280,10 +281,11 @@ export function useEvents() {
     if (state.feed === null) return [];
     return state.feed.map((event) => ToFeedCard(event, catalog, {
       viewerId,
+      viewerIsSuperadmin,
       viewerVoted: state.viewerVotes[event.id] === true,
       pending: state.pending[event.id],
     }));
-  }, [state.feed, state.viewerVotes, state.pending, catalog, viewerId]);
+  }, [state.feed, state.viewerVotes, state.pending, catalog, viewerId, viewerIsSuperadmin]);
 
   const status: FeedStatus = (() => {
     if (auth.status === "error") return { kind: "error", message: auth.message };
