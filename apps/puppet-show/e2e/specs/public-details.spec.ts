@@ -162,6 +162,38 @@ describe("Público: detalhes do evento", () => {
     await context.close();
   });
 
+  test("superadmin exclui pelo detalhe um evento de outra pessoa", async () => {
+    const { orgA } = await State();
+    const title = `Superadmin exclui ${Date.now()}`;
+    const id = await CreateEvent("member", orgA.id, title);
+
+    const { page, context, errors } = await OpenPage("desktop");
+    await LoginAs(page, "superadmin", `/eventos/${id}`);
+    await page.getByRole("heading", { level: 1, name: title }).waitFor();
+    await page.getByRole("button", { name: "Excluir", exact: true }).click();
+    await page.getByRole("alertdialog", { name: "Excluir este evento?" }).getByRole("button", { name: "Sim, excluir" }).click();
+    await page.waitForURL(`${WEB}/`);
+
+    const answer = await fetch(`${WEB}/api/organizations/${orgA.id}/events/${id}`);
+    assert.equal(answer.status, 404);
+    assert.deepEqual(errors, []);
+    await context.close();
+  });
+
+  test("moderador não vê Excluir em evento de outra pessoa", async () => {
+    const { orgA } = await State();
+    const title = `Moderador sem excluir ${Date.now()}`;
+    const id = await CreateEvent("member", orgA.id, title);
+
+    const { page, context, errors } = await OpenPage("desktop");
+    await LoginAs(page, "moderator", `/eventos/${id}`);
+    await page.getByRole("heading", { level: 1, name: title }).waitFor();
+    await page.getByRole("button", { name: "Ocultar evento" }).waitFor();
+    assert.equal(await page.getByRole("button", { name: "Excluir", exact: true }).count(), 0);
+    assert.deepEqual(errors, []);
+    await context.close();
+  });
+
   test("evento inexistente diz que não foi encontrado", async () => {
     const { page, context, errors } = await OpenPage("desktop");
     await page.goto(`${WEB}/eventos/00000000-0000-0000-0000-000000000000`);
