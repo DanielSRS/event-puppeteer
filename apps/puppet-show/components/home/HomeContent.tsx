@@ -82,7 +82,7 @@ export function HomeContent({
   const backdrop = hero === null || hero.banner == null ? undefined : hero.banner.url;
 
   return (
-    <main className="w-full px-4 pb-20 pt-6 sm:px-6 lg:pt-10">
+    <main className="w-full px-4 pb-20 pt-6 sm:px-6 lg:px-8 lg:pt-10">
       {backdrop !== undefined && (
         // The page takes its colors from the hero's banner: a blurred copy fills the background.
         <div aria-hidden className="photo-backdrop">
@@ -91,8 +91,8 @@ export function HomeContent({
         </div>
       )}
 
-      {/* Same width as the top bar (1280 px), as in the design. */}
-      <div className="mx-auto column w-full max-w-[1280px] gap-6 lg:gap-10">
+      {/* Same width as the top bar (`max-w-page`). */}
+      <div className="mx-auto column w-full max-w-page gap-6 lg:gap-10">
         <h1 className="sr-only">Mural de Eventos</h1>
 
         {errors.map((error) => error !== null && error !== "" && <ErrorAlert key={error}>{error}</ErrorAlert>)}

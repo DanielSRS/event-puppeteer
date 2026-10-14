@@ -164,8 +164,8 @@ export function Navbar({ auth, brand, brandError, pathname, logoutError, onLogou
 
   return (
     <>
-      <header className="sticky top-0 z-40 w-full px-4 pt-4 sm:px-6 sm:pt-5">
-        <nav aria-label="Principal" className="glass between mx-auto max-w-[1280px] gap-3 rounded-[22px] py-2.5 pl-3.5 pr-2.5">
+      <header className="sticky top-0 z-40 w-full px-4 pt-4 sm:px-6 sm:pt-5 lg:px-8">
+        <nav aria-label="Principal" className="glass between mx-auto max-w-page gap-3 rounded-[22px] py-2.5 pl-3.5 pr-2.5">
           <Link href="/" className="row min-h-11 min-w-0 gap-3 rounded-xl focus-ring">
             {brand !== null && brand.logo !== null ? (
               <span aria-hidden className="shrink-0">
@@ -222,7 +222,7 @@ export function Navbar({ auth, brand, brandError, pathname, logoutError, onLogou
         </nav>
 
         {(auth.status === "error" || brandError !== null || logoutError !== null) && (
-          <div className="column mx-auto max-w-[1280px] gap-2 pt-3">
+          <div className="column mx-auto max-w-page gap-2 pt-3">
             {auth.status === "error" && <ErrorAlert>{auth.message}</ErrorAlert>}
             {brandError !== null && <ErrorAlert>{brandError}</ErrorAlert>}
             {logoutError !== null && <ErrorAlert>{logoutError}</ErrorAlert>}

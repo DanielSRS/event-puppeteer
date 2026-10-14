@@ -135,6 +135,9 @@
   --font-sans: var(--font-geist-sans, ui-sans-serif), system-ui, sans-serif;
   --font-mono: var(--font-geist-mono, ui-monospace), monospace;
   --font-display: var(--font-bricolage, var(--font-geist-sans, ui-sans-serif)), sans-serif;
+
+  /* Widest the public pages grow (top bar, feed, event, login): wide screens and zoomed-out windows use the room. */
+  --container-page: 1600px;
 }
 
 @layer base {
