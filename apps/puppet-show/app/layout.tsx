@@ -8,6 +8,7 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { Geist, Geist_Mono } from "next/font/google";
 import { NavbarContainer } from "@/components/navbar/containers/NavbarContainer";
+import { QueryProvider } from "@/lib/query/QueryProvider";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -37,11 +38,13 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           Pular para o conteúdo
         </a>
 
-        <NavbarContainer />
+        <QueryProvider>
+          <NavbarContainer />
 
-        <div id="conteudo" tabIndex={-1} className="flex-1 flex flex-col outline-none">
-          {children}
-        </div>
+          <div id="conteudo" tabIndex={-1} className="flex-1 flex flex-col outline-none">
+            {children}
+          </div>
+        </QueryProvider>
       </body>
     </html>
   );

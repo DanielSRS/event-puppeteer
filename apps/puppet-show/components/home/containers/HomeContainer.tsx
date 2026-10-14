@@ -8,6 +8,8 @@
 
 import type { SiteQr } from "@/components/qrcode/siteQrCode";
 import { useEvents } from "@/hooks/useEvents";
+import { EventPageWarmups } from "@/lib/query/warmups";
+import { usePrefetch } from "@/lib/query/usePrefetch";
 import { TodayInBrazil } from "@/utils/date";
 import { HomeContent } from "../HomeContent";
 
@@ -19,6 +21,7 @@ export type HomeContainerProps = {
 /** The live feed for the home page. */
 export function HomeContainer({ qr }: HomeContainerProps) {
   const feed = useEvents();
+  const prefetch = usePrefetch();
 
   return (
     <HomeContent
@@ -31,6 +34,7 @@ export function HomeContainer({ qr }: HomeContainerProps) {
       loginPromptFor={feed.loginPromptFor}
       isLikeInFlight={feed.isLikeInFlight}
       onToggleLike={(id) => void feed.toggleLike(id)}
+      onIntent={(id) => { if (feed.orgId !== null) prefetch(...EventPageWarmups(feed.orgId, id, feed.loggedIn)); }}
       onDelete={feed.deleteEvent}
     />
   );

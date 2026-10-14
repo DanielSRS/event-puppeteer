@@ -38,12 +38,14 @@ export type HomeContentProps = {
   loginPromptFor: string | null;
   isLikeInFlight: (eventId: string) => boolean;
   onToggleLike: (eventId: string) => void;
+  /** Called when the person shows intent to open an event, to load it beforehand. */
+  onIntent?: (eventId: string) => void;
   onDelete: (eventId: string) => Promise<Result<void, string>>;
 };
 
 /** Search, filter pills and the cards; the QR code sits beside them on large screens. */
 export function HomeContent({
-  qr, status, cards, today, updatedAt, errors, loginPromptFor, isLikeInFlight, onToggleLike, onDelete,
+  qr, status, cards, today, updatedAt, errors, loginPromptFor, isLikeInFlight, onToggleLike, onIntent, onDelete,
 }: HomeContentProps) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<FeedFilter>({ kind: "all" });
@@ -76,6 +78,7 @@ export function HomeContent({
               loginPromptFor={loginPromptFor}
               loginRedirect="/"
               onToggleLike={onToggleLike}
+              onIntent={onIntent}
               onDelete={onDelete}
             />
           </>

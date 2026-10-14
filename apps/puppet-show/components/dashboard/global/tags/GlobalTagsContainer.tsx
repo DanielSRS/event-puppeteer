@@ -8,10 +8,15 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { api, ApiErrorMessage } from "@/lib/api/client";
 import type { Tag } from "@/lib/api/schemas";
+import { tagsQuery } from "@/lib/query/queries";
 import { Err, Ok, type Result } from "@/lib/result";
+import { Freshness } from "@/lib/query/options";
+import { LoadedQuery } from "@/lib/query/loaded";
+import { useLoaded } from "@/lib/query/useLoaded";
 import { ErrorAlert, LoadingMessage, StatusMessage } from "@/components/ui/Feedback";
 import { SectionDenialFor, useDashboard } from "../../DashboardContext";
 import { AccessNotice } from "../AccessNotice";
@@ -24,6 +29,9 @@ async function LoadTags(): Promise<Result<Tag[], string>> {
   return Ok(tags.value);
 }
 
+/** Every tag, as the official-tags page lists them. */
+export const globalTagsQuery = () => LoadedQuery(["dashboard", "global-tags"], LoadTags, Freshness.short);
+
 /** The page, guarded by the section rules. */
 export function GlobalTagsContainer() {
   const { user, orgId } = useDashboard();
@@ -34,16 +42,12 @@ export function GlobalTagsContainer() {
 
 /** The official tags and their creation form. */
 function GlobalTags() {
-  const [tags, setTags] = useState<Result<Tag[], string> | null>(null);
+  const client = useQueryClient();
+  const loaded = useLoaded(globalTagsQuery());
+  const tags = loaded.result;
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
-
-  useEffect(() => {
-    let active = true;
-    LoadTags().then((result) => { if (active) setTags(result); });
-    return () => { active = false; };
-  }, []);
 
   const handleCreate = async (name: string): Promise<boolean> => {
     setSaving(true);
@@ -59,7 +63,8 @@ function GlobalTags() {
       return false;
     }
     const tag = created.value;
-    setTags((current) => current !== null && current.ok ? Ok([...current.value, tag]) : current);
+    loaded.update((list) => [...list, tag]);
+    void client.invalidateQueries({ queryKey: tagsQuery().queryKey });
     setStatus(`Tag “${tag.name}” criada.`);
     return true;
   };

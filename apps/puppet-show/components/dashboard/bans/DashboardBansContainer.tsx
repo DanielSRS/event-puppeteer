@@ -7,9 +7,12 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { api, ApiErrorMessage } from "@/lib/api/client";
 import { Err, Ok, type Result } from "@/lib/result";
+import { Freshness } from "@/lib/query/options";
+import { LoadedQuery } from "@/lib/query/loaded";
+import { useLoaded } from "@/lib/query/useLoaded";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { ErrorAlert, LoadingMessage, StatusMessage } from "@/components/ui/Feedback";
 import { SectionDenialFor, SelectOrgNotice, useDashboard } from "../DashboardContext";
@@ -23,6 +26,10 @@ async function LoadBans(orgId: string): Promise<Result<BannedUser[], string>> {
   return Ok(users.value.map((user) => ({ id: user.id, name: `${user.firstName} ${user.lastName}`, email: user.email })));
 }
 
+/** The banned people of `orgId`. */
+export const bansQuery = (orgId: string) =>
+  LoadedQuery(["dashboard", "bans", orgId], () => LoadBans(orgId), Freshness.short);
+
 /** The page, guarded by the section rules. */
 export function DashboardBansContainer() {
   const { user, orgId } = useDashboard();
@@ -34,17 +41,12 @@ export function DashboardBansContainer() {
 
 /** The bans of one organization; remounted when the organization changes. */
 function Bans({ orgId }: { orgId: string }) {
-  const [bans, setBans] = useState<Result<BannedUser[], string> | null>(null);
+  const loaded = useLoaded(bansQuery(orgId));
+  const bans = loaded.result;
   const [confirming, setConfirming] = useState<BannedUser | null>(null);
   const [busy, setBusy] = useState(false);
   const [dialogError, setDialogError] = useState("");
   const [status, setStatus] = useState("");
-
-  useEffect(() => {
-    let active = true;
-    LoadBans(orgId).then((result) => { if (active) setBans(result); });
-    return () => { active = false; };
-  }, [orgId]);
 
   const handleConfirm = async () => {
     if (confirming === null) return;
@@ -59,7 +61,7 @@ function Bans({ orgId }: { orgId: string }) {
     }
 
     const lifted = confirming;
-    setBans((current) => current !== null && current.ok ? Ok(current.value.filter((u) => u.id !== lifted.id)) : current);
+    loaded.update((users) => users.filter((u) => u.id !== lifted.id));
     setStatus(`Banimento de ${lifted.name} removido. Os eventos dessa pessoa voltam a aparecer no mural.`);
     setConfirming(null);
   };

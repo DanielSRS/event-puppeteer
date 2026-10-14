@@ -10,55 +10,58 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { MdAdd } from "react-icons/md";
 import { EventFormContainer } from "@/components/forms/containers/EventFormContainer";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Drawer } from "@/components/ui/Drawer";
 import { StatusMessage } from "@/components/ui/Feedback";
 import { api, ApiErrorMessage } from "@/lib/api/client";
+import { Freshness } from "@/lib/query/options";
+import { LoadedQuery } from "@/lib/query/loaded";
+import { feedQuery, ownEventsKey } from "@/lib/query/queries";
+import { useLoaded } from "@/lib/query/useLoaded";
+import { Err, Ok, type Result } from "@/lib/result";
 import { TodayInBrazil } from "@/utils/date";
 import { SelectOrgNotice, useDashboard } from "../DashboardContext";
 import { ToOwnEvent, type OwnEvent } from "./OwnEvents";
 import { UserEventList, type UserEventListState } from "./UserEventList";
 
-/** The list state together with the organization it was loaded for. */
-type Loaded = { orgId: string; state: UserEventListState };
-
 /** Loads the person's events in `orgId`. */
-async function LoadOwnEvents(orgId: string): Promise<UserEventListState> {
+async function LoadOwnEvents(orgId: string): Promise<Result<OwnEvent[], string>> {
   const mine = await api.events.mine(orgId);
-  if (!mine.ok) return { status: "error", message: `Não foi possível carregar seus eventos. ${ApiErrorMessage(mine.error)}` };
+  if (!mine.ok) return Err(`Não foi possível carregar seus eventos. ${ApiErrorMessage(mine.error)}`);
   const today = TodayInBrazil();
-  return { status: "ready", events: mine.value.map((event) => ToOwnEvent(event, today)) };
+  return Ok(mine.value.map((event) => ToOwnEvent(event, today)));
 }
+
+/** The person's events in `orgId`, as the page lists them. */
+export const ownEventListQuery = (orgId: string) =>
+  LoadedQuery(ownEventsKey(orgId), () => LoadOwnEvents(orgId), Freshness.short);
 
 /** The "Meus Eventos" page. */
 export function DashboardEventsContainer() {
   const { orgId } = useDashboard();
 
-  const [loaded, setLoaded] = useState<Loaded | null>(null);
-  const [reloadKey, setReloadKey] = useState(0);
+  const client = useQueryClient();
+  const events = useLoaded(ownEventListQuery(orgId === null ? "" : orgId), orgId !== null);
   const [creating, setCreating] = useState(false);
   const [notice, setNotice] = useState("");
   const [deleting, setDeleting] = useState<OwnEvent | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState("");
 
-  useEffect(() => {
-    if (orgId === null) return;
-    let active = true;
-    LoadOwnEvents(orgId).then((state) => { if (active) setLoaded({ orgId, state }); });
-    return () => { active = false; };
-  }, [orgId, reloadKey]);
-
   if (orgId === null) return <SelectOrgNotice />;
 
-  const state: UserEventListState = loaded !== null && loaded.orgId === orgId ? loaded.state : { status: "loading" };
+  const state: UserEventListState = events.result === null
+    ? { status: "loading" }
+    : events.result.ok ? { status: "ready", events: events.result.value } : { status: "error", message: events.result.error };
 
-  function reload() {
-    setLoaded(null);
-    setReloadKey((key) => key + 1);
+  /** The feed and the event pages show what this list changes. */
+  function eventsChanged(id: string | null) {
+    void client.invalidateQueries({ queryKey: feedQuery(orgId === null ? "" : orgId).queryKey });
+    if (id !== null) client.removeQueries({ queryKey: ["event"], predicate: (query) => query.queryKey[2] === id });
   }
 
   async function confirmDelete() {
@@ -74,9 +77,8 @@ export function DashboardEventsContainer() {
     const { id, title } = deleting;
     setDeleting(null);
     setNotice(`Evento "${title}" excluído.`);
-    setLoaded((current) => current !== null && current.state.status === "ready"
-      ? { ...current, state: { status: "ready", events: current.state.events.filter((event) => event.id !== id) } }
-      : current);
+    events.update((list) => list.filter((event) => event.id !== id));
+    eventsChanged(id);
   }
 
   return (
@@ -93,7 +95,7 @@ export function DashboardEventsContainer() {
       <UserEventList
         state={state}
         onDelete={(event) => { setNotice(""); setDeleteError(""); setDeleting(event); }}
-        onRetry={reload}
+        onRetry={events.reload}
       />
 
       <Drawer isOpen={creating} onClose={() => setCreating(false)} title="Novo evento" width="lg">
@@ -103,7 +105,8 @@ export function DashboardEventsContainer() {
           onCreated={(event) => {
             setCreating(false);
             setNotice(`Evento "${event.title}" publicado.`);
-            reload();
+            events.reload();
+            eventsChanged(null);
           }}
         />
       </Drawer>

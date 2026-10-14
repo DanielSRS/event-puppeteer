@@ -9,10 +9,15 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { api, ApiErrorMessage } from "@/lib/api/client";
 import type { Organization, OrganizationInput } from "@/lib/api/schemas";
+import { organizationQuery } from "@/lib/query/queries";
 import { Err, Ok, type Result } from "@/lib/result";
+import { Freshness } from "@/lib/query/options";
+import { LoadedQuery } from "@/lib/query/loaded";
+import { useLoaded } from "@/lib/query/useLoaded";
 import { ErrorAlert, LoadingMessage, StatusMessage } from "@/components/ui/Feedback";
 import { SectionDenialFor, SelectOrgNotice, useDashboard } from "../DashboardContext";
 import { AccessNotice } from "../global/AccessNotice";
@@ -26,6 +31,10 @@ async function LoadOrganization(orgId: string): Promise<Result<Organization, str
   return Ok(org.value);
 }
 
+/** The organization being managed, as the settings page edits it. */
+export const settingsQuery = (orgId: string) =>
+  LoadedQuery(["dashboard", "settings", orgId], () => LoadOrganization(orgId), Freshness.short);
+
 /** The page, guarded by the section rules. */
 export function DashboardSettingsContainer() {
   const { user, orgId } = useDashboard();
@@ -37,7 +46,9 @@ export function DashboardSettingsContainer() {
 
 /** The settings of one organization; remounted when the organization changes. */
 function Settings({ orgId }: { orgId: string }) {
-  const [org, setOrg] = useState<Result<Organization, string> | null>(null);
+  const client = useQueryClient();
+  const loaded = useLoaded(settingsQuery(orgId));
+  const org = loaded.result;
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [saved, setSaved] = useState("");
@@ -45,11 +56,11 @@ function Settings({ orgId }: { orgId: string }) {
   const [logoNotice, setLogoNotice] = useState("");
   const [logoError, setLogoError] = useState("");
 
-  useEffect(() => {
-    let active = true;
-    LoadOrganization(orgId).then((result) => { if (active) setOrg(result); });
-    return () => { active = false; };
-  }, [orgId]);
+  /** Shows `next` here and wherever else the organization is shown (the top bar's name and logo). */
+  const showOrganization = (next: Organization) => {
+    loaded.update(() => next);
+    client.setQueryData(organizationQuery(orgId).queryKey, Ok(next));
+  };
 
   const handleUpdate = async (changes: Partial<OrganizationInput>) => {
     setSaving(true);
@@ -62,7 +73,7 @@ function Settings({ orgId }: { orgId: string }) {
       setSaveError(`Não foi possível salvar. ${ApiErrorMessage(updated.error)}`);
       return;
     }
-    setOrg(Ok(updated.value));
+    showOrganization(updated.value);
     setSaved(changes.shadowBanThreshold === undefined
       ? "Configurações salvas."
       : `Configurações salvas. Novo limite: ${updated.value.shadowBanThreshold} ${updated.value.shadowBanThreshold === 1 ? "denúncia" : "denúncias"}.`);
@@ -76,7 +87,7 @@ function Settings({ orgId }: { orgId: string }) {
     const result = await send();
     setLogoBusy(false);
     if (!result.ok) return setLogoError(result.error);
-    setOrg((current) => current !== null && current.ok ? Ok({ ...current.value, logo: result.logo }) : current);
+    if (org !== null && org.ok) showOrganization({ ...org.value, logo: result.logo });
     setLogoNotice(notice);
   };
 

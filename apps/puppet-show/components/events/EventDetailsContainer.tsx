@@ -6,18 +6,24 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { Drawer } from "@/components/ui/Drawer";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { ErrorAlert, LoadingMessage } from "@/components/ui/Feedback";
 import { useAuth } from "@/hooks/useAuth";
 import { FeedOrgId } from "@/hooks/useEvents";
-import { api, ApiErrorMessage } from "@/lib/api/client";
+import { api, ApiErrorMessage, type ApiError } from "@/lib/api/client";
 import { MISSING_ORG_MESSAGE } from "@/lib/api/session";
-import { UserOrgId, type User } from "@/lib/api/schemas";
+import { UserOrgId, type EventWithVotes, type LinkLabel, type Tag, type User } from "@/lib/api/schemas";
 import { ToEventDetail, type EventDetail } from "@/lib/api/mappers";
 import { ConfirmVote, IsVoteInFlight, ShownVoteFor, StartVote, type PendingVote } from "@/domain/likes";
+import {
+  eventQuery, feedQuery, linkLabelsQuery, organizationQuery, ownEventsKey, reportStatusQuery, tagsQuery, voteStatusQuery,
+} from "@/lib/query/queries";
+import { useApiQuery, type ApiData } from "@/lib/query/useApiQuery";
+import { Ok } from "@/lib/result";
 import { EventDetails, type LoginPrompt } from "./EventDetails";
 import { ReportForm, type ReportFormData } from "./ReportForm";
 
@@ -45,10 +51,31 @@ function CanModerate(user: User | null, orgId: string): boolean {
 /** The likes the details page knows: the server's count plus the viewer's vote. */
 type Likes = { serverCount: number; viewerVoted: boolean; pending: PendingVote | undefined };
 
-type Load =
-  | { kind: "loading" }
-  | { kind: "error"; message: string }
-  | { kind: "ready"; event: EventDetail; likes: Likes; threshold: number | null };
+/**
+ * The message to show when the page can't be built, or `null` when nothing is
+ * missing for a reason other than still loading. A refresh that failed while
+ * older data is shown is not a failure here.
+ */
+function LoadFailure(
+  event: ApiError | null,
+  eventValue: unknown,
+  tags: ApiData<Tag[]>,
+  labels: ApiData<LinkLabel[]>,
+  vote: ApiData<{ voted: boolean }>,
+  report: ApiData<{ reported: boolean }>,
+  loggedIn: boolean,
+): string | null {
+  if (event !== null && eventValue === null) {
+    const notFound = event.kind === "http" && event.status === 404;
+    return notFound ? UNAVAILABLE_MESSAGE : ApiErrorMessage(event);
+  }
+  if (tags.error !== null && tags.value === null) return `Não foi possível carregar as categorias. ${ApiErrorMessage(tags.error)}`;
+  if (labels.error !== null && labels.value === null) return `Não foi possível carregar os links. ${ApiErrorMessage(labels.error)}`;
+  if (!loggedIn) return null;
+  if (vote.error !== null && vote.value === null) return `Não foi possível saber se você curtiu este evento. ${ApiErrorMessage(vote.error)}`;
+  if (report.error !== null && report.value === null) return `Não foi possível saber se você já denunciou este evento. ${ApiErrorMessage(report.error)}`;
+  return null;
+}
 
 /** Which confirmation is open. */
 type Confirm = "hide" | "delete" | null;
@@ -60,16 +87,27 @@ type Confirm = "hide" | "delete" | null;
  */
 export function EventDetailsContainer({ eventId }: EventDetailsContainerProps) {
   const router = useRouter();
+  const client = useQueryClient();
   const { state: auth, user } = useAuth();
   const orgId = FeedOrgId(user);
   const viewerId = user === null ? null : user.id;
   const ready = auth.status === "anonymous" || auth.status === "authenticated";
+  const enabled = ready && orgId !== null;
+  const scope = orgId === null ? "" : orgId;
 
-  const [load, setLoad] = useState<Load>({ kind: "loading" });
+  const event = useApiQuery(eventQuery(scope, eventId), { enabled });
+  const tags = useApiQuery(tagsQuery());
+  const labels = useApiQuery(linkLabelsQuery());
+  const organization = useApiQuery(organizationQuery(scope), { enabled });
+  const vote = useApiQuery(voteStatusQuery(scope, eventId), { enabled: enabled && viewerId !== null });
+  const report = useApiQuery(reportStatusQuery(scope, eventId), { enabled: enabled && viewerId !== null });
+
+  /** Set once the event was deleted; its cached answer is dropped when the page goes away. */
+  const deletedRef = useRef(false);
+  const [pendingVote, setPendingVote] = useState<PendingVote | undefined>(undefined);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [loginPrompt, setLoginPrompt] = useState<LoginPrompt | null>(null);
-  const [reported, setReported] = useState(false);
   const [reporting, setReporting] = useState(false);
   const [reportSending, setReportSending] = useState(false);
   const [reportError, setReportError] = useState("");
@@ -78,68 +116,45 @@ export function EventDetailsContainer({ eventId }: EventDetailsContainerProps) {
   const [confirmError, setConfirmError] = useState("");
   const [bannerBusy, setBannerBusy] = useState(false);
 
-  useEffect(() => {
-    if (!ready || orgId === null) return;
-    let active = true;
+  const detail = useMemo(
+    () => (event.value === null || tags.value === null || labels.value === null
+      ? null
+      : ToEventDetail(event.value, tags.value, labels.value)),
+    [event.value, tags.value, labels.value],
+  );
 
-    (async () => {
-      const [event, tags, labels, org] = await Promise.all([
-        api.events.get(orgId, eventId),
-        api.tags.list(),
-        api.linkLabels.list(),
-        api.organizations.get(orgId),
-      ]);
-      if (!active) return;
+  const eventKey = eventQuery(scope, eventId).queryKey;
+  const feedKey = feedQuery(scope).queryKey;
 
-      if (!event.ok) {
-        const notFound = event.error.kind === "http" && event.error.status === 404;
-        setLoad({ kind: "error", message: notFound ? UNAVAILABLE_MESSAGE : ApiErrorMessage(event.error) });
-        return;
-      }
-      if (!tags.ok) return setLoad({ kind: "error", message: `Não foi possível carregar as categorias. ${ApiErrorMessage(tags.error)}` });
-      if (!labels.ok) return setLoad({ kind: "error", message: `Não foi possível carregar os links. ${ApiErrorMessage(labels.error)}` });
+  useEffect(() => () => {
+    if (deletedRef.current) client.removeQueries({ queryKey: eventQuery(scope, eventId).queryKey });
+  }, [client, scope, eventId]);
 
-      const detail = ToEventDetail(event.value, tags.value, labels.value);
-
-      let viewerVoted = false;
-      if (viewerId !== null) {
-        const [vote, report] = await Promise.all([api.events.voteStatus(orgId, eventId), api.events.reportStatus(orgId, eventId)]);
-        if (!active) return;
-        if (!vote.ok) return setLoad({ kind: "error", message: `Não foi possível saber se você curtiu este evento. ${ApiErrorMessage(vote.error)}` });
-        if (!report.ok) return setLoad({ kind: "error", message: `Não foi possível saber se você já denunciou este evento. ${ApiErrorMessage(report.error)}` });
-        viewerVoted = vote.value.voted;
-        setReported(report.value.reported);
-      }
-
-      setLoad({
-        kind: "ready",
-        event: detail,
-        likes: { serverCount: event.value.voteCount, viewerVoted, pending: undefined },
-        threshold: org.ok ? org.value.shadowBanThreshold : null,
-      });
-      if (!org.ok) setError(`Não foi possível carregar as regras de denúncia da organização. ${ApiErrorMessage(org.error)}`);
-    })();
-
-    return () => { active = false; };
-  }, [ready, orgId, eventId, viewerId]);
+  /** Applies a change to the cached event, so every screen showing it agrees. */
+  const changeEvent = (change: (current: EventWithVotes) => EventWithVotes) =>
+    client.setQueryData(eventKey, (current) => (current !== undefined && current.ok ? Ok(change(current.value)) : current));
 
   if (auth.status === "error") return <ErrorAlert className="max-w-4xl mx-auto">{auth.message}</ErrorAlert>;
   if (ready && orgId === null) return <ErrorAlert className="max-w-4xl mx-auto">{MISSING_ORG_MESSAGE}</ErrorAlert>;
-  if (load.kind === "loading") return <LoadingMessage>Carregando o evento...</LoadingMessage>;
-  if (load.kind === "error") {
+
+  const failure = LoadFailure(event.error, event.value, tags, labels, vote, report, viewerId !== null);
+  if (failure !== null) {
     return (
       <div className="column items-center gap-4 max-w-4xl mx-auto">
-        <ErrorAlert className="w-full">{load.message}</ErrorAlert>
+        <ErrorAlert className="w-full">{failure}</ErrorAlert>
       </div>
     );
   }
+  if (detail === null || event.value === null || (viewerId !== null && (vote.value === null || report.value === null)))
+    return <LoadingMessage>Carregando o evento...</LoadingMessage>;
 
-  const { event, likes, threshold } = load;
-  const org = event.organizationId;
-
-  /** Applies a change to the likes of the loaded event. */
-  const updateLikes = (change: (likes: Likes) => Likes) =>
-    setLoad((current) => (current.kind === "ready" ? { ...current, likes: change(current.likes) } : current));
+  const org = detail.organizationId;
+  const likes: Likes = { serverCount: event.value.voteCount, viewerVoted: vote.value === null ? false : vote.value.voted, pending: pendingVote };
+  const threshold = organization.value === null ? null : organization.value.shadowBanThreshold;
+  const reported = report.value !== null && report.value.reported;
+  const organizationError = organization.error === null
+    ? ""
+    : `Não foi possível carregar as regras de denúncia da organização. ${ApiErrorMessage(organization.error)}`;
 
   const clearMessages = () => {
     setNotice("");
@@ -153,23 +168,22 @@ export function EventDetailsContainer({ eventId }: EventDetailsContainerProps) {
     if (IsVoteInFlight(likes.pending)) return;
 
     const before = likes.pending;
-    updateLikes((current) => ({ ...current, pending: StartVote(current.pending, current.viewerVoted) }));
+    setPendingVote(StartVote(before, likes.viewerVoted));
 
-    const answer = await api.events.vote(org, event.id);
+    const answer = await api.events.vote(org, detail.id);
     if (!answer.ok) {
-      updateLikes((current) => ({ ...current, pending: before }));
+      setPendingVote(before);
       return setError(`Não foi possível registrar sua curtida. ${ApiErrorMessage(answer.error)}`);
     }
     const voted = answer.value.status === "voted";
-    updateLikes((current) => ({
-      ...current,
-      viewerVoted: voted,
-      pending: current.pending === undefined ? undefined : ConfirmVote(current.pending, voted, 0),
-    }));
+    client.setQueryData(voteStatusQuery(org, detail.id).queryKey, Ok({ voted }));
+    setPendingVote((current) => (current === undefined ? undefined : ConfirmVote(current, voted, 0)));
 
-    const fresh = await api.events.get(org, event.id);
+    const fresh = await api.events.get(org, detail.id);
     if (!fresh.ok) return setError(`Não foi possível atualizar as curtidas. ${ApiErrorMessage(fresh.error)}`);
-    updateLikes(() => ({ serverCount: fresh.value.voteCount, viewerVoted: voted, pending: undefined }));
+    client.setQueryData(eventKey, Ok(fresh.value));
+    setPendingVote(undefined);
+    void client.invalidateQueries({ queryKey: feedKey });
   };
 
   const share = async () => {
@@ -177,7 +191,7 @@ export function EventDetailsContainer({ eventId }: EventDetailsContainerProps) {
     const url = window.location.href;
     if (typeof navigator.share === "function") {
       try {
-        await navigator.share({ title: event.title, text: `Confira o evento “${event.title}”`, url });
+        await navigator.share({ title: detail.title, text: `Confira o evento “${detail.title}”`, url });
         return setNotice("Evento compartilhado.");
       } catch (cause) {
         if (cause instanceof DOMException && cause.name === "AbortError") return setNotice("Compartilhamento cancelado.");
@@ -203,29 +217,29 @@ export function EventDetailsContainer({ eventId }: EventDetailsContainerProps) {
   const sendReport = async (data: ReportFormData) => {
     setReportSending(true);
     setReportError("");
-    const answer = await api.events.report(org, event.id, data);
+    const answer = await api.events.report(org, detail.id, data);
     setReportSending(false);
     if (!answer.ok) {
       if (answer.error.kind === "http" && answer.error.status === 400) {
-        setReported(true);
+        client.setQueryData(reportStatusQuery(org, detail.id).queryKey, Ok({ reported: true }));
         setReporting(false);
         return setError(ALREADY_REPORTED_MESSAGE);
       }
       return setReportError(`Não foi possível enviar a denúncia. ${ApiErrorMessage(answer.error)}`);
     }
-    setReported(true);
+    client.setQueryData(reportStatusQuery(org, detail.id).queryKey, Ok({ reported: true }));
     setReporting(false);
     setNotice("Denúncia enviada. Obrigado por ajudar a moderar o mural.");
   };
 
   /** Applies the banner as the API now answers it to the loaded event. */
   const showBanner = (banner: EventDetail["banner"]) =>
-    setLoad((current) => current.kind === "ready" ? { ...current, event: { ...current.event, banner } } : current);
+    changeEvent((current) => ({ ...current, banner: banner === null ? undefined : banner }));
 
   const replaceBanner = async (picture: Blob) => {
     clearMessages();
     setBannerBusy(true);
-    const answer = await api.images.uploadBanner(org, event.id, picture);
+    const answer = await api.images.uploadBanner(org, detail.id, picture);
     setBannerBusy(false);
     if (!answer.ok) return setError(`Não foi possível enviar o banner. ${ApiErrorMessage(answer.error)}`);
     showBanner(answer.value);
@@ -235,7 +249,7 @@ export function EventDetailsContainer({ eventId }: EventDetailsContainerProps) {
   const removeBanner = async () => {
     clearMessages();
     setBannerBusy(true);
-    const answer = await api.images.removeBanner(org, event.id);
+    const answer = await api.images.removeBanner(org, detail.id);
     setBannerBusy(false);
     if (!answer.ok) return setError(`Não foi possível remover o banner. ${ApiErrorMessage(answer.error)}`);
     showBanner(null);
@@ -248,36 +262,40 @@ export function EventDetailsContainer({ eventId }: EventDetailsContainerProps) {
     setConfirmError("");
 
     if (confirm === "delete") {
-      const answer = await api.events.delete(org, event.id);
+      const answer = await api.events.delete(org, detail.id);
       setConfirmBusy(false);
       if (!answer.ok) return setConfirmError(ApiErrorMessage(answer.error));
       setConfirm(null);
+      deletedRef.current = true;
+      void client.invalidateQueries({ queryKey: feedKey });
+      void client.invalidateQueries({ queryKey: ownEventsKey(org) });
       router.push("/");
       return;
     }
 
-    const answer = event.isHidden ? await api.events.unhide(org, event.id) : await api.events.hide(org, event.id);
+    const answer = detail.isHidden ? await api.events.unhide(org, detail.id) : await api.events.hide(org, detail.id);
     setConfirmBusy(false);
     if (!answer.ok) return setConfirmError(ApiErrorMessage(answer.error));
     setConfirm(null);
-    setLoad((current) => current.kind === "ready" ? { ...current, event: { ...current.event, isHidden: answer.value.isHidden } } : current);
+    changeEvent((current) => ({ ...current, isHidden: answer.value.isHidden }));
+    void client.invalidateQueries({ queryKey: feedKey });
     setNotice(answer.value.isHidden ? "Evento ocultado do mural." : "Evento visível no mural novamente.");
   };
 
   return (
     <>
       <EventDetails
-        event={event}
+        event={detail}
         likes={ShownVoteFor(likes.serverCount, likes.viewerVoted, likes.pending)}
         likeBusy={IsVoteInFlight(likes.pending)}
         canModerate={CanModerate(user, org)}
-        isCreator={viewerId !== null && event.creatorId === viewerId}
-        canDelete={(viewerId !== null && event.creatorId === viewerId) || (user !== null && user.role === "Superadmin")}
+        isCreator={viewerId !== null && detail.creatorId === viewerId}
+        canDelete={(viewerId !== null && detail.creatorId === viewerId) || (user !== null && user.role === "Superadmin")}
         reported={reported}
         loginPrompt={loginPrompt}
-        loginRedirect={`/eventos/${event.id}`}
+        loginRedirect={`/eventos/${detail.id}`}
         notice={notice}
-        error={error}
+        error={error === "" ? organizationError : error}
         onToggleLike={() => void toggleLike()}
         onShare={() => void share()}
         onReport={openReport}
@@ -301,9 +319,9 @@ export function EventDetailsContainer({ eventId }: EventDetailsContainerProps) {
 
       <ConfirmDialog
         isOpen={confirm !== null}
-        title={confirm === "delete" ? "Excluir este evento?" : event.isHidden ? "Reexibir este evento?" : "Ocultar este evento?"}
-        confirmLabel={confirm === "delete" ? "Sim, excluir" : event.isHidden ? "Sim, reexibir" : "Sim, ocultar"}
-        danger={confirm === "delete" || !event.isHidden}
+        title={confirm === "delete" ? "Excluir este evento?" : detail.isHidden ? "Reexibir este evento?" : "Ocultar este evento?"}
+        confirmLabel={confirm === "delete" ? "Sim, excluir" : detail.isHidden ? "Sim, reexibir" : "Sim, ocultar"}
+        danger={confirm === "delete" || !detail.isHidden}
         busy={confirmBusy}
         error={confirmError}
         onConfirm={() => void runConfirmed()}
@@ -311,7 +329,7 @@ export function EventDetailsContainer({ eventId }: EventDetailsContainerProps) {
       >
         {confirm === "delete"
           ? "O evento sai do mural e dos totens. Esta ação não pode ser desfeita."
-          : event.isHidden
+          : detail.isHidden
             ? "O evento volta a aparecer no mural e nos totens."
             : "O evento deixa de aparecer no mural e nos totens até ser reexibido. A ação fica registrada na auditoria."}
       </ConfirmDialog>

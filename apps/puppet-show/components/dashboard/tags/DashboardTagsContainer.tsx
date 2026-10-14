@@ -10,10 +10,15 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { api, ApiErrorMessage } from "@/lib/api/client";
 import type { Tag } from "@/lib/api/schemas";
+import { tagsQuery } from "@/lib/query/queries";
 import { Err, Ok, type Result } from "@/lib/result";
+import { Freshness } from "@/lib/query/options";
+import { LoadedQuery } from "@/lib/query/loaded";
+import { useLoaded } from "@/lib/query/useLoaded";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { ErrorAlert, LoadingMessage, StatusMessage } from "@/components/ui/Feedback";
 import { SectionDenialFor, SelectOrgNotice, useDashboard } from "../DashboardContext";
@@ -27,6 +32,9 @@ async function LoadTags(): Promise<Result<Tag[], string>> {
   return Ok(tags.value);
 }
 
+/** Every tag, as the review list shows them. */
+export const tagReviewQuery = () => LoadedQuery(["dashboard", "tags"], LoadTags, Freshness.short);
+
 /** The page, guarded by the section rules. */
 export function DashboardTagsContainer() {
   const { user, orgId } = useDashboard();
@@ -38,17 +46,13 @@ export function DashboardTagsContainer() {
 
 /** The review list; remounted when the organization changes. */
 function TagReview() {
-  const [tags, setTags] = useState<Result<Tag[], string> | null>(null);
+  const client = useQueryClient();
+  const loaded = useLoaded(tagReviewQuery());
+  const tags = loaded.result;
   const [confirming, setConfirming] = useState<Tag | null>(null);
   const [busy, setBusy] = useState(false);
   const [dialogError, setDialogError] = useState("");
   const [status, setStatus] = useState("");
-
-  useEffect(() => {
-    let active = true;
-    LoadTags().then((result) => { if (active) setTags(result); });
-    return () => { active = false; };
-  }, []);
 
   const handleConfirm = async () => {
     if (confirming === null) return;
@@ -63,9 +67,8 @@ function TagReview() {
     }
 
     const promoted = result.value;
-    setTags((current) => current !== null && current.ok
-      ? Ok(current.value.map((tag) => tag.id === promoted.id ? promoted : tag))
-      : current);
+    loaded.update((list) => list.map((tag) => tag.id === promoted.id ? promoted : tag));
+    void client.invalidateQueries({ queryKey: tagsQuery().queryKey });
     setStatus(`A tag “${promoted.name}” agora é pública e pode ser usada como filtro no mural.`);
     setConfirming(null);
   };

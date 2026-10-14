@@ -21,6 +21,8 @@ export type EventCardProps = {
   /** Path to come back to after logging in. */
   loginRedirect?: string;
   onToggleLike: (eventId: string) => void;
+  /** Called when the person shows intent to open the event (hover, focus, touch), to load it beforehand. */
+  onIntent?: (eventId: string) => void;
   /** Asks to delete the event; only offered to the event's creator and to a Superadmin. */
   onDelete: (eventId: string) => void;
 };
@@ -30,7 +32,7 @@ export type EventCardProps = {
  * place, tags, like button and, on the viewer's own events, "Excluir".
  */
 export function EventCard({
-  card, today, likeBusy = false, loginPrompt = false, loginRedirect = "/", onToggleLike, onDelete,
+  card, today, likeBusy = false, loginPrompt = false, loginRedirect = "/", onToggleLike, onIntent, onDelete,
 }: EventCardProps) {
   const day = FeaturedDay(card.schedule, today);
   const multiDay = MultiDayLabel(card.schedule);
@@ -42,7 +44,13 @@ export function EventCard({
 
         <div className="column gap-1 min-w-0 flex-1">
           <h2 id={`event-${card.id}-title`} className="text-lg font-semibold leading-snug break-words">
-            <Link href={`/eventos/${card.id}`} className="hover:text-main hover:underline focus-ring rounded">
+            <Link
+              href={`/eventos/${card.id}`}
+              onMouseEnter={() => onIntent?.(card.id)}
+              onFocus={() => onIntent?.(card.id)}
+              onTouchStart={() => onIntent?.(card.id)}
+              className="hover:text-main hover:underline focus-ring rounded"
+            >
               {card.title}
             </Link>
           </h2>
@@ -79,7 +87,14 @@ export function EventCard({
           onToggle={() => onToggleLike(card.id)}
         />
 
-        <Link href={`/eventos/${card.id}`} className="button clean touch" aria-label={`Ver detalhes de “${card.title}”`}>
+        <Link
+          href={`/eventos/${card.id}`}
+          onMouseEnter={() => onIntent?.(card.id)}
+          onFocus={() => onIntent?.(card.id)}
+          onTouchStart={() => onIntent?.(card.id)}
+          className="button clean touch"
+          aria-label={`Ver detalhes de “${card.title}”`}
+        >
           Ver detalhes
         </Link>
 

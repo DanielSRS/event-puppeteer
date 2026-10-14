@@ -27,13 +27,15 @@ export type EventListProps = {
   /** Path to come back to after logging in. */
   loginRedirect: string;
   onToggleLike: (eventId: string) => void;
+  /** Called when the person shows intent to open an event, to load it beforehand. */
+  onIntent?: (eventId: string) => void;
   /** Deletes one of the viewer's own events; the error is text for the person. */
   onDelete: (eventId: string) => Promise<Result<void, string>>;
 };
 
 /** The cards, an empty state, and the confirmation before deleting an own event. */
 export function EventList({
-  cards, today, emptyMessage, isLikeInFlight, loginPromptFor, loginRedirect, onToggleLike, onDelete,
+  cards, today, emptyMessage, isLikeInFlight, loginPromptFor, loginRedirect, onToggleLike, onIntent, onDelete,
 }: EventListProps) {
   const [deleting, setDeleting] = useState<{ id: string; title: string } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -71,6 +73,7 @@ export function EventList({
                 loginPrompt={loginPromptFor === card.id}
                 loginRedirect={loginRedirect}
                 onToggleLike={onToggleLike}
+                onIntent={onIntent}
                 onDelete={(id) => {
                   setNotice("");
                   setDeleteError("");

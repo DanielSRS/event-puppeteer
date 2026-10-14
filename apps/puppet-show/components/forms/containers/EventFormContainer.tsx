@@ -15,12 +15,15 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { EventForm } from "../EventForm";
 import type { Coordinates } from "../EventFormBasics";
 import { ErrorAlert, LoadingMessage } from "@/components/ui/Feedback";
 import { api, ApiErrorMessage } from "@/lib/api/client";
-import type { CreateEventInput, Event, LinkLabel, Tag } from "@/lib/api/schemas";
+import type { CreateEventInput, Event, Tag } from "@/lib/api/schemas";
+import { feedQuery, linkLabelsQuery, ownEventsKey, tagsQuery } from "@/lib/query/queries";
+import { useApiQuery } from "@/lib/query/useApiQuery";
 import { Err, Ok, type Result } from "@/lib/result";
 import { TodayInBrazil } from "@/utils/date";
 
@@ -33,12 +36,6 @@ export type EventFormContainerProps = {
   /** Shows a "Cancelar" button when given. */
   onCancel?: () => void;
 };
-
-/** Where the catalogs stand. */
-type Catalog =
-  | { status: "loading" }
-  | { status: "error"; message: string }
-  | { status: "ready"; tags: Tag[]; linkLabels: LinkLabel[] };
 
 /** Message for each way the browser can fail to give a position. */
 function GeolocationMessage(error: GeolocationPositionError): string {
@@ -65,40 +62,28 @@ function ReadPosition(): Promise<Result<Coordinates, string>> {
   });
 }
 
-/** Loads the tags and link labels the editor offers. */
-async function FetchCatalog(): Promise<Catalog> {
-  const [tags, linkLabels] = await Promise.all([api.tags.list(), api.linkLabels.list()]);
-  if (!tags.ok) return { status: "error", message: `Não foi possível carregar as tags. ${ApiErrorMessage(tags.error)}` };
-  if (!linkLabels.ok)
-    return { status: "error", message: `Não foi possível carregar os tipos de link. ${ApiErrorMessage(linkLabels.error)}` };
-  return { status: "ready", tags: tags.value, linkLabels: linkLabels.value };
-}
-
 /** The event editor wired to the API. */
 export function EventFormContainer({ orgId, onCreated, onCancel }: EventFormContainerProps) {
   const [today] = useState(TodayInBrazil);
-  const [catalog, setCatalog] = useState<Catalog>({ status: "loading" });
+  const client = useQueryClient();
+  const tags = useApiQuery(tagsQuery());
+  const linkLabels = useApiQuery(linkLabelsQuery());
   const [busy, setBusy] = useState(false);
   const [generalError, setGeneralError] = useState("");
   /** The event published without its banner, and why the banner upload failed. */
   const [bannerFailure, setBannerFailure] = useState<{ event: Event; message: string } | null>(null);
 
-  useEffect(() => {
-    let active = true;
-    FetchCatalog().then((next) => { if (active) setCatalog(next); });
-    return () => { active = false; };
-  }, []);
-
-  async function reloadCatalog() {
-    setCatalog({ status: "loading" });
-    setCatalog(await FetchCatalog());
+  function reloadCatalog() {
+    tags.refetch();
+    linkLabels.refetch();
   }
 
-  /** Adds `tag` to the catalog the form offers, unless it's already there. */
+  /** Adds `tag` to the catalog the form offers (and every other screen), unless it's already there. */
   function remember(tag: Tag) {
-    setCatalog((current) => current.status === "ready" && !current.tags.some((known) => known.id === tag.id)
-      ? { ...current, tags: [...current.tags, tag] }
-      : current);
+    client.setQueryData(tagsQuery().queryKey, (current) => {
+      if (current === undefined || !current.ok || current.value.some((known) => known.id === tag.id)) return current;
+      return Ok([...current.value, tag]);
+    });
   }
 
   async function createTag(name: string): Promise<Result<Tag, string>> {
@@ -112,7 +97,7 @@ export function EventFormContainer({ orgId, onCreated, onCancel }: EventFormCont
 
     const all = await api.tags.list();
     if (!all.ok) return Err(`A tag já existe, mas não foi possível carregá-la. ${ApiErrorMessage(all.error)}`);
-    setCatalog((current) => current.status === "ready" ? { ...current, tags: all.value } : current);
+    client.setQueryData(tagsQuery().queryKey, Ok(all.value));
 
     const wanted = name.trim().toLocaleLowerCase("pt-BR");
     const existing = all.value.find((tag) => tag.name.trim().toLocaleLowerCase("pt-BR") === wanted);
@@ -139,6 +124,8 @@ export function EventFormContainer({ orgId, onCreated, onCancel }: EventFormCont
       }
     }
     setBusy(false);
+    void client.invalidateQueries({ queryKey: feedQuery(orgId).queryKey });
+    void client.invalidateQueries({ queryKey: ownEventsKey(orgId) });
     onCreated(created.value);
   }
 
@@ -153,12 +140,16 @@ export function EventFormContainer({ orgId, onCreated, onCancel }: EventFormCont
     );
   }
 
-  if (catalog.status === "loading") return <LoadingMessage>Carregando tags e tipos de link...</LoadingMessage>;
-
-  if (catalog.status === "error") {
+  if (tags.value === null || linkLabels.value === null) {
+    const message = tags.error !== null
+      ? `Não foi possível carregar as tags. ${ApiErrorMessage(tags.error)}`
+      : linkLabels.error !== null
+        ? `Não foi possível carregar os tipos de link. ${ApiErrorMessage(linkLabels.error)}`
+        : null;
+    if (message === null) return <LoadingMessage>Carregando tags e tipos de link...</LoadingMessage>;
     return (
       <div className="column gap-3">
-        <ErrorAlert>{catalog.message}</ErrorAlert>
+        <ErrorAlert>{message}</ErrorAlert>
         <button type="button" onClick={reloadCatalog} className="button clean self-start min-h-10">Tentar de novo</button>
       </div>
     );
@@ -166,8 +157,8 @@ export function EventFormContainer({ orgId, onCreated, onCancel }: EventFormCont
 
   return (
     <EventForm
-      tags={catalog.tags}
-      linkLabels={catalog.linkLabels}
+      tags={tags.value}
+      linkLabels={linkLabels.value}
       today={today}
       busy={busy}
       generalError={generalError}

@@ -9,10 +9,13 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { api, ApiErrorMessage } from "@/lib/api/client";
 import type { Event } from "@/lib/api/schemas";
 import { Err, Ok, type Result } from "@/lib/result";
+import { Freshness } from "@/lib/query/options";
+import { LoadedQuery } from "@/lib/query/loaded";
+import { useLoaded } from "@/lib/query/useLoaded";
 import { ErrorAlert, LoadingMessage, StatusMessage } from "@/components/ui/Feedback";
 import { SectionDenialFor, SelectOrgNotice, useDashboard } from "../DashboardContext";
 import { AccessNotice } from "../global/AccessNotice";
@@ -43,6 +46,10 @@ async function LoadQueue(orgId: string): Promise<Result<ReportQueueItem[], strin
   }));
 }
 
+/** The moderation queue of `orgId`. */
+export const reportQueueQuery = (orgId: string) =>
+  LoadedQuery(["dashboard", "reports", orgId], () => LoadQueue(orgId), Freshness.live);
+
 /** The page, guarded by the section rules. */
 export function DashboardReportsContainer() {
   const { user, orgId } = useDashboard();
@@ -54,15 +61,10 @@ export function DashboardReportsContainer() {
 
 /** The queue of one organization; remounted when the organization changes. */
 function ReportQueue({ orgId }: { orgId: string }) {
-  const [queue, setQueue] = useState<Result<ReportQueueItem[], string> | null>(null);
+  const loaded = useLoaded(reportQueueQuery(orgId));
+  const queue = loaded.result;
   const [busyEventId, setBusyEventId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null);
-
-  useEffect(() => {
-    let active = true;
-    LoadQueue(orgId).then((result) => { if (active) setQueue(result); });
-    return () => { active = false; };
-  }, [orgId]);
 
   const handleSetHidden = async (eventId: string, hidden: boolean) => {
     setBusyEventId(eventId);
@@ -76,9 +78,7 @@ function ReportQueue({ orgId }: { orgId: string }) {
     }
 
     const updated = result.value;
-    setQueue((current) => current !== null && current.ok
-      ? Ok(current.value.map((item) => item.eventId === eventId ? { ...item, event: ToReportedEvent(updated) } : item))
-      : current);
+    loaded.update((items) => items.map((item) => item.eventId === eventId ? { ...item, event: ToReportedEvent(updated) } : item));
     setFeedback({
       ok: true,
       text: updated.isHidden ? `“${updated.title}” foi ocultado do mural.` : `“${updated.title}” voltou a aparecer no mural.`,

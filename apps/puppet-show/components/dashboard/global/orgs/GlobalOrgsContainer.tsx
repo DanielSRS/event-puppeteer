@@ -7,11 +7,16 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { api, ApiErrorMessage, type ApiError } from "@/lib/api/client";
 import { SortByName } from "@/utils/text";
 import type { Organization, OrganizationInput } from "@/lib/api/schemas";
+import { organizationQuery, organizationsQuery } from "@/lib/query/queries";
 import { Err, Ok, type Result } from "@/lib/result";
+import { Freshness } from "@/lib/query/options";
+import { LoadedQuery } from "@/lib/query/loaded";
+import { useLoaded } from "@/lib/query/useLoaded";
 import { Drawer } from "@/components/ui/Drawer";
 import { ErrorAlert, LoadingMessage, StatusMessage } from "@/components/ui/Feedback";
 import { SectionDenialFor, useDashboard } from "../../DashboardContext";
@@ -29,6 +34,9 @@ async function LoadOrganizations(): Promise<Result<Organization[], string>> {
   return Ok(SortByName(orgs.value));
 }
 
+/** Every organization, sorted by name, as the page lists them. */
+export const organizationListQuery = () => LoadedQuery(["dashboard", "global-orgs"], LoadOrganizations, Freshness.short);
+
 /** Message for a failed save; a 409 means the slug is taken. */
 function SaveErrorMessage(error: ApiError): string {
   if (error.kind === "http" && error.status === 409) return "Já existe uma organização com esse identificador.";
@@ -45,17 +53,13 @@ export function GlobalOrgsContainer() {
 
 /** List and editor of organizations. */
 function Organizations() {
-  const [orgs, setOrgs] = useState<Result<Organization[], string> | null>(null);
+  const client = useQueryClient();
+  const loaded = useLoaded(organizationListQuery());
+  const orgs = loaded.result;
   const [editing, setEditing] = useState<Editing>({ kind: "closed" });
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [status, setStatus] = useState("");
-
-  useEffect(() => {
-    let active = true;
-    LoadOrganizations().then((result) => { if (active) setOrgs(result); });
-    return () => { active = false; };
-  }, []);
 
   const open = (next: Editing) => { setSaveError(""); setStatus(""); setEditing(next); };
 
@@ -64,9 +68,9 @@ function Organizations() {
     setSaving(false);
     if (!result.ok) { setSaveError(SaveErrorMessage(result.error)); return; }
     const saved = result.value;
-    setOrgs((current) => current !== null && current.ok
-      ? Ok(SortByName(current.value.some((o) => o.id === saved.id) ? current.value.map((o) => o.id === saved.id ? saved : o) : [...current.value, saved]))
-      : current);
+    loaded.update((list) => SortByName(list.some((o) => o.id === saved.id) ? list.map((o) => o.id === saved.id ? saved : o) : [...list, saved]));
+    client.setQueryData(organizationQuery(saved.id).queryKey, Ok(saved));
+    void client.invalidateQueries({ queryKey: organizationsQuery().queryKey });
     setStatus(`Organização “${saved.name}” ${verb}.`);
     setEditing({ kind: "closed" });
   };

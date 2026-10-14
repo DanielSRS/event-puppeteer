@@ -9,15 +9,23 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useMemo } from "react";
 import { api, ApiErrorMessage } from "@/lib/api/client";
+import { organizationsQuery } from "@/lib/query/queries";
+import { useApiQuery } from "@/lib/query/useApiQuery";
 import { ErrorAlert, LoadingMessage } from "@/components/ui/Feedback";
 import { SectionDenialFor, useDashboard } from "../../DashboardContext";
 import { AccessNotice } from "../AccessNotice";
-import { ImageReviewQueue } from "../../images/ImageReviewQueue";
+import { ImageReviewQueue, imageReviewQuery } from "../../images/ImageReviewQueue";
 
 /** Loads the escalated queue. */
 const LoadEscalated = () => api.images.escalated();
+
+/** Where the escalated queue is cached. */
+const ESCALATED_KEY = ["dashboard", "global-images"] as const;
+
+/** The Images only Superadmins can review. */
+export const escalatedImagesQuery = () => imageReviewQuery(ESCALATED_KEY, LoadEscalated);
 
 /** The page, guarded by the section rules. */
 export function GlobalImagesContainer() {
@@ -29,20 +37,16 @@ export function GlobalImagesContainer() {
 
 /** The escalated queue, with organization names. */
 function EscalatedQueue() {
-  const [names, setNames] = useState<{ ok: true; value: ReadonlyMap<string, string> } | { ok: false; error: string } | null>(null);
+  const orgs = useApiQuery(organizationsQuery());
+  const names = useMemo<ReadonlyMap<string, string> | null>(
+    () => (orgs.value === null ? null : new Map(orgs.value.map((org) => [org.id, org.name]))),
+    [orgs.value],
+  );
 
-  useEffect(() => {
-    let active = true;
-    api.organizations.list().then((orgs) => {
-      if (!active) return;
-      setNames(orgs.ok
-        ? { ok: true, value: new Map(orgs.value.map((org) => [org.id, org.name])) }
-        : { ok: false, error: `Não foi possível carregar as organizações. ${ApiErrorMessage(orgs.error)}` });
-    });
-    return () => { active = false; };
-  }, []);
-
-  if (names === null) return <LoadingMessage>Carregando organizações...</LoadingMessage>;
-  if (!names.ok) return <ErrorAlert>{names.error}</ErrorAlert>;
-  return <ImageReviewQueue load={LoadEscalated} organizationNames={names.value} />;
+  if (names === null) {
+    return orgs.error === null
+      ? <LoadingMessage>Carregando organizações...</LoadingMessage>
+      : <ErrorAlert>{`Não foi possível carregar as organizações. ${ApiErrorMessage(orgs.error)}`}</ErrorAlert>;
+  }
+  return <ImageReviewQueue cacheKey={ESCALATED_KEY} load={LoadEscalated} organizationNames={names} />;
 }

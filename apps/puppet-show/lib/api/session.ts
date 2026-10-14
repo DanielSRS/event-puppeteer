@@ -14,6 +14,9 @@ import { Err, Ok, type Result } from "@/lib/result";
 
 const TOKEN_KEY = "puppet-show:token";
 
+/** Window event that tells the app the session changed (login, logout). */
+export const AUTH_EVENT = "auth-change";
+
 /** The browser refused access to `localStorage`. */
 export type StorageUnavailable = { kind: "storage-unavailable" };
 

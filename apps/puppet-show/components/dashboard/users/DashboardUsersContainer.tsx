@@ -9,9 +9,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { api, ApiErrorMessage } from "@/lib/api/client";
 import type { OrgRole, User } from "@/lib/api/schemas";
 import { Err, Ok, type Result } from "@/lib/result";
+import { Freshness } from "@/lib/query/options";
+import { LoadedQuery } from "@/lib/query/loaded";
+import { useLoaded } from "@/lib/query/useLoaded";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { ErrorAlert, LoadingMessage, StatusMessage } from "@/components/ui/Feedback";
 import { SectionDenialFor, SelectOrgNotice, useDashboard } from "../DashboardContext";
@@ -22,15 +26,16 @@ import { FullName, UserList } from "./UserList";
 /** Time without typing before the search runs. */
 const SEARCH_DELAY_MS = 300;
 
-/** Results of one search (`query` = what was searched, trimmed). */
-type SearchResult = { query: string; users: Result<User[], string> };
-
 /** Loads the people of `orgId` whose name matches `query` (everyone when empty). */
 async function LoadUsers(orgId: string, query: string): Promise<Result<User[], string>> {
   const users = await api.users.list(orgId, query === "" ? undefined : query);
   if (!users.ok) return Err(`Não foi possível carregar as pessoas. ${ApiErrorMessage(users.error)}`);
   return Ok([...users.value].sort((a, b) => FullName(a).localeCompare(FullName(b), "pt-BR")));
 }
+
+/** The people of `orgId` whose name matches `query` (everyone when empty). */
+export const usersQuery = (orgId: string, query: string) =>
+  LoadedQuery(["dashboard", "users", orgId, query], () => LoadUsers(orgId, query), Freshness.short);
 
 /** The page, guarded by the section rules. */
 export function DashboardUsersContainer() {
@@ -45,7 +50,9 @@ export function DashboardUsersContainer() {
 function Users({ orgId, currentUserId, isSuperadmin }: { orgId: string; currentUserId: string; isSuperadmin: boolean }) {
   const [search, setSearch] = useState("");
   const [query, setQuery] = useState("");
-  const [result, setResult] = useState<SearchResult | null>(null);
+  const client = useQueryClient();
+  const loaded = useLoaded(usersQuery(orgId, query));
+  const result = loaded.result === null ? null : { query, users: loaded.result };
   const [busyUserId, setBusyUserId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null);
   const [removing, setRemoving] = useState<User | null>(null);
@@ -58,15 +65,14 @@ function Users({ orgId, currentUserId, isSuperadmin }: { orgId: string; currentU
     return () => clearTimeout(timer);
   }, [search]);
 
-  useEffect(() => {
-    let active = true;
-    LoadUsers(orgId, query).then((users) => { if (active) setResult({ query, users }); });
-    return () => { active = false; };
-  }, [orgId, query]);
-
-  /** Replaces or drops one person in the current results. */
-  const updateResults = (change: (users: User[]) => User[]) =>
-    setResult((current) => current !== null && current.users.ok ? { ...current, users: Ok(change(current.users.value)) } : current);
+  /** Replaces or drops one person in the current results; other searches' results are forgotten, as they may list them. */
+  const updateResults = (change: (users: User[]) => User[]) => {
+    loaded.update(change);
+    client.removeQueries({
+      queryKey: ["dashboard", "users", orgId],
+      predicate: (cached) => cached.queryKey[3] !== query,
+    });
+  };
 
   const handleChangeRole = async (user: User, role: OrgRole) => {
     setBusyUserId(user.id);

@@ -11,10 +11,12 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
 import { api, ApiErrorMessage } from "@/lib/api/client";
 import type { AuditEntry, User } from "@/lib/api/schemas";
 import { Err, Ok, type Result } from "@/lib/result";
+import { Freshness } from "@/lib/query/options";
+import { LoadedQuery } from "@/lib/query/loaded";
+import { useLoaded } from "@/lib/query/useLoaded";
 import { ErrorAlert, LoadingMessage } from "@/components/ui/Feedback";
 import { SectionDenialFor, SelectOrgNotice, useDashboard } from "../DashboardContext";
 import { AccessNotice } from "../global/AccessNotice";
@@ -25,7 +27,7 @@ import { AuditList } from "./AuditList";
 type AuditPage = { rows: AuditRow[]; problems: string[] };
 
 /** `"Ana Admin (admin@x.org)"`. */
-function PersonName(user: User): string {
+export function PersonName(user: User): string {
   return `${user.firstName} ${user.lastName} (${user.email})`;
 }
 
@@ -96,6 +98,10 @@ async function LoadAudit(orgId: string, meId: string, meName: string): Promise<R
   return Ok({ rows: NewestFirst(entries.value).map((entry) => ToAuditRow(entry, lookups)), problems });
 }
 
+/** The audit trail of `orgId`, as `meId` (named `meName`) sees it. */
+export const auditQuery = (orgId: string, meId: string, meName: string) =>
+  LoadedQuery(["dashboard", "audit", orgId, meId], () => LoadAudit(orgId, meId, meName), Freshness.short);
+
 /** The page, guarded by the section rules. */
 export function DashboardAuditContainer() {
   const { user, orgId } = useDashboard();
@@ -107,13 +113,7 @@ export function DashboardAuditContainer() {
 
 /** The trail of one organization; remounted when the organization changes. */
 function AuditTrail({ orgId, meId, meName }: { orgId: string; meId: string; meName: string }) {
-  const [page, setPage] = useState<Result<AuditPage, string> | null>(null);
-
-  useEffect(() => {
-    let active = true;
-    LoadAudit(orgId, meId, meName).then((result) => { if (active) setPage(result); });
-    return () => { active = false; };
-  }, [orgId, meId, meName]);
+  const page = useLoaded(auditQuery(orgId, meId, meName)).result;
 
   if (page === null) return <LoadingMessage>Carregando auditoria...</LoadingMessage>;
   if (!page.ok) return <ErrorAlert>{page.error}</ErrorAlert>;

@@ -21,99 +21,101 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { ErrorAlert, LoadingMessage } from "@/components/ui/Feedback";
 import { useAuth } from "@/hooks/useAuth";
-import { api, ApiErrorMessage } from "@/lib/api/client";
+import { ApiErrorMessage, type ApiError } from "@/lib/api/client";
+import { organizationQuery, organizationsQuery } from "@/lib/query/queries";
+import { useApiQuery } from "@/lib/query/useApiQuery";
+import { usePrefetch } from "@/lib/query/usePrefetch";
+import { UserOrgId } from "@/lib/api/schemas";
 import { SortByName } from "@/utils/text";
-import type { User } from "@/lib/api/schemas";
 import { AccessDeniedNotice } from "./AccessDeniedNotice";
 import type { ContextOrganization } from "./ContextSwitcher";
 import { DashboardProvider, type DashboardSession } from "./DashboardContext";
 import { CONTEXT_NOT_REMEMBERED_MESSAGE, ReadStoredContext, StoreContext } from "./DashboardContextStorage";
 import { DashboardLayout } from "./DashboardLayout";
 import { AccessibleSections, CanAccess, SectionDenialFor, SectionForPath } from "./DashboardSections";
+import { SectionWarmups } from "./sectionWarmups";
 
 /** Name shown for the Superadmin's global context. */
 const GLOBAL_NAME = "Sistema Global";
 
-/** Where the shell stands once the session is known. */
-type Shell =
-  | { status: "loading" }
-  | { status: "error"; message: string }
-  | {
-    status: "ready";
-    /** Whose shell this is; a different user means it must be loaded again. */
-    userId: string;
-    organizations: ContextOrganization[];
-    /** Organization being managed; `null` = global context. */
-    orgId: string | null;
-    /** Something the person should know about the context (empty for nothing). */
-    notice: string;
-  };
+/** The Superadmin's choice of context, remembered per user. */
+type Choice = {
+  /** Whose choice this is; a different user means it must be read again. */
+  userId: string;
+  /** Organization being managed; `null` = global context. */
+  orgId: string | null;
+  /** Something the person should know about the context (empty for nothing). */
+  notice: string;
+};
 
-/** Loads the organizations `user` can manage and the context to start in. */
-async function LoadShell(user: User): Promise<Shell> {
-  if (user.role !== "Superadmin") {
-    const org = await api.organizations.get(user.organizationId);
-    if (!org.ok) return { status: "error", message: `Não foi possível carregar sua organização. ${ApiErrorMessage(org.error)}` };
-    return {
-      status: "ready", userId: user.id, organizations: [{ id: org.value.id, name: org.value.name }],
-      orgId: user.organizationId, notice: "",
-    };
-  }
-
-  const orgs = await api.organizations.list();
-  if (!orgs.ok) return { status: "error", message: `Não foi possível carregar as organizações. ${ApiErrorMessage(orgs.error)}` };
-  const organizations = SortByName(orgs.value).map((org) => ({ id: org.id, name: org.name }));
-
-  const stored = ReadStoredContext(user.id);
-  if (!stored.ok) return { status: "ready", userId: user.id, organizations, orgId: null, notice: CONTEXT_NOT_REMEMBERED_MESSAGE };
+/** The context a Superadmin starts in: the remembered one when it still exists. */
+function StartingChoice(userId: string, organizations: ContextOrganization[]): Choice {
+  const stored = ReadStoredContext(userId);
+  if (!stored.ok) return { userId, orgId: null, notice: CONTEXT_NOT_REMEMBERED_MESSAGE };
 
   const saved = stored.value;
-  if (saved.kind !== "org") return { status: "ready", userId: user.id, organizations, orgId: null, notice: "" };
-  if (organizations.some((org) => org.id === saved.orgId))
-    return { status: "ready", userId: user.id, organizations, orgId: saved.orgId, notice: "" };
+  if (saved.kind !== "org") return { userId, orgId: null, notice: "" };
+  if (organizations.some((org) => org.id === saved.orgId)) return { userId, orgId: saved.orgId, notice: "" };
 
   return {
-    status: "ready", userId: user.id, organizations, orgId: null,
+    userId, orgId: null,
     notice: "A organização que você gerenciava da última vez não existe mais. Você está no Sistema Global.",
   };
+}
+
+/** Text for a failed load of the organizations the person manages. */
+function ShellErrorMessage(superadmin: boolean, error: ApiError): string {
+  return superadmin
+    ? `Não foi possível carregar as organizações. ${ApiErrorMessage(error)}`
+    : `Não foi possível carregar sua organização. ${ApiErrorMessage(error)}`;
 }
 
 /** Wraps every dashboard page. */
 export function DashboardContainer({ children }: { children: ReactNode }) {
   const { state } = useAuth();
+  const prefetch = usePrefetch();
   const router = useRouter();
   const pathname = usePathname();
   const user = state.status === "authenticated" ? state.user : null;
+  const superadmin = user !== null && user.role === "Superadmin";
+  const ownOrgId = user === null ? null : UserOrgId(user);
 
-  const [shell, setShell] = useState<Shell>({ status: "loading" });
+  const ownOrg = useApiQuery(organizationQuery(ownOrgId === null ? "" : ownOrgId), { enabled: ownOrgId !== null });
+  const allOrgs = useApiQuery(organizationsQuery(), { enabled: superadmin });
+  const [picked, setPicked] = useState<Choice | null>(null);
+
+  const organizations = useMemo<ContextOrganization[] | null>(() => {
+    if (superadmin) return allOrgs.value === null ? null : SortByName(allOrgs.value).map((org) => ({ id: org.id, name: org.name }));
+    return ownOrg.value === null ? null : [{ id: ownOrg.value.id, name: ownOrg.value.name }];
+  }, [superadmin, allOrgs.value, ownOrg.value]);
 
   useEffect(() => {
     if (state.status === "anonymous") router.replace(`/entrar?redirect=${encodeURIComponent(pathname)}`);
   }, [state.status, router, pathname]);
 
-  useEffect(() => {
-    if (user === null) return;
-    let active = true;
-    LoadShell(user).then((next) => { if (active) setShell(next); });
-    return () => { active = false; };
-  }, [user]);
+  /** The Superadmin's context: what they picked in this session, else the remembered one. */
+  const choice = user === null || !superadmin || organizations === null
+    ? null
+    : picked !== null && picked.userId === user.id ? picked : StartingChoice(user.id, organizations);
 
-  const session = useMemo<DashboardSession | null>(
-    () => (user !== null && shell.status === "ready" ? { user, orgId: shell.orgId } : null),
-    [user, shell],
-  );
+  const session = useMemo<DashboardSession | null>(() => {
+    if (user === null || organizations === null) return null;
+    if (!superadmin) return { user, orgId: ownOrgId };
+    return choice === null ? null : { user, orgId: choice.orgId };
+  }, [user, superadmin, ownOrgId, organizations, choice]);
 
   if (state.status === "loading") return <LoadingMessage>Carregando painel...</LoadingMessage>;
   if (state.status === "error") return <ErrorAlert className="m-4">{state.message}</ErrorAlert>;
   if (state.status === "anonymous") return <LoadingMessage>Redirecionando para o login...</LoadingMessage>;
 
-  if (shell.status === "error") {
+  const failure = superadmin ? allOrgs.error : ownOrg.error;
+  if (organizations === null && failure !== null) {
     return (
       <div className="column gap-3 p-4">
-        <ErrorAlert>{shell.message}</ErrorAlert>
+        <ErrorAlert>{ShellErrorMessage(superadmin, failure)}</ErrorAlert>
         <button
           type="button"
-          onClick={async () => { setShell({ status: "loading" }); setShell(await LoadShell(state.user)); }}
+          onClick={superadmin ? allOrgs.refetch : ownOrg.refetch}
           className="button clean min-h-10 self-start"
         >
           Tentar de novo
@@ -122,10 +124,10 @@ export function DashboardContainer({ children }: { children: ReactNode }) {
     );
   }
 
-  if (shell.status === "loading" || session === null || shell.userId !== state.user.id)
-    return <LoadingMessage>Carregando painel...</LoadingMessage>;
+  if (organizations === null || session === null) return <LoadingMessage>Carregando painel...</LoadingMessage>;
 
-  const { organizations, orgId, notice } = shell;
+  const orgId = session.orgId;
+  const notice = superadmin && choice !== null ? choice.notice : "";
   const current = organizations.find((org) => org.id === orgId);
   if (orgId !== null && current === undefined)
     return <ErrorAlert className="m-4">A organização {orgId} não está entre as que você pode gerenciar.</ErrorAlert>;
@@ -138,9 +140,7 @@ export function DashboardContainer({ children }: { children: ReactNode }) {
 
   function selectContext(next: string | null) {
     const saved = StoreContext(me.id, next);
-    setShell((prev) => prev.status === "ready"
-      ? { ...prev, orgId: next, notice: saved.ok ? "" : CONTEXT_NOT_REMEMBERED_MESSAGE }
-      : prev);
+    setPicked({ userId: me.id, orgId: next, notice: saved.ok ? "" : CONTEXT_NOT_REMEMBERED_MESSAGE });
 
     if (section === null) return;
     const target = CanAccess(section, me, next)
@@ -158,6 +158,7 @@ export function DashboardContainer({ children }: { children: ReactNode }) {
         organizations={organizations}
         pathname={pathname}
         onSelectOrg={selectContext}
+        onIntent={(target) => prefetch(...SectionWarmups(target, me, orgId))}
         notices={notice === "" ? undefined : <ErrorAlert>{notice}</ErrorAlert>}
       >
         {denial === null

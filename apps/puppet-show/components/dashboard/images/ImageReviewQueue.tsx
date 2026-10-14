@@ -10,15 +10,20 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { api, ApiErrorMessage, type ApiResult } from "@/lib/api/client";
 import type { ImageReviewItem } from "@/lib/api/schemas";
-import { Err, Ok, type Result } from "@/lib/result";
+import { Err, Ok } from "@/lib/result";
+import { Freshness } from "@/lib/query/options";
+import { LoadedQuery } from "@/lib/query/loaded";
+import { useLoaded } from "@/lib/query/useLoaded";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { ErrorAlert, LoadingMessage, StatusMessage } from "@/components/ui/Feedback";
 import { ImageReviewList, ImageSubject } from "./ImageReviewList";
 
 export type ImageReviewQueueProps = {
+  /** Identifies this queue in the cache. */
+  cacheKey: readonly unknown[];
   /** Fetches the queue. */
   load: () => Promise<ApiResult<ImageReviewItem[]>>;
   /** Organization names by id, for queues that mix organizations. */
@@ -36,26 +41,24 @@ function Undecidable(result: ApiResult<unknown>, item: ImageReviewItem): string 
     : `${ImageSubject(item)} já tinha sido analisada por outra pessoa.`;
 }
 
+/** The Images of a queue as the page lists them, cached under `cacheKey`. */
+export const imageReviewQuery = (cacheKey: readonly unknown[], load: ImageReviewQueueProps["load"]) =>
+  LoadedQuery(cacheKey, async () => {
+    const result = await load();
+    return result.ok ? Ok(result.value) : Err(`Não foi possível carregar as imagens em revisão. ${ApiErrorMessage(result.error)}`);
+  }, Freshness.live);
+
 /** The queue and its decisions. */
-export function ImageReviewQueue({ load, organizationNames }: ImageReviewQueueProps) {
-  const [items, setItems] = useState<Result<ImageReviewItem[], string> | null>(null);
+export function ImageReviewQueue({ cacheKey, load, organizationNames }: ImageReviewQueueProps) {
+  const loaded = useLoaded(imageReviewQuery(cacheKey, load));
+  const items = loaded.result;
   const [busyId, setBusyId] = useState<string | null>(null);
   const [rejecting, setRejecting] = useState<ImageReviewItem | null>(null);
   const [dialogError, setDialogError] = useState("");
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    let active = true;
-    load().then((result) => {
-      if (!active) return;
-      setItems(result.ok ? Ok(result.value) : Err(`Não foi possível carregar as imagens em revisão. ${ApiErrorMessage(result.error)}`));
-    });
-    return () => { active = false; };
-  }, [load]);
-
-  const drop = (item: ImageReviewItem) =>
-    setItems((current) => current !== null && current.ok ? Ok(current.value.filter((i) => i.id !== item.id)) : current);
+  const drop = (item: ImageReviewItem) => loaded.update((list) => list.filter((i) => i.id !== item.id));
 
   const approve = async (item: ImageReviewItem) => {
     setStatus("");

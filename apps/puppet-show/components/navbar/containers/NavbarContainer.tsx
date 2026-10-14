@@ -10,14 +10,18 @@ import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { FeedOrgId } from "@/hooks/useEvents";
-import { api, ApiErrorMessage } from "@/lib/api/client";
+import { ApiErrorMessage } from "@/lib/api/client";
 import { MISSING_ORG_MESSAGE } from "@/lib/api/session";
-import { Navbar, type NavBrand } from "../Navbar";
+import { feedQuery, organizationQuery } from "@/lib/query/queries";
+import { WarmApi } from "@/lib/query/warm";
+import { PublishPageWarmups } from "@/lib/query/warmups";
+import { usePrefetch } from "@/lib/query/usePrefetch";
+import { DashboardEntryWarmups } from "@/components/dashboard/sectionWarmups";
+import { useApiQuery } from "@/lib/query/useApiQuery";
+import { Navbar } from "../Navbar";
 
 /** Paths that take the whole screen (kiosk) and show no bar. */
 const BARLESS_PATHS = ["/display"];
-
-type Brand = { orgId: string; brand: NavBrand } | { orgId: string; error: string };
 
 /**
  * Branding comes from the user's organization when logged in, the public one
@@ -26,7 +30,7 @@ type Brand = { orgId: string; brand: NavBrand } | { orgId: string; error: string
 export function NavbarContainer() {
   const pathname = usePathname();
   const { state, user, logout } = useAuth();
-  const [loaded, setLoaded] = useState<Brand | null>(null);
+  const prefetch = usePrefetch();
   const [logoutError, setLogoutError] = useState<string | null>(null);
 
   const settled = state.status === "anonymous" || state.status === "authenticated";
@@ -34,29 +38,28 @@ export function NavbarContainer() {
   const orgId = settled && !superadmin ? FeedOrgId(user) : null;
 
   useEffect(() => {
-    if (orgId === null) return;
-    let active = true;
-    api.organizations.get(orgId).then((org) => {
-      if (!active) return;
-      setLoaded(org.ok
-        ? { orgId, brand: { name: org.value.name, logo: org.value.logo === undefined ? null : org.value.logo } }
-        : { orgId, error: `Não foi possível carregar a organização. ${ApiErrorMessage(org.error)}` });
-    });
-    return () => { active = false; };
-  }, [orgId]);
+    if (user !== null) prefetch(...DashboardEntryWarmups(user), ...PublishPageWarmups());
+  }, [user, prefetch]);
+
+  const org = useApiQuery(organizationQuery(orgId === null ? "" : orgId), { enabled: orgId !== null });
 
   if (BARLESS_PATHS.includes(pathname)) return null;
 
-  const current = loaded !== null && loaded.orgId === orgId ? loaded : null;
   const missingOrg = settled && !superadmin && orgId === null;
+  const orgError = org.error === null ? null : `Não foi possível carregar a organização. ${ApiErrorMessage(org.error)}`;
 
   return (
     <Navbar
       auth={state}
-      brand={current !== null && "brand" in current ? current.brand : null}
-      brandError={missingOrg ? MISSING_ORG_MESSAGE : current !== null && "error" in current ? current.error : null}
+      brand={org.value === null ? null : { name: org.value.name, logo: org.value.logo === undefined ? null : org.value.logo }}
+      brandError={missingOrg ? MISSING_ORG_MESSAGE : orgError}
       pathname={pathname}
       logoutError={logoutError}
+      onIntent={(href) => {
+        if (user !== null && href === "/dashboard") prefetch(...DashboardEntryWarmups(user));
+        else if (href === "/eventos/novo") prefetch(...PublishPageWarmups());
+        else if (href === "/" && orgId !== null) prefetch(WarmApi(feedQuery(orgId)));
+      }}
       onLogout={() => {
         const result = logout();
         setLogoutError(result.ok ? null : result.error);

@@ -8,11 +8,14 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { api, ApiErrorMessage } from "@/lib/api/client";
 import { SortByName } from "@/utils/text";
 import type { Device, Organization } from "@/lib/api/schemas";
 import { Err, Ok, type Result } from "@/lib/result";
+import { Freshness } from "@/lib/query/options";
+import { LoadedQuery } from "@/lib/query/loaded";
+import { useLoaded } from "@/lib/query/useLoaded";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Drawer } from "@/components/ui/Drawer";
 import { ErrorAlert, LoadingMessage, StatusMessage } from "@/components/ui/Feedback";
@@ -33,6 +36,9 @@ async function LoadOrphans(): Promise<Result<OrphanData, string>> {
   return Ok({ devices: devices.value, organizations: SortByName(organizations.value) });
 }
 
+/** The orphan devices and the organizations to assign them to. */
+export const orphansQuery = () => LoadedQuery(["dashboard", "global-devices"], LoadOrphans, Freshness.live);
+
 /** The page, guarded by the section rules. */
 export function GlobalDevicesContainer() {
   const { user, orgId } = useDashboard();
@@ -43,23 +49,16 @@ export function GlobalDevicesContainer() {
 
 /** The orphan queue. */
 function Orphans() {
-  const [data, setData] = useState<Result<OrphanData, string> | null>(null);
+  const loaded = useLoaded(orphansQuery());
+  const data = loaded.result;
   const [assigning, setAssigning] = useState<Device | null>(null);
   const [rejecting, setRejecting] = useState<Device | null>(null);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState("");
   const [status, setStatus] = useState("");
 
-  useEffect(() => {
-    let active = true;
-    LoadOrphans().then((result) => { if (active) setData(result); });
-    return () => { active = false; };
-  }, []);
-
   /** Drops a handled device from the queue. */
-  const drop = (id: string) => setData((current) => current !== null && current.ok
-    ? Ok({ ...current.value, devices: current.value.devices.filter((d) => d.id !== id) })
-    : current);
+  const drop = (id: string) => loaded.update((current) => ({ ...current, devices: current.devices.filter((d) => d.id !== id) }));
 
   const open = (setter: (device: Device) => void) => (device: Device) => { setActionError(""); setStatus(""); setter(device); };
 

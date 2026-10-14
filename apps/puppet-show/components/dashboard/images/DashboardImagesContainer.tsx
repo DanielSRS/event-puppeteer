@@ -8,11 +8,16 @@
 
 "use client";
 
-import { useCallback } from "react";
 import { api } from "@/lib/api/client";
 import { SectionDenialFor, SelectOrgNotice, useDashboard } from "../DashboardContext";
 import { AccessNotice } from "../global/AccessNotice";
-import { ImageReviewQueue } from "./ImageReviewQueue";
+import { ImageReviewQueue, imageReviewQuery } from "./ImageReviewQueue";
+
+/** Where the organization's queue is cached. */
+const queueKey = (orgId: string) => ["dashboard", "images", orgId] as const;
+
+/** The organization's Images awaiting review. */
+export const organizationImagesQuery = (orgId: string) => imageReviewQuery(queueKey(orgId), () => api.images.reviews(orgId));
 
 /** The page, guarded by the section rules. */
 export function DashboardImagesContainer() {
@@ -25,6 +30,5 @@ export function DashboardImagesContainer() {
 
 /** The queue of one organization; remounted when the organization changes. */
 function OrganizationQueue({ orgId }: { orgId: string }) {
-  const load = useCallback(() => api.images.reviews(orgId), [orgId]);
-  return <ImageReviewQueue load={load} />;
+  return <ImageReviewQueue cacheKey={queueKey(orgId)} load={() => api.images.reviews(orgId)} />;
 }

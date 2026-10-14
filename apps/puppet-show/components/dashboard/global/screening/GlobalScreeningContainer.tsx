@@ -8,10 +8,13 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { api, ApiErrorMessage } from "@/lib/api/client";
 import type { ScreeningPolicy } from "@/lib/api/schemas";
 import { Err, Ok, type Result } from "@/lib/result";
+import { Freshness } from "@/lib/query/options";
+import { LoadedQuery } from "@/lib/query/loaded";
+import { useLoaded } from "@/lib/query/useLoaded";
 import { ErrorAlert, LoadingMessage, StatusMessage } from "@/components/ui/Feedback";
 import { SectionDenialFor, useDashboard } from "../../DashboardContext";
 import { AccessNotice } from "../AccessNotice";
@@ -24,6 +27,9 @@ async function LoadPolicy(): Promise<Result<ScreeningPolicy | null, string>> {
   return Ok(answer.value.policy);
 }
 
+/** The policy in force, as the page shows it. */
+export const screeningPolicyQuery = () => LoadedQuery(["dashboard", "global-screening"], LoadPolicy, Freshness.short);
+
 /** The page, guarded by the section rules. */
 export function GlobalScreeningContainer() {
   const { user, orgId } = useDashboard();
@@ -34,16 +40,11 @@ export function GlobalScreeningContainer() {
 
 /** The policy and its form. */
 function Screening() {
-  const [policy, setPolicy] = useState<Result<ScreeningPolicy | null, string> | null>(null);
+  const loaded = useLoaded(screeningPolicyQuery());
+  const policy = loaded.result;
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
-
-  useEffect(() => {
-    let active = true;
-    LoadPolicy().then((result) => { if (active) setPolicy(result); });
-    return () => { active = false; };
-  }, []);
 
   const save = async (next: ScreeningPolicy) => {
     setSaving(true);
@@ -52,7 +53,7 @@ function Screening() {
     const answer = await api.screeningPolicy.set(next);
     setSaving(false);
     if (!answer.ok) return setError(`Não foi possível salvar a política. ${ApiErrorMessage(answer.error)}`);
-    setPolicy(Ok(answer.value));
+    loaded.update(() => answer.value);
     setStatus("Política de triagem salva. Ela vale para as próximas imagens enviadas.");
   };
 

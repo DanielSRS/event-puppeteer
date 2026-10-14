@@ -53,11 +53,13 @@ export type DashboardSidebarProps = {
   onSelectOrg: (orgId: string | null) => void;
   /** Called when a section link is followed (the phone menu closes itself). */
   onNavigate?: () => void;
+  /** Called when the person shows intent to open a section (hover, focus, touch), to load its data beforehand. */
+  onIntent?: (section: DashboardSection) => void;
 };
 
 /** Context switcher plus section links. */
 export function DashboardSidebar({
-  role, orgId, contextName, organizations, pathname, onSelectOrg, onNavigate,
+  role, orgId, contextName, organizations, pathname, onSelectOrg, onNavigate, onIntent,
 }: DashboardSidebarProps) {
   const sections = AccessibleSections({ role }, orgId);
   const active = SectionForPath(pathname);
@@ -81,6 +83,9 @@ export function DashboardSidebar({
                 <Link
                   href={section.href}
                   onClick={onNavigate}
+                  onMouseEnter={() => onIntent?.(section.id)}
+                  onFocus={() => onIntent?.(section.id)}
+                  onTouchStart={() => onIntent?.(section.id)}
                   aria-current={current ? "page" : undefined}
                   className={`row min-h-10 gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
                     current ? "bg-main font-semibold text-background" : "hover:bg-white/5"

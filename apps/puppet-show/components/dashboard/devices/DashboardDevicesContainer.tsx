@@ -8,10 +8,13 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { api, ApiErrorMessage } from "@/lib/api/client";
 import type { Device } from "@/lib/api/schemas";
 import { Err, Ok, type Result } from "@/lib/result";
+import { Freshness } from "@/lib/query/options";
+import { LoadedQuery } from "@/lib/query/loaded";
+import { useLoaded } from "@/lib/query/useLoaded";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Drawer } from "@/components/ui/Drawer";
 import { ErrorAlert, LoadingMessage, StatusMessage } from "@/components/ui/Feedback";
@@ -40,6 +43,10 @@ async function LoadDevices(orgId: string): Promise<Result<DeviceLists, string>> 
   });
 }
 
+/** The pending and active devices of `orgId`. */
+export const devicesQuery = (orgId: string) =>
+  LoadedQuery(["dashboard", "devices", orgId], () => LoadDevices(orgId), Freshness.live);
+
 /** The page, guarded by the section rules. */
 export function DashboardDevicesContainer() {
   const { user, orgId } = useDashboard();
@@ -51,19 +58,13 @@ export function DashboardDevicesContainer() {
 
 /** The devices of one organization; remounted when the organization changes. */
 function Devices({ orgId }: { orgId: string }) {
-  const [lists, setLists] = useState<Result<DeviceLists, string> | null>(null);
-  const [reloadKey, setReloadKey] = useState(0);
+  const loaded = useLoaded(devicesQuery(orgId));
+  const lists = loaded.result;
   const [approving, setApproving] = useState<Device | null>(null);
   const [rejecting, setRejecting] = useState<Device | null>(null);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState("");
   const [status, setStatus] = useState("");
-
-  useEffect(() => {
-    let active = true;
-    LoadDevices(orgId).then((result) => { if (active) setLists(result); });
-    return () => { active = false; };
-  }, [orgId, reloadKey]);
 
   const startAction = () => { setBusy(true); setActionError(""); setStatus(""); };
 
@@ -75,7 +76,7 @@ function Devices({ orgId }: { orgId: string }) {
     if (!result.ok) { setActionError(`Não foi possível aprovar o dispositivo. ${ApiErrorMessage(result.error)}`); return; }
     setStatus(`Dispositivo “${approval.name}” aprovado.`);
     setApproving(null);
-    setReloadKey((key) => key + 1);
+    loaded.reload();
   };
 
   const handleReject = async () => {
@@ -85,9 +86,7 @@ function Devices({ orgId }: { orgId: string }) {
     setBusy(false);
     if (!result.ok) { setActionError(`Não foi possível rejeitar o dispositivo. ${ApiErrorMessage(result.error)}`); return; }
     const gone = rejecting.id;
-    setLists((current) => current !== null && current.ok
-      ? Ok({ ...current.value, pending: current.value.pending.filter((device) => device.id !== gone) })
-      : current);
+    loaded.update((current) => ({ ...current, pending: current.pending.filter((device) => device.id !== gone) }));
     setStatus(`Dispositivo ${DeviceIdentifierText(rejecting)} rejeitado.`);
     setRejecting(null);
   };

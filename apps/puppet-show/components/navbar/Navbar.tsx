@@ -32,6 +32,8 @@ export type NavbarProps = {
   /** Why the last logout failed. */
   logoutError: string | null;
   onLogout: () => void;
+  /** Called when the person shows intent to open a link (hover, focus, touch), to load its data beforehand. */
+  onIntent?: (href: string) => void;
 };
 
 type NavItem = { href: string; label: string; icon: IconType; primary?: boolean };
@@ -69,7 +71,7 @@ function IsCurrent(href: string, pathname: string): boolean {
  * Branding on the left; on wide screens the links inline with a greeting, on
  * phones a menu button (`aria-expanded`, Escape closes it and returns focus).
  */
-export function Navbar({ auth, brand, brandError, pathname, logoutError, onLogout }: NavbarProps) {
+export function Navbar({ auth, brand, brandError, pathname, logoutError, onLogout, onIntent }: NavbarProps) {
   const [open, setOpen] = useState(false);
   const menuId = useId();
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -97,6 +99,9 @@ export function Navbar({ auth, brand, brandError, pathname, logoutError, onLogou
           <Link
             href={item.href}
             onClick={onNavigate}
+            onMouseEnter={() => onIntent?.(item.href)}
+            onFocus={() => onIntent?.(item.href)}
+            onTouchStart={() => onIntent?.(item.href)}
             aria-current={IsCurrent(item.href, pathname) ? "page" : undefined}
             className={`${linkClass(item)} ${stacked ? "justify-start" : ""} ${item.primary && IsCurrent(item.href, pathname) ? "aria-[current=page]:text-background" : ""}`}
           >

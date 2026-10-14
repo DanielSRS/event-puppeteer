@@ -8,10 +8,15 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { api, ApiErrorMessage } from "@/lib/api/client";
 import type { LinkLabel } from "@/lib/api/schemas";
+import { linkLabelsQuery } from "@/lib/query/queries";
 import { Err, Ok, type Result } from "@/lib/result";
+import { Freshness } from "@/lib/query/options";
+import { LoadedQuery } from "@/lib/query/loaded";
+import { useLoaded } from "@/lib/query/useLoaded";
 import { ErrorAlert, LoadingMessage, StatusMessage } from "@/components/ui/Feedback";
 import { SectionDenialFor, useDashboard } from "../../DashboardContext";
 import { AccessNotice } from "../AccessNotice";
@@ -24,6 +29,9 @@ async function LoadLabels(): Promise<Result<LinkLabel[], string>> {
   return Ok(labels.value);
 }
 
+/** Every link label, as the page lists them. */
+export const globalLabelsQuery = () => LoadedQuery(["dashboard", "global-links"], LoadLabels, Freshness.short);
+
 /** The page, guarded by the section rules. */
 export function GlobalLinksContainer() {
   const { user, orgId } = useDashboard();
@@ -34,16 +42,12 @@ export function GlobalLinksContainer() {
 
 /** The labels and their creation form. */
 function LinkLabels() {
-  const [labels, setLabels] = useState<Result<LinkLabel[], string> | null>(null);
+  const client = useQueryClient();
+  const loaded = useLoaded(globalLabelsQuery());
+  const labels = loaded.result;
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
-
-  useEffect(() => {
-    let active = true;
-    LoadLabels().then((result) => { if (active) setLabels(result); });
-    return () => { active = false; };
-  }, []);
 
   const handleCreate = async (name: string): Promise<boolean> => {
     setSaving(true);
@@ -59,7 +63,8 @@ function LinkLabels() {
       return false;
     }
     const label = created.value;
-    setLabels((current) => current !== null && current.ok ? Ok([...current.value, label]) : current);
+    loaded.update((list) => [...list, label]);
+    void client.invalidateQueries({ queryKey: linkLabelsQuery().queryKey });
     setStatus(`Rótulo “${label.name}” criado.`);
     return true;
   };
