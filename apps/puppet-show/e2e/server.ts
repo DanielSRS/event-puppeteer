@@ -29,6 +29,7 @@
 
 import { createServer as createHttpServer, type IncomingMessage } from "node:http";
 import { spawn } from "node:child_process";
+import { createRequire } from "node:module";
 import { writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -219,7 +220,9 @@ bridge.listen(E2E.apiPort, () => {
   const tsconfig = `tsconfig.e2e-${E2E.webPort}.json`;
   writeFileSync(join(here, "..", tsconfig), JSON.stringify({ extends: "./tsconfig.json" }, null, 2));
 
-  const next = spawn("npx", ["next", "dev", "-p", String(E2E.webPort)], {
+  // Run Next's CLI with this Node directly: no npx/nubx, and no `.cmd` shims to resolve on Windows.
+  const nextBin = createRequire(import.meta.url).resolve("next/dist/bin/next");
+  const next = spawn(process.execPath, [nextBin, "dev", "-p", String(E2E.webPort)], {
     cwd: join(here, ".."),
     stdio: "inherit",
     env: {
