@@ -16,7 +16,6 @@ import {
   MdDevicesOther, MdNewLabel, MdImageSearch, MdPolicy, MdPhotoLibrary,
 } from "react-icons/md";
 import type { UserRole } from "@/lib/api/schemas";
-import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { ContextSwitcher, type ContextOrganization } from "./ContextSwitcher";
 import { AccessibleSections, SectionForPath, type DashboardSection } from "./DashboardSections";
 
@@ -44,7 +43,9 @@ const GROUPS: { label: string; ids: DashboardSection[] }[] = [
   { label: "Meu espaço", ids: ["events"] },
   { label: "Moderação", ids: ["reports", "images", "bans", "tags"] },
   { label: "Administração", ids: ["audit", "users", "devices", "settings"] },
-  { label: "Sistema global", ids: ["global-orgs", "global-devices", "global-images", "global-screening", "global-tags", "global-links"] },
+  { label: "Organizações e totens", ids: ["global-orgs", "global-devices"] },
+  { label: "Catálogos", ids: ["global-tags", "global-links"] },
+  { label: "Imagens", ids: ["global-images", "global-screening"] },
 ];
 
 /** Props of {@link DashboardSidebar}. */
@@ -64,12 +65,15 @@ export type DashboardSidebarProps = {
   onNavigate?: () => void;
   /** Called when the person shows intent to open a section (hover, focus, touch), to load its data beforehand. */
   onIntent?: (section: DashboardSection) => void;
+  /** "list" in the sidebar; "tiles" (two columns of larger targets) in the phone menu. */
+  variant?: "list" | "tiles";
 };
 
 /** Context switcher plus section links. */
 export function DashboardSidebar({
-  role, orgId, contextName, organizations, pathname, onSelectOrg, onNavigate, onIntent,
+  role, orgId, contextName, organizations, pathname, onSelectOrg, onNavigate, onIntent, variant = "list",
 }: DashboardSidebarProps) {
+  const tiles = variant === "tiles";
   const sections = AccessibleSections({ role }, orgId);
   const active = SectionForPath(pathname);
   const groupId = useId();
@@ -80,7 +84,7 @@ export function DashboardSidebar({
   if (ungrouped.length > 0) groups.push({ label: "Outros", ids: [], sections: ungrouped });
 
   return (
-    <div className="column gap-5">
+    <div className="column gap-[18px]">
       <ContextSwitcher
         organizations={organizations}
         currentOrgId={orgId}
@@ -89,15 +93,15 @@ export function DashboardSidebar({
         onSelect={onSelectOrg}
       />
 
-      <nav aria-label="Seções do painel" className="column gap-4">
+      <nav aria-label="Seções do painel" className="column gap-[18px]">
         {groups.map((group, index) => (
-          <div key={group.label} className="column gap-1">
-            <p id={`${groupId}-${index}`} className="label-mono px-3 pb-1">{group.label}</p>
-            <ul aria-labelledby={`${groupId}-${index}`} className="column gap-0.5">
+          <div key={group.label} className="column gap-0.5">
+            <p id={`${groupId}-${index}`} className={`caption pb-1.5 ${tiles ? "px-1" : "px-3"}`}>{group.label}</p>
+            <ul aria-labelledby={`${groupId}-${index}`} className={tiles ? "grid grid-cols-2 gap-2" : "column gap-0.5"}>
               {group.sections.map((section) => {
                 const current = section.id === active;
                 return (
-                  <li key={section.id}>
+                  <li key={section.id} className={tiles ? "column" : undefined}>
                     <Link
                       href={section.href}
                       onClick={onNavigate}
@@ -105,12 +109,14 @@ export function DashboardSidebar({
                       onFocus={() => onIntent?.(section.id)}
                       onTouchStart={() => onIntent?.(section.id)}
                       aria-current={current ? "page" : undefined}
-                      className={`row min-h-11 gap-3 rounded-2xl px-3 py-2 text-sm transition-colors focus-ring ${
-                        current ? "bg-accent font-semibold text-on-accent" : "text-foreground/85 hover:bg-foreground/8 hover:text-foreground"
-                      }`}
+                      className={tiles
+                        ? "nav-item focus-ring flex-1 flex-col !items-start gap-2.5 min-h-[84px] rounded-[18px] border border-line p-3 text-foreground"
+                        : "nav-item focus-ring text-sm"}
                     >
-                      {ICONS[section.id]}
-                      <span>{section.label}</span>
+                      {tiles
+                        ? <span aria-hidden className="center h-8 w-8 rounded-[10px] surface-2">{ICONS[section.id]}</span>
+                        : ICONS[section.id]}
+                      <span className={tiles ? "font-semibold leading-tight" : undefined}>{section.label}</span>
                     </Link>
                   </li>
                 );
@@ -119,11 +125,6 @@ export function DashboardSidebar({
           </div>
         ))}
       </nav>
-
-      <div className="between gap-2 border-t border-muted pt-4 px-1">
-        <span className="text-sm text-foreground/75">Tema</span>
-        <ThemeToggle compact />
-      </div>
     </div>
   );
 }

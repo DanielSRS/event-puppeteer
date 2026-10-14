@@ -57,9 +57,9 @@ export function UpdateCommandForm({ saving, error, onSubmit, onCancel }: UpdateC
           spellCheck={false}
           autoCapitalize="none"
           {...(extra.inputMode !== undefined ? { inputMode: extra.inputMode } : {})}
-          className={`input min-h-10 ${extra.mono ? "font-mono" : ""} ${error !== undefined ? "input-error" : ""}`}
+          className={`input ${extra.mono ? "font-mono text-[13px]" : ""} ${error !== undefined ? "input-error" : ""}`}
         />
-        <p id={`${id}-hint`} className="text-xs text-foreground/70">{HINTS[name]}</p>
+        <p id={`${id}-hint`} className="t3 text-[12.5px]">{HINTS[name]}</p>
         {error !== undefined && <p id={`${id}-error`} className="error-message">{error}</p>}
       </div>
     );
@@ -74,8 +74,8 @@ export function UpdateCommandForm({ saving, error, onSubmit, onCancel }: UpdateC
       <ErrorAlert>{error}</ErrorAlert>
 
       <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-        <button type="button" onClick={onCancel} disabled={saving} className="button clean min-h-10">Cancelar</button>
-        <button type="submit" disabled={saving} className="button main min-h-10">{saving ? "Enviando..." : "Enviar atualização"}</button>
+        <button type="button" onClick={onCancel} disabled={saving} className="button ghost focus-ring">Cancelar</button>
+        <button type="submit" disabled={saving} className="button main focus-ring px-6">{saving ? "Enviando..." : "Enviar atualização"}</button>
       </div>
     </form>
   );

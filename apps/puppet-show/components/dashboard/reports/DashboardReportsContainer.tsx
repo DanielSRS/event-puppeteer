@@ -2,7 +2,9 @@
  * Moderation queue page (Moderator+): loads the organization's reports,
  * groups them by event and loads each reported event with
  * `GET .../events/:id`, which also answers for hidden events, so the title and
- * the visibility shown are always the real ones (even after an automatic hide).
+ * the visibility shown are always the real ones (even after an automatic hide),
+ * along with the event's banner for the card's thumbnail. The page header is
+ * drawn by the route, above every state of the queue.
  *
  * @module
  */
@@ -24,7 +26,8 @@ import { ReportList, type ReportedEvent, type ReportQueueItem } from "./ReportLi
 
 /** What the queue knows about an event loaded from the API. */
 function ToReportedEvent(event: Event): ReportedEvent {
-  return { kind: "loaded", title: event.title, isHidden: event.isHidden, isDeleted: event.isDeleted };
+  const loaded: Extract<ReportedEvent, { kind: "loaded" }> = { kind: "loaded", title: event.title, isHidden: event.isHidden, isDeleted: event.isDeleted };
+  return event.banner === undefined ? loaded : { ...loaded, banner: event.banner };
 }
 
 /** Loads the reports of `orgId` and every reported event. */
@@ -89,7 +92,7 @@ function ReportQueue({ orgId }: { orgId: string }) {
   if (!queue.ok) return <ErrorAlert>{queue.error}</ErrorAlert>;
 
   return (
-    <div className="column gap-4">
+    <div className="column gap-[22px]">
       {feedback !== null && (feedback.ok ? <StatusMessage>{feedback.text}</StatusMessage> : <ErrorAlert>{feedback.text}</ErrorAlert>)}
       <ReportList items={queue.value} busyEventId={busyEventId} onSetHidden={handleSetHidden} />
     </div>

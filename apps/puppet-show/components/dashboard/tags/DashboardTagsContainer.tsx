@@ -4,6 +4,7 @@
  *
  * Tags are system-wide, but the page lives in an organization context because
  * promoting is a moderator action recorded in that organization's audit trail.
+ * The page header is drawn by the route.
  *
  * @module
  */
@@ -77,7 +78,7 @@ function TagReview() {
   if (!tags.ok) return <ErrorAlert>{tags.error}</ErrorAlert>;
 
   return (
-    <div className="column gap-4">
+    <div className="column gap-[22px]">
       <StatusMessage>{status}</StatusMessage>
       <TagManager
         tags={tags.value}

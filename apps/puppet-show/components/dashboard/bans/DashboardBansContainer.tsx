@@ -1,6 +1,7 @@
 /**
  * Shadow-banned users page (Moderator+): lists the banned people of the
- * organization and lifts a ban after confirmation.
+ * organization and lifts a ban after confirmation. The page header is drawn by
+ * the route; the list links to the audit trail only for those who may open it.
  *
  * @module
  */
@@ -15,7 +16,7 @@ import { LoadedQuery } from "@/lib/query/loaded";
 import { useLoaded } from "@/lib/query/useLoaded";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { ErrorAlert, LoadingMessage, StatusMessage } from "@/components/ui/Feedback";
-import { SectionDenialFor, SelectOrgNotice, useDashboard } from "../DashboardContext";
+import { CanAccess, SectionDenialFor, SectionInfo, SelectOrgNotice, useDashboard } from "../DashboardContext";
 import { AccessNotice } from "../global/AccessNotice";
 import { BanList, type BannedUser } from "./BanList";
 
@@ -41,6 +42,8 @@ export function DashboardBansContainer() {
 
 /** The bans of one organization; remounted when the organization changes. */
 function Bans({ orgId }: { orgId: string }) {
+  const { user: viewer } = useDashboard();
+  const auditHref = CanAccess("audit", viewer, orgId) ? SectionInfo("audit").href : undefined;
   const loaded = useLoaded(bansQuery(orgId));
   const bans = loaded.result;
   const [confirming, setConfirming] = useState<BannedUser | null>(null);
@@ -70,10 +73,11 @@ function Bans({ orgId }: { orgId: string }) {
   if (!bans.ok) return <ErrorAlert>{bans.error}</ErrorAlert>;
 
   return (
-    <div className="column gap-4">
+    <div className="column gap-[22px]">
       <StatusMessage>{status}</StatusMessage>
       <BanList
         users={bans.value}
+        {...(auditHref !== undefined ? { auditHref } : {})}
         busyUserId={busy && confirming !== null ? confirming.id : null}
         onLiftBan={(user) => { setDialogError(""); setStatus(""); setConfirming(user); }}
       />

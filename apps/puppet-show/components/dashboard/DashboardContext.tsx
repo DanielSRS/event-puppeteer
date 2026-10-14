@@ -49,7 +49,7 @@ export function useDashboard(): DashboardSession {
 /** Shown by organization pages when a Superadmin is in the global context. */
 export function SelectOrgNotice() {
   return (
-    <p className="card text-center text-foreground/80">
+    <p className="glass t2 rounded-[26px] p-8 text-center">
       Selecione uma organização no seletor de contexto para ver esta página.
     </p>
   );

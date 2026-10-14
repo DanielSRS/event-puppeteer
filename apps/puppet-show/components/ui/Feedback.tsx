@@ -24,8 +24,8 @@ export function ErrorAlert({ children, className = "" }: FeedbackProps) {
   if (!children) return null;
 
   return (
-    <p role="alert" className={`row items-start gap-2 rounded-lg border border-danger/40 bg-danger/10 p-3 text-sm text-danger ${className}`}>
-      <MdErrorOutline aria-hidden className="icon shrink-0" />
+    <p role="alert" className={`notice n-bad ${className}`}>
+      <MdErrorOutline aria-hidden className="mt-px h-[18px] w-[18px] shrink-0" />
       <span>{children}</span>
     </p>
   );
@@ -36,8 +36,8 @@ export function StatusMessage({ children, className = "" }: FeedbackProps) {
   if (!children) return null;
 
   return (
-    <p role="status" className={`row items-start gap-2 rounded-lg border border-success/40 bg-success/10 p-3 text-sm text-success ${className}`}>
-      <MdCheckCircle aria-hidden className="icon shrink-0" />
+    <p role="status" className={`notice n-ok ${className}`}>
+      <MdCheckCircle aria-hidden className="mt-px h-[18px] w-[18px] shrink-0" />
       <span>{children}</span>
     </p>
   );
@@ -46,7 +46,7 @@ export function StatusMessage({ children, className = "" }: FeedbackProps) {
 /** Shown while data loads (`role="status"`, so it is announced). */
 export function LoadingMessage({ children, className = "" }: FeedbackProps) {
   return (
-    <p role="status" aria-busy="true" className={`p-8 text-center text-foreground/60 animate-pulse ${className}`}>
+    <p role="status" aria-busy="true" className={`t3 p-8 text-center animate-pulse ${className}`}>
       {children}
     </p>
   );

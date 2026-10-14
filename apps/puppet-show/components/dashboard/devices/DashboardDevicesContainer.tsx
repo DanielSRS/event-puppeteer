@@ -97,7 +97,7 @@ function Devices({ orgId }: { orgId: string }) {
   const busyDeviceId = busy ? (approving !== null ? approving.id : rejecting !== null ? rejecting.id : null) : null;
 
   return (
-    <div className="column gap-4">
+    <div className="column gap-[22px]">
       <StatusMessage>{status}</StatusMessage>
       <DeviceList
         pending={lists.value.pending}

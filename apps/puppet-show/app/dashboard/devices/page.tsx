@@ -5,6 +5,7 @@
  */
 
 import type { Metadata } from "next";
+import { PageHeader } from "@/components/dashboard/page-header";
 import { DashboardDevicesContainer } from "@/components/dashboard/devices/DashboardDevicesContainer";
 
 export const metadata: Metadata = { title: "Dispositivos - Painel" };
@@ -12,11 +13,11 @@ export const metadata: Metadata = { title: "Dispositivos - Painel" };
 /** Heading and description; the client container does the rest. */
 export default function Page() {
   return (
-    <div className="column gap-6">
-      <header>
-        <h1 className="title">Dispositivos</h1>
-        <p className="mt-1 text-sm text-foreground/70">Totens da organização: aprove novos dispositivos e acompanhe os ativos.</p>
-      </header>
+    <div className="column gap-[22px]">
+      <PageHeader
+        title="Dispositivos"
+        description="Os totens da organização que exibem o mural. Um totem novo só começa a exibir depois de aprovado, com nome e local."
+      />
 
       <DashboardDevicesContainer />
     </div>

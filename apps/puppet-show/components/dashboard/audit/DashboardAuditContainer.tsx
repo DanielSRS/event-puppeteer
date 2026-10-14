@@ -119,7 +119,7 @@ function AuditTrail({ orgId, meId, meName }: { orgId: string; meId: string; meNa
   if (!page.ok) return <ErrorAlert>{page.error}</ErrorAlert>;
 
   return (
-    <div className="column gap-4">
+    <div className="column gap-[22px]">
       {page.value.problems.map((problem) => <ErrorAlert key={problem}>{problem}</ErrorAlert>)}
       <AuditList rows={page.value.rows} />
     </div>

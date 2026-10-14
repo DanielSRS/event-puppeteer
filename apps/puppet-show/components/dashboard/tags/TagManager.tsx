@@ -1,12 +1,14 @@
 /**
- * Review of tags: free-form tags (created by people when publishing events)
- * wait as suggestions; a moderator promotes the ones that should become public
- * filters. The API can't reject or delete a tag, so there is no such button.
+ * Review of tags, in two glass panels: free-form tags (created by people when
+ * publishing events) wait as dashed suggestion chips, each with a "Promover"
+ * button for the ones that should become public filters; then the official
+ * tags as plain chips. The API can't reject or delete a tag, so there is no
+ * such button.
  *
  * @module
  */
 
-import { MdArrowUpward, MdCheckCircle, MdLabel } from "react-icons/md";
+import { MdArrowUpward } from "react-icons/md";
 import type { Tag } from "@/lib/api/schemas";
 
 export type TagManagerProps = {
@@ -23,50 +25,57 @@ function ByName(a: Tag, b: Tag): number {
   return a.name.localeCompare(b.name, "pt-BR");
 }
 
+/** Panel title with a count bubble; screen readers hear "Title (n)". */
+function PanelTitle({ id, title, count }: { id: string; title: string; count: number }) {
+  return (
+    <h2 id={id} className="h2 row gap-2.5 text-xl">
+      {title} <span aria-hidden className="count count-n font-sans">{count}</span><span className="sr-only">({count})</span>
+    </h2>
+  );
+}
+
 /** Pending suggestions with a promote button, then the official tags. */
 export function TagManager({ tags, busyTagId, onPromote }: TagManagerProps) {
   const pending = tags.filter((tag) => !tag.isSystemDefined).sort(ByName);
   const official = tags.filter((tag) => tag.isSystemDefined).sort(ByName);
 
   return (
-    <div className="column gap-8">
-      <section aria-labelledby="pending-tags-title" className="column gap-3">
-        <h2 id="pending-tags-title" className="subtitle row gap-2">
-          <MdLabel aria-hidden className="icon" /> Aguardando revisão ({pending.length})
-        </h2>
+    <div className="column gap-4">
+      <section aria-labelledby="pending-tags-title" className="glass column gap-4 rounded-[26px] p-[22px]">
+        <PanelTitle id="pending-tags-title" title="Aguardando revisão" count={pending.length} />
         {pending.length === 0 ? (
-          <p className="rounded-lg border border-dashed border-muted p-6 text-center text-sm text-foreground/70">
-            Nenhuma tag sugerida aguardando revisão.
-          </p>
+          <p className="t2">Nenhuma tag sugerida aguardando revisão.</p>
         ) : (
-          <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <ul className="flex flex-wrap gap-2.5">
             {pending.map((tag) => (
-              <li key={tag.id} className="card flex items-center justify-between gap-3">
-                <span className="min-w-0 break-words font-medium text-main">#{tag.name}</span>
+              <li
+                key={tag.id}
+                className="surface inline-flex min-w-0 max-w-full items-center gap-1 rounded-full border border-dashed border-[var(--line-2)] py-1 pl-4 pr-1"
+              >
+                <span className="min-w-0 break-words font-medium">#{tag.name}</span>
                 <button
                   type="button"
                   disabled={busyTagId === tag.id}
                   onClick={() => onPromote(tag)}
-                  className="button clean min-h-10 shrink-0"
+                  className="focus-ring inline-flex min-h-11 shrink-0 cursor-pointer items-center gap-1.5 rounded-full bg-[var(--surface-2)] px-3.5 font-semibold text-foreground transition-colors enabled:hover:bg-[var(--accent)] enabled:hover:text-[color:var(--on-accent)] disabled:cursor-not-allowed disabled:opacity-45"
                 >
-                  <MdArrowUpward aria-hidden className="icon" /> Promover<span className="sr-only"> a tag {tag.name}</span>
+                  <MdArrowUpward aria-hidden className="h-[15px] w-[15px]" /> Promover<span className="sr-only"> a tag {tag.name}</span>
                 </button>
               </li>
             ))}
           </ul>
         )}
+        <p className="t3 text-[13px]">Promover não pode ser desfeito. Não há como recusar uma sugestão: ela apenas continua oculta.</p>
       </section>
 
-      <section aria-labelledby="official-tags-title" className="column gap-3">
-        <h2 id="official-tags-title" className="subtitle row gap-2">
-          <MdCheckCircle aria-hidden className="icon text-success" /> Tags públicas ({official.length})
-        </h2>
+      <section aria-labelledby="official-tags-title" className="glass column gap-4 rounded-[26px] p-[22px]">
+        <PanelTitle id="official-tags-title" title="Tags públicas" count={official.length} />
         {official.length === 0 ? (
-          <p className="text-sm text-foreground/70">Nenhuma tag pública ainda.</p>
+          <p className="t2">Nenhuma tag pública ainda.</p>
         ) : (
-          <ul className="flex flex-wrap gap-2 rounded-lg border border-muted p-4">
+          <ul className="flex flex-wrap gap-2">
             {official.map((tag) => (
-              <li key={tag.id} className="rounded-full bg-success/10 px-3 py-1 text-sm font-medium text-success">#{tag.name}</li>
+              <li key={tag.id} className="chip px-4 py-2 text-sm text-foreground">{tag.name}</li>
             ))}
           </ul>
         )}

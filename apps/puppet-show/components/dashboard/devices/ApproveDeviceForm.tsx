@@ -1,5 +1,6 @@
 /**
- * Form to approve a pending device: its name and where it is, both required.
+ * Form to approve a pending device: which totem it is (its identifier), then
+ * its name and where it is, both required.
  * When `organizations` is given (Superadmin assigning an orphan device), the
  * organization must be chosen too.
  *
@@ -10,6 +11,7 @@
 
 import { useState } from "react";
 import { ErrorAlert } from "@/components/ui/Feedback";
+import { DeviceGlyph } from "./device-glyph";
 import { ValidateApproval, type Approval, type ApprovalValues, type FieldErrors } from "./deviceForms";
 
 /** What the form submits. */
@@ -52,14 +54,20 @@ export function ApproveDeviceForm({ identifier, organizations, saving, error, on
     onChange: (event: { target: { value: string } }) => setValues((current) => ({ ...current, [field]: event.target.value })),
     "aria-invalid": errors[field] !== undefined,
     ...(errors[field] !== undefined ? { "aria-describedby": `approve-${field}-error` } : {}),
-    className: `input min-h-10 ${errors[field] !== undefined ? "input-error" : ""}`,
+    className: `input ${errors[field] !== undefined ? "input-error" : ""}`,
   });
 
   return (
     <form onSubmit={handleSubmit} noValidate className="column gap-4">
-      <p className="text-sm text-foreground/80">
-        Identificador: <span className="font-mono break-all">{identifier}</span>
-      </p>
+      <div className="well row gap-3.5 rounded-[18px] p-4">
+        <span aria-hidden className="c-warn grid h-11 w-11 shrink-0 place-items-center rounded-[14px] bg-[var(--warn-bg)]">
+          <DeviceGlyph />
+        </span>
+        <p className="column min-w-0 leading-snug">
+          <span className="font-semibold">Novo totem conectado</span>
+          <span className="mono t3 text-[12.5px] break-all">Identificador: {identifier}</span>
+        </p>
+      </div>
 
       {organizations !== undefined && (
         <div className="column gap-1">
@@ -70,7 +78,7 @@ export function ApproveDeviceForm({ identifier, organizations, saving, error, on
             onChange={(event) => setOrganizationId(event.target.value)}
             aria-invalid={orgError !== ""}
             aria-describedby={orgError !== "" ? "approve-org-error" : undefined}
-            className={`input min-h-10 ${orgError !== "" ? "input-error" : ""}`}
+            className={`input ${orgError !== "" ? "input-error" : ""}`}
           >
             <option value="" disabled>Escolha...</option>
             {organizations.map((org) => <option key={org.id} value={org.id}>{org.name}</option>)}
@@ -94,8 +102,8 @@ export function ApproveDeviceForm({ identifier, organizations, saving, error, on
       <ErrorAlert>{error}</ErrorAlert>
 
       <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-        <button type="button" onClick={onCancel} disabled={saving} className="button clean min-h-10">Cancelar</button>
-        <button type="submit" disabled={saving} className="button main min-h-10">
+        <button type="button" onClick={onCancel} disabled={saving} className="button ghost focus-ring min-h-12">Cancelar</button>
+        <button type="submit" disabled={saving} className="button main focus-ring min-h-12 px-6">
           {saving ? "Aprovando..." : "Aprovar dispositivo"}
         </button>
       </div>

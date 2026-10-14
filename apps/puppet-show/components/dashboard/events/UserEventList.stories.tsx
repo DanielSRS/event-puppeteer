@@ -34,6 +34,8 @@ const meta = {
   title: "Components/Dashboard/Events/UserEventList",
   component: UserEventList,
   parameters: { layout: "padded" },
+  // The rows stack by a container query on the dashboard's content column.
+  decorators: [(Story) => <div className="dash-main"><Story /></div>],
   args: {
     state: { status: "ready", events: EVENTS },
     onDelete: fn(),
@@ -63,7 +65,19 @@ export const Loaded: Story = {
   },
 };
 
-/** On a phone the cards stack. */
+/** The status filter keeps only the events in that situation. */
+export const Filtered: Story = {
+  play: async ({ canvas }) => {
+    await expect(canvas.getByText("3 eventos")).toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Ocultos" }));
+    await expect(canvas.getByRole("button", { name: "Ocultos" })).toHaveAttribute("aria-pressed", "true");
+    await expect(canvas.getByText("1 evento")).toBeInTheDocument();
+    await expect(canvas.getByRole("heading", { name: "Venda de rifas" })).toBeInTheDocument();
+    await expect(canvas.queryByRole("heading", { name: "Feira de Ciências" })).not.toBeInTheDocument();
+  },
+};
+
+/** On a phone the rows stack into cards. */
 export const Phone: Story = {
   globals: { viewport: { value: "mobile1", isRotated: false } },
 };

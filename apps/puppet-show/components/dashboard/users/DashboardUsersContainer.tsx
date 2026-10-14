@@ -2,6 +2,8 @@
  * Organization users page (Admin+): searches people by name (the API ignores
  * accents and case), changes roles and removes (deactivates) accounts after
  * confirmation. A Superadmin can also promote someone to Superadmin.
+ * Everything sits in one glass card: the title, the result count and the
+ * search on top, then the table of people.
  *
  * @module
  */
@@ -10,6 +12,7 @@
 
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { MdSearch } from "react-icons/md";
 import { api, ApiErrorMessage } from "@/lib/api/client";
 import type { OrgRole, User } from "@/lib/api/schemas";
 import { Err, Ok, type Result } from "@/lib/result";
@@ -125,48 +128,60 @@ function Users({ orgId, currentUserId, isSuperadmin }: { orgId: string; currentU
 
   const searching = result === null || result.query !== search.trim();
 
-  return (
-    <div className="column gap-4">
-      <div className="column gap-1">
-        <label htmlFor="user-search">Buscar por nome</label>
-        <input
-          id="user-search"
-          type="search"
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          placeholder="Ex.: maria"
-          className="input min-h-10 sm:max-w-sm"
-        />
-      </div>
+  const statusText = result === null || searching
+    ? "Buscando..."
+    : result.users.ok
+      ? result.users.value.length === 0
+        ? (result.query === "" ? "Nenhuma pessoa nesta organização." : `Nenhuma pessoa encontrada para “${result.query}”.`)
+        : `${result.users.value.length} ${result.users.value.length === 1 ? "pessoa" : "pessoas"}${result.query === "" ? "" : ` para “${result.query}”`}.`
+      : "";
 
+  return (
+    <div className="column gap-[22px]">
       {feedback !== null && (feedback.ok ? <StatusMessage>{feedback.text}</StatusMessage> : <ErrorAlert>{feedback.text}</ErrorAlert>)}
 
-      {result === null ? (
-        <LoadingMessage>Carregando pessoas...</LoadingMessage>
-      ) : !result.users.ok ? (
-        <ErrorAlert>{result.users.error}</ErrorAlert>
-      ) : (
-        <div className={`column gap-2 ${searching ? "opacity-60" : ""}`} aria-busy={searching}>
-          <p role="status" className="text-sm text-foreground/70">
-            {searching
-              ? "Buscando..."
-              : result.users.value.length === 0
-                ? (result.query === "" ? "Nenhuma pessoa nesta organização." : `Nenhuma pessoa encontrada para “${result.query}”.`)
-                : `${result.users.value.length} ${result.users.value.length === 1 ? "pessoa" : "pessoas"}${result.query === "" ? "" : ` para “${result.query}”`}.`}
-          </p>
-          {result.users.value.length > 0 && (
-            <UserList
-              users={result.users.value}
-              currentUserId={currentUserId}
-              busyUserId={busyUserId}
-              onChangeRole={handleChangeRole}
-              onRemove={(user) => { setRemoveError(""); setFeedback(null); setRemoving(user); }}
-              canPromoteToSuperadmin={isSuperadmin}
-              onPromoteToSuperadmin={(user) => { setPromoteError(""); setFeedback(null); setPromoting(user); }}
+      <section aria-labelledby="users-title" className="glass overflow-hidden rounded-[26px]">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[color:var(--line)] px-5 py-4">
+          <div className="column min-w-0 gap-0.5">
+            <h2 id="users-title" className="text-[15px] font-semibold">Pessoas da organização</h2>
+            {result !== null && result.users.ok && <p role="status" className="t3 text-[13px]">{statusText}</p>}
+          </div>
+          <div className="relative w-full sm:w-72">
+            <label htmlFor="user-search" className="sr-only">Buscar por nome</label>
+            <MdSearch aria-hidden className="t3 pointer-events-none absolute left-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2" />
+            <input
+              id="user-search"
+              type="search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Buscar por nome (ex.: maria)"
+              className="input min-h-11 pl-10"
             />
-          )}
+          </div>
         </div>
-      )}
+
+        {result === null ? (
+          <LoadingMessage>Carregando pessoas...</LoadingMessage>
+        ) : !result.users.ok ? (
+          <div className="p-5"><ErrorAlert>{result.users.error}</ErrorAlert></div>
+        ) : (
+          <div className={`transition-opacity ${searching ? "opacity-60" : ""}`} aria-busy={searching}>
+            {result.users.value.length === 0 ? (
+              result.query !== "" && <p className="t2 px-5 py-10 text-center text-sm">Confira a grafia ou busque por outra parte do nome.</p>
+            ) : (
+              <UserList
+                users={result.users.value}
+                currentUserId={currentUserId}
+                busyUserId={busyUserId}
+                onChangeRole={handleChangeRole}
+                onRemove={(user) => { setRemoveError(""); setFeedback(null); setRemoving(user); }}
+                canPromoteToSuperadmin={isSuperadmin}
+                onPromoteToSuperadmin={(user) => { setPromoteError(""); setFeedback(null); setPromoting(user); }}
+              />
+            )}
+          </div>
+        )}
+      </section>
 
       <ConfirmDialog
         isOpen={removing !== null}
