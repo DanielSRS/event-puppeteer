@@ -183,7 +183,7 @@ export function EventForm({
             <span
               aria-hidden
               className={`center h-8 w-8 shrink-0 rounded-full text-sm font-bold ${
-                index <= step ? "bg-main text-background" : "border border-muted text-foreground/80"
+                index <= step ? "bg-accent text-on-accent" : "border border-muted text-foreground/80"
               }`}
             >
               {index + 1}

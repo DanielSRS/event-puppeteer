@@ -72,7 +72,7 @@ export function ImageWithPlaceholder({ image, alt, className = "", compact = fal
         />
       )}
       {failed && !compact && (
-        <p aria-hidden className="absolute inset-x-0 bottom-0 bg-background/80 px-2 py-1 text-xs text-foreground">{UNAVAILABLE}</p>
+        <p aria-hidden className="absolute inset-x-0 bottom-0 glass-strong px-2 py-1 text-xs text-foreground">{UNAVAILABLE}</p>
       )}
     </div>
   );

@@ -81,7 +81,7 @@ function ReportCard({ item, busy, onSetHidden }: { item: ReportQueueItem; busy: 
       {item.comments.length > 0 ? (
         <ul className="column gap-2" aria-label={`Comentários das denúncias de ${title}`}>
           {item.comments.map((comment) => (
-            <li key={comment.id} className="rounded-lg bg-background p-3 text-sm">
+            <li key={comment.id} className="rounded-2xl bg-well p-3 text-sm">
               <p className="break-words">“{comment.comment}”</p>
               <p className="mt-1 text-xs text-foreground/70">{FormatInstant(comment.createdAt)}</p>
             </li>

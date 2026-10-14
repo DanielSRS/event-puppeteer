@@ -34,7 +34,7 @@ export type UserEventListProps = {
 const BADGES: Record<OwnEventStatus, { label: string; className: string }> = {
   active: { label: "Ativo", className: "border-success/40 bg-success/10 text-success" },
   hidden: { label: "Oculto pela moderação", className: "border-danger/40 bg-danger/10 text-danger" },
-  past: { label: "Encerrado", className: "border-muted bg-white/5 text-foreground/80" },
+  past: { label: "Encerrado", className: "border-muted bg-foreground/5 text-foreground/80" },
 };
 
 /** One day of the schedule as text, e.g. "10/10/2026, 14:00–16:00". */

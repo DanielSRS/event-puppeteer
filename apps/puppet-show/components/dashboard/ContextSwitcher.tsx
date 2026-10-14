@@ -70,10 +70,10 @@ export function ContextSwitcher({ organizations, currentOrgId, contextName, canS
 
   if (!canSwitch) {
     return (
-      <div className="row gap-3 rounded-lg p-2">
-        <span className="center h-10 w-10 shrink-0 rounded-lg bg-main text-background">{icon}</span>
+      <div className="row gap-3 rounded-2xl bg-foreground/5 p-2">
+        <span className="center h-10 w-10 shrink-0 rounded-xl bg-accent text-on-accent">{icon}</span>
         <span className="column min-w-0">
-          <span className="text-xs text-foreground/80">Sua organização</span>
+          <span className="text-xs text-foreground/75">Sua organização</span>
           <span className="truncate text-sm font-semibold">{contextName}</span>
         </span>
       </div>
@@ -99,11 +99,11 @@ export function ContextSwitcher({ organizations, currentOrgId, contextName, canS
         aria-expanded={open}
         aria-controls={listId}
         onClick={() => setOpen((current) => !current)}
-        className="row w-full gap-3 rounded-lg p-2 text-left transition-colors hover:bg-white/5"
+        className="row w-full gap-3 rounded-2xl bg-foreground/5 p-2 text-left transition-colors hover:bg-foreground/10 focus-ring"
       >
-        <span className="center h-10 w-10 shrink-0 rounded-lg bg-main text-background">{icon}</span>
+        <span className="center h-10 w-10 shrink-0 rounded-xl bg-accent text-on-accent">{icon}</span>
         <span className="column min-w-0 flex-1">
-          <span className="text-xs text-foreground/80">Contexto (trocar)</span>
+          <span className="text-xs text-foreground/75">Contexto (trocar)</span>
           <span className="truncate text-sm font-semibold">{contextName}</span>
         </span>
         <MdExpandMore aria-hidden className={`icon shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
@@ -113,7 +113,7 @@ export function ContextSwitcher({ organizations, currentOrgId, contextName, canS
         id={listId}
         hidden={!open}
         aria-label="Contextos disponíveis"
-        className="absolute left-0 top-full z-50 mt-1 max-h-80 w-full overflow-y-auto rounded-lg border border-muted bg-surface p-1 shadow-lg"
+        className="mt-2 max-h-80 w-full overflow-y-auto rounded-2xl border border-muted bg-well p-1"
       >
         {options.map((option) => {
           const current = option.id === currentOrgId;
@@ -123,7 +123,7 @@ export function ContextSwitcher({ organizations, currentOrgId, contextName, canS
                 type="button"
                 aria-current={current ? "true" : undefined}
                 onClick={() => pick(option.id)}
-                className={`row min-h-10 w-full gap-2 rounded-md px-2 text-left text-sm hover:bg-white/5 ${current ? "font-semibold text-main" : ""}`}
+                className={`row min-h-11 w-full gap-2 rounded-xl px-3 text-left text-sm hover:bg-foreground/8 ${current ? "font-semibold text-main" : ""}`}
               >
                 {option.id === null
                   ? <MdPublic aria-hidden className="icon shrink-0" />

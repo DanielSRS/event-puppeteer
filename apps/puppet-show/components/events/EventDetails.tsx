@@ -113,7 +113,16 @@ export function EventDetails({
   onToggleLike, onShare, onReport, onHide, onUnhide, onDelete, bannerBusy, onReplaceBanner, onRemoveBanner,
 }: EventDetailsProps) {
   return (
-    <article aria-labelledby="event-title" className="w-full max-w-4xl mx-auto bg-surface rounded-xl border border-muted overflow-hidden">
+    <>
+    {event.banner !== null && event.banner.url !== undefined && (
+      // The page takes its colors from the banner: a blurred copy fills the background.
+      // Kept outside the glass card: backdrop-filter would trap a fixed child inside it.
+      <div aria-hidden className="photo-backdrop">
+        {/* eslint-disable-next-line @next/next/no-img-element -- decorative copy of the signed banner URL */}
+        <img src={event.banner.url} alt="" />
+      </div>
+    )}
+    <article aria-labelledby="event-title" className="glass w-full max-w-4xl mx-auto rounded-[2rem] overflow-hidden">
       {event.banner !== null && (
         <ImageWithPlaceholder image={event.banner} alt={`Banner do evento ${event.title}`} className="aspect-video w-full" />
       )}
@@ -201,7 +210,7 @@ export function EventDetails({
             ) : (
               <ol className="column gap-2">
                 {event.schedule.map((day) => (
-                  <li key={day.date} className="column rounded-lg border border-muted bg-background p-3">
+                  <li key={day.date} className="column rounded-2xl border border-muted bg-well p-3">
                     <span className="font-medium first-letter:uppercase">{FullDate(day.date)}</span>
                     <span className="text-sm text-foreground/80">{TimeRange(day)}</span>
                   </li>
@@ -212,7 +221,7 @@ export function EventDetails({
 
           <div className="column gap-8 min-w-0">
             <Section title="Local" icon={<MdLocationOn aria-hidden className="text-main" />}>
-              <p className="rounded-lg border border-muted bg-background p-3 break-words">{event.location}</p>
+              <p className="rounded-2xl border border-muted bg-well p-3 break-words">{event.location}</p>
               {event.coordinates !== null && (
                 <>
                   <iframe
@@ -250,5 +259,6 @@ export function EventDetails({
         </div>
       </div>
     </article>
+    </>
   );
 }

@@ -1,5 +1,6 @@
 /**
- * Connects the top bar to the session and the organization's branding.
+ * Connects the top bar to the session and the organization's branding
+ * (name, logo and the color the whole palette is generated from).
  *
  * @module
  */
@@ -18,6 +19,7 @@ import { PublishPageWarmups } from "@/lib/query/warmups";
 import { usePrefetch } from "@/lib/query/usePrefetch";
 import { DashboardEntryWarmups } from "@/components/dashboard/sectionWarmups";
 import { useApiQuery } from "@/lib/query/useApiQuery";
+import { ApplyOrgColor } from "@/lib/theme/theme";
 import { Navbar } from "../Navbar";
 
 /** Paths that take the whole screen (kiosk) and show no bar. */
@@ -42,6 +44,15 @@ export function NavbarContainer() {
   }, [user, prefetch]);
 
   const org = useApiQuery(organizationQuery(orgId === null ? "" : orgId), { enabled: orgId !== null });
+  const orgLoaded = org.value !== null;
+  const orgColor = org.value === null ? undefined : org.value.colorScheme;
+
+  // The whole palette (accent, gradients) comes from the organization's color;
+  // the Superadmin, who belongs to none, sees the app's default.
+  useEffect(() => {
+    if (superadmin) ApplyOrgColor(null);
+    else if (orgLoaded) ApplyOrgColor(orgColor);
+  }, [superadmin, orgLoaded, orgColor]);
 
   if (BARLESS_PATHS.includes(pathname)) return null;
 

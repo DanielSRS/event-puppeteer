@@ -30,7 +30,7 @@ export function DateBadge({ date, size = "md" }: DateBadgeProps) {
   }
 
   return (
-    <div className={`column center ${box} shrink-0 rounded-lg bg-main text-background`} aria-hidden>
+    <div className={`column center ${box} shrink-0 rounded-2xl bg-accent text-on-accent`} aria-hidden>
       <span className={`${size === "lg" ? "text-4xl" : "text-2xl"} font-bold leading-none`}>{parts.day}</span>
       <span className={`${size === "lg" ? "text-lg" : "text-sm"} uppercase font-semibold`}>{parts.month}</span>
     </div>

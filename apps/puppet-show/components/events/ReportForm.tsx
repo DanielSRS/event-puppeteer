@@ -94,7 +94,7 @@ export function ReportForm({ threshold, isSending, error = "", onSubmit, onCance
         <button type="button" onClick={onCancel} disabled={isSending} className="button clean touch">
           Cancelar
         </button>
-        <button type="submit" disabled={reason === null || isSending} className="button touch bg-danger text-background hover:opacity-90">
+        <button type="submit" disabled={reason === null || isSending} className="button danger touch">
           {isSending ? "Enviando..." : "Enviar denúncia"}
         </button>
       </div>

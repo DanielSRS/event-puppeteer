@@ -60,6 +60,7 @@ export function ToFeedCard(event: FeedEvent, catalog: readonly Tag[], viewer: Vi
     voteCount: vote.count,
     voted: vote.voted,
     canDelete: viewer.viewerIsSuperadmin || (viewer.viewerId !== null && event.creatorId === viewer.viewerId),
+    banner: event.banner ?? null,
   };
 }
 

@@ -8,6 +8,7 @@ import Link from "next/link";
 import { MdAccessTime, MdDateRange, MdDeleteOutline, MdLocationOn } from "react-icons/md";
 import type { FeedCard } from "@/domain/feed";
 import { FeaturedDay, MultiDayLabel, TimeRange } from "@/domain/schedule";
+import { ImageWithPlaceholder } from "@/components/ui/ImageWithPlaceholder";
 import { DateBadge, LikeButton, TagChips } from "./EventParts";
 
 export type EventCardProps = {
@@ -38,12 +39,19 @@ export function EventCard({
   const multiDay = MultiDayLabel(card.schedule);
 
   return (
-    <article aria-labelledby={`event-${card.id}-title`} className="card column gap-3">
+    <article aria-labelledby={`event-${card.id}-title`} className="card column gap-3 overflow-hidden">
+      {card.banner != null && (
+        // The title already names the event; the banner is decoration here.
+        <div aria-hidden className="-mx-5 -mt-5 mb-1">
+          <ImageWithPlaceholder image={card.banner} alt="" className="aspect-[2/1] w-full" />
+        </div>
+      )}
+
       <div className="flex gap-3">
         <DateBadge date={day === null ? null : day.date} />
 
         <div className="column gap-1 min-w-0 flex-1">
-          <h2 id={`event-${card.id}-title`} className="text-lg font-semibold leading-snug break-words">
+          <h2 id={`event-${card.id}-title`} className="font-display text-xl font-bold tracking-tight leading-snug break-words">
             <Link
               href={`/eventos/${card.id}`}
               onMouseEnter={() => onIntent?.(card.id)}
@@ -55,26 +63,26 @@ export function EventCard({
             </Link>
           </h2>
 
-          <p className="row gap-1.5 text-sm text-foreground/80">
+          <p className="row gap-1.5 text-sm text-foreground/75">
             <MdAccessTime aria-hidden className="w-4 h-4 shrink-0" />
             <span>{day === null ? "Sem data definida" : TimeRange(day)}</span>
           </p>
 
           {multiDay !== null && (
-            <p className="row gap-1.5 text-sm text-foreground/80">
+            <p className="row gap-1.5 text-sm text-foreground/75">
               <MdDateRange aria-hidden className="w-4 h-4 shrink-0" />
               <span>{multiDay}</span>
             </p>
           )}
 
-          <p className="row gap-1.5 text-sm text-foreground/80 min-w-0">
+          <p className="row gap-1.5 text-sm text-foreground/75 min-w-0">
             <MdLocationOn aria-hidden className="w-4 h-4 shrink-0" />
             <span className="truncate">{card.location}</span>
           </p>
         </div>
       </div>
 
-      <p className="text-sm text-foreground/80 line-clamp-3 whitespace-pre-line">{card.description}</p>
+      <p className="text-sm text-foreground/75 line-clamp-3 whitespace-pre-line">{card.description}</p>
 
       <TagChips tags={card.tags} />
 
@@ -112,7 +120,7 @@ export function EventCard({
       </div>
 
       {loginPrompt && (
-        <p role="status" className="text-sm rounded-lg border border-main/40 bg-main/10 p-3">
+        <p role="status" className="text-sm rounded-2xl border border-main/40 bg-main/10 p-3">
           Você precisa entrar na sua conta para curtir eventos.{" "}
           <Link href={`/entrar?redirect=${encodeURIComponent(loginRedirect)}`} className="text-main underline font-medium">
             Entrar

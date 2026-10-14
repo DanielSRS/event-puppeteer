@@ -104,7 +104,7 @@ export function EventFormMedia({
                     onClick={() => toggleTag(tag)}
                     disabled={disabled}
                     className={`min-h-10 rounded-full border px-4 text-sm transition-colors ${
-                      selected ? "border-main bg-main text-background font-semibold" : "border-muted hover:border-main"
+                      selected ? "border-accent bg-accent text-on-accent font-semibold" : "border-muted hover:border-main"
                     }`}
                   >
                     {tag.name}
@@ -125,7 +125,7 @@ export function EventFormMedia({
                   onClick={() => toggleTag(tag)}
                   disabled={disabled}
                   aria-label={`Remover a tag ${tag.name}`}
-                  className="center h-10 w-10 rounded-full hover:bg-white/10"
+                  className="center h-10 w-10 rounded-full hover:bg-foreground/10"
                 >
                   <MdClose aria-hidden className="icon" />
                 </button>

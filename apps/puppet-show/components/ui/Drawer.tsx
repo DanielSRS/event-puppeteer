@@ -3,7 +3,8 @@
  *
  * Built on the native `<dialog>` opened with `showModal()`, so the browser
  * traps focus inside it, makes the page behind inert, closes it on Escape and
- * returns focus to whatever opened it. On phones it takes the whole width.
+ * returns focus to whatever opened it. On phones it takes the whole width;
+ * `placement="bottom"` turns it into a bottom sheet.
  *
  * Chrome may close a modal on Escape without firing `cancel` (when the page
  * had no user activation yet); the `close` event then reopens the panel and
@@ -27,6 +28,8 @@ export type DrawerProps = {
   children: ReactNode;
   /** Maximum width on larger screens. */
   width?: "md" | "lg" | "xl";
+  /** "side" slides from the right; "bottom" is a sheet from the bottom edge (phone menus). */
+  placement?: "side" | "bottom";
 };
 
 const WIDTHS = {
@@ -36,7 +39,7 @@ const WIDTHS = {
 } as const;
 
 /** A modal side panel with a title and a close button. */
-export function Drawer({ isOpen, onClose, title, children, width = "md" }: DrawerProps) {
+export function Drawer({ isOpen, onClose, title, children, width = "md", placement = "side" }: DrawerProps) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
 
@@ -58,23 +61,28 @@ export function Drawer({ isOpen, onClose, title, children, width = "md" }: Drawe
         onClose();
       }}
       onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}
-      className={`m-0 ml-auto h-dvh max-h-dvh w-full ${WIDTHS[width]} bg-background text-foreground p-0 shadow-2xl backdrop:bg-black/60 backdrop:backdrop-blur-sm`}
+      className={`glass-strong text-foreground p-0 backdrop:bg-black/50 backdrop:backdrop-blur-sm ${
+        placement === "bottom"
+          ? "mx-0 mb-0 mt-auto w-full max-w-full max-h-[88dvh] rounded-t-3xl"
+          : `m-0 ml-auto h-dvh max-h-dvh w-full ${WIDTHS[width]} sm:rounded-l-3xl`
+      }`}
     >
       {isOpen && (
-        <div className="column h-full">
-          <header className="between gap-2 p-4 border-b border-muted">
-            <h2 id={titleId} className="title text-lg">{title}</h2>
+        <div className={`column ${placement === "bottom" ? "max-h-[88dvh]" : "h-full"}`}>
+          {placement === "bottom" && <span aria-hidden className="mx-auto mt-2 h-1.5 w-10 shrink-0 rounded-full bg-foreground/25" />}
+          <header className="between gap-2 px-5 py-4 border-b border-muted">
+            <h2 id={titleId} className="font-display text-xl font-bold tracking-tight">{title}</h2>
             <button
               type="button"
               onClick={onClose}
-              className="p-2 rounded-full hover:bg-white/5 transition-colors"
+              className="center touch rounded-full hover:bg-foreground/8 transition-colors focus-ring"
               aria-label="Fechar"
             >
               <MdClose aria-hidden className="icon" />
             </button>
           </header>
 
-          <div className="flex-1 overflow-y-auto p-4">
+          <div className="flex-1 overflow-y-auto p-5">
             {children}
           </div>
         </div>

@@ -1,38 +1,146 @@
 /*
- * Design tokens (dark-only palette) and the small set of utility and
- * component classes shared by every screen.
+ * Design tokens and the small set of utility and component classes shared by
+ * every screen.
+ *
+ * Every color comes from ONE input, `--org` (the organization's primary
+ * color, set on <html> by `OrgColor`), and the theme (`data-theme` on <html>,
+ * "dark" or "light", set by the inline script in the root layout). The theme
+ * only changes lightness and chroma; the hue comes from the organization.
+ *
+ * Colors are derived with CSS relative color syntax (oklch(from …)), supported
+ * by Chrome 119+, Safari 18+ and Firefox 128+.
  */
 
 @import "tailwindcss";
 
-@theme {
-  --color-background: #0b0b0f;
-  --color-surface: #15151d;
-  --color-foreground: #f4f4f5;
-  --color-main: #f59e0b;
-  --color-muted: #2a2a35;
-  --color-success: #34d399;
-  --color-danger: #f87171;
+/* ---------- Tokens (dark is the default) ---------- */
+:root {
+  --org: #f59e0b;
+
+  --bg: oklch(from var(--org) 0.15 0.014 h);
+  --fg: oklch(from var(--org) 0.97 0.006 h);
+  --line: color-mix(in oklab, var(--fg) 9%, transparent);
+  --line-2: color-mix(in oklab, var(--fg) 15%, transparent);
+  --surface: color-mix(in oklab, var(--fg) 5%, transparent);
+  --surface-2: color-mix(in oklab, var(--fg) 10%, transparent);
+  --well: rgba(0, 0, 0, .24);
+  --field: rgba(0, 0, 0, .28);
+  --glass: color-mix(in oklab, var(--bg) 58%, transparent);
+  --glass-strong: color-mix(in oklab, var(--bg) 84%, transparent);
+  --glass-shadow: inset 0 1px 0 rgba(255, 255, 255, .06), 0 24px 48px -24px rgba(0, 0, 0, .7);
+
+  /* accent = the organization's color; ink = a version readable as text on the current background */
+  --accent: var(--org);
+  --accent-ink: oklch(from var(--org) max(l, 0.8) min(c, 0.2) h);
+  --on-accent: oklch(from var(--org) clamp(0, (0.7 - l) * 1000, 1) 0 0);
+
+  /* gradient palette: the organization's hue and two analogous neighbours */
+  --g1: oklch(from var(--org) 0.44 min(c, 0.17) h);
+  --g2: oklch(from var(--org) 0.38 min(c, 0.15) calc(h + 62));
+  --g3: oklch(from var(--org) 0.32 min(c, 0.13) calc(h - 74));
+  --g-opacity: .7;
+  --photo-opacity: .5;
+
+  /* states (always shown with text; they also differ in lightness) */
+  --ok: #5be49b;
+  --bad: #ff9e9e;
+  --warn: #ffc857;
+  --danger-fill: #ff8a8a;
+  --on-danger: #1a0a0a;
+
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  --bg: oklch(from var(--org) 0.975 0.01 h);
+  --fg: oklch(from var(--org) 0.2 0.02 h);
+  --line: color-mix(in oklab, var(--fg) 10%, transparent);
+  --line-2: color-mix(in oklab, var(--fg) 17%, transparent);
+  --surface: color-mix(in oklab, var(--fg) 4%, transparent);
+  --surface-2: color-mix(in oklab, var(--fg) 8%, transparent);
+  --well: rgba(255, 255, 255, .55);
+  --field: rgba(255, 255, 255, .78);
+  --glass: rgba(255, 255, 255, .6);
+  --glass-strong: rgba(255, 255, 255, .86);
+  --glass-shadow: inset 0 1px 0 rgba(255, 255, 255, .8), 0 1px 2px rgba(20, 20, 40, .05), 0 24px 48px -30px rgba(30, 30, 70, .35);
+
+  --accent-ink: oklch(from var(--org) min(l, 0.46) max(c, 0.09) h);
+
+  --g1: oklch(from var(--org) 0.88 min(c, 0.11) h);
+  --g2: oklch(from var(--org) 0.9 min(c, 0.09) calc(h + 62));
+  --g3: oklch(from var(--org) 0.87 min(c, 0.08) calc(h - 74));
+  --g-opacity: 1;
+  --photo-opacity: .35;
+
+  --ok: #0e7a43;
+  --bad: #b42318;
+  --warn: #8a5a00;
+  --danger-fill: #d92d20;
+  --on-danger: #ffffff;
+
+  color-scheme: light;
+}
+
+/* Tailwind colors read the tokens, so `bg-surface`, `text-main/80`… follow the theme. */
+@theme inline {
+  --color-background: var(--bg);
+  --color-foreground: var(--fg);
+  --color-surface: var(--glass-strong);
+  --color-well: var(--well);
+  --color-muted: var(--line-2);
+  --color-main: var(--accent-ink);
+  --color-accent: var(--accent);
+  --color-on-accent: var(--on-accent);
+  --color-success: var(--ok);
+  --color-danger: var(--bad);
+  --color-warning: var(--warn);
+  --color-danger-fill: var(--danger-fill);
+  --color-on-danger: var(--on-danger);
+
+  --font-sans: var(--font-geist-sans, ui-sans-serif), system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono, ui-monospace), monospace;
+  --font-display: var(--font-bricolage, var(--font-geist-sans, ui-sans-serif)), sans-serif;
 }
 
 @layer base {
-  /* The app is dark-only: native controls (select popups, color pickers, scrollbars) follow it. */
   html {
-    color-scheme: dark;
+    background: var(--bg);
   }
 
   body {
     @apply
-      bg-background
       text-foreground
       antialiased;
+    background: transparent;
+  }
+
+  /*
+   * The organization's gradient behind every page. Pages about an event with a
+   * banner draw the banner on top of it (`.photo-backdrop`); full-screen pages
+   * with their own opaque background (the TV display) simply cover it.
+   */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -2;
+    pointer-events: none;
+    opacity: var(--g-opacity);
+    background:
+      radial-gradient(58% 46% at 8% -4%, var(--g1), transparent 72%),
+      radial-gradient(46% 40% at 96% 8%, var(--g2), transparent 72%),
+      radial-gradient(60% 50% at 62% 104%, var(--g3), transparent 72%);
   }
 
   label {
     @apply
       text-sm
-      opacity-70
+      text-foreground/75
       mb-1;
+  }
+
+  h1, h2, h3 {
+    text-wrap: balance;
   }
 }
 
@@ -61,44 +169,83 @@
   justify-content: space-between;
 }
 
+@utility glass {
+  background: var(--glass);
+  border: 1px solid var(--line);
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: blur(28px) saturate(170%);
+  backdrop-filter: blur(28px) saturate(170%);
+}
+
+@utility glass-strong {
+  background: var(--glass-strong);
+  border: 1px solid var(--line-2);
+  box-shadow: var(--glass-shadow), 0 40px 80px -30px rgba(0, 0, 0, .5);
+  -webkit-backdrop-filter: blur(40px) saturate(180%);
+  backdrop-filter: blur(40px) saturate(180%);
+}
+
+/* Dark glass over photos: white text in both themes. */
+@utility glass-photo {
+  background: rgba(10, 10, 12, .45);
+  border: 1px solid rgba(255, 255, 255, .18);
+  color: #ffffff;
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  backdrop-filter: blur(18px) saturate(160%);
+}
+
+@utility label-mono {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: color-mix(in oklab, var(--fg) 62%, transparent);
+}
+
 @layer components {
   .title {
     @apply
-      text-2xl
-      md:text-3xl
-      font-semibold;
+      font-display
+      tracking-tight
+      text-3xl
+      md:text-4xl
+      font-bold
+      leading-tight;
   }
 
   .subtitle {
     @apply
-      text-lg
-      md:text-xl
-      font-medium;
+      font-display
+      tracking-tight
+      text-xl
+      md:text-2xl
+      font-bold;
   }
 
   .card {
     @apply
-      bg-surface
-      border
-      border-muted
-      rounded-xl
-      p-4;
+      glass
+      rounded-3xl
+      p-5;
   }
 
   .input {
     @apply
       w-full
-      bg-surface
+      min-h-12
       border
       border-muted
-      rounded-lg
-      px-3
+      rounded-2xl
+      px-4
       py-2
+      text-foreground
       outline-none
       transition-colors
+      placeholder:text-foreground/55
       focus:border-main
       disabled:opacity-60
       disabled:cursor-not-allowed;
+    background: var(--field);
   }
 
   .input-error {
@@ -112,29 +259,46 @@
       items-center
       justify-center
       gap-2
-      rounded-lg
+      min-h-11
+      rounded-2xl
       px-4
       py-2
       text-sm
       font-medium
       cursor-pointer
-      transition-colors
-      disabled:opacity-60
+      transition
+      disabled:opacity-50
       disabled:cursor-not-allowed;
   }
 
   .button.main {
     @apply
-      bg-main
-      text-background
-      hover:opacity-90;
+      bg-accent
+      text-on-accent
+      font-semibold
+      enabled:hover:-translate-y-px;
+    box-shadow: 0 10px 30px -14px var(--accent);
+  }
+
+  a.button.main:hover {
+    @apply
+      -translate-y-px;
   }
 
   .button.clean {
     @apply
       border
       border-muted
-      hover:border-main;
+      hover:bg-foreground/8;
+    background: var(--surface);
+  }
+
+  .button.danger {
+    @apply
+      bg-danger-fill
+      text-on-danger
+      font-semibold
+      hover:opacity-90;
   }
 
   .error-message {
@@ -151,11 +315,11 @@
 }
 
 @layer components {
-  /* Minimum touch target (40 px) for small buttons and links. */
+  /* Minimum touch target (44 px) for small buttons and links. */
   .touch {
     @apply
-      min-h-10
-      min-w-10;
+      min-h-11
+      min-w-11;
   }
 
   /* Visible keyboard focus for custom controls. */
@@ -173,22 +337,22 @@
     @apply
       inline-flex
       items-center
-      gap-1
-      min-h-10
+      gap-1.5
+      min-h-11
       shrink-0
       rounded-full
       border
       border-muted
-      bg-surface
       px-4
       text-sm
       font-medium
       cursor-pointer
       transition-colors
-      hover:border-main
-      aria-pressed:bg-main
-      aria-pressed:border-main
-      aria-pressed:text-background;
+      hover:border-foreground/30
+      aria-pressed:bg-accent
+      aria-pressed:border-accent
+      aria-pressed:text-on-accent;
+    background: var(--surface);
   }
 
   /* Small label for an event's tags. */
@@ -197,11 +361,81 @@
       inline-flex
       items-center
       rounded-full
-      bg-main/15
-      px-2.5
-      py-0.5
+      px-3
+      py-1
       text-xs
       font-medium
-      text-main;
+      text-foreground/85;
+    background: var(--surface-2);
+  }
+
+  /* Segmented control (theme picker): the pressed option looks raised. */
+  .segmented {
+    @apply
+      inline-grid
+      grid-flow-col
+      gap-0.5
+      rounded-2xl
+      p-1;
+    background: var(--surface-2);
+  }
+
+  .segmented > button {
+    @apply
+      center
+      gap-1.5
+      min-h-9
+      min-w-9
+      rounded-xl
+      px-2.5
+      text-xs
+      font-medium
+      text-foreground/75
+      cursor-pointer
+      transition-colors
+      hover:text-foreground
+      aria-pressed:text-foreground
+      aria-pressed:shadow-sm;
+  }
+
+  .segmented > button[aria-pressed="true"] {
+    background: var(--glass-strong);
+  }
+
+  /* The event's banner, blurred, behind a page about that event. */
+  .photo-backdrop {
+    position: fixed;
+    inset: -120px;
+    z-index: -1;
+    pointer-events: none;
+  }
+
+  .photo-backdrop img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    filter: blur(110px) saturate(1.6);
+    opacity: var(--photo-opacity);
+  }
+
+  .photo-backdrop::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, transparent 0%, color-mix(in oklab, var(--bg) 45%, transparent) 50%, var(--bg) 95%);
+  }
+}
+
+/* Without backdrop-filter (old Smart TV browsers) glass falls back to opaque surfaces. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass, .card {
+    background: var(--bg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
   }
 }

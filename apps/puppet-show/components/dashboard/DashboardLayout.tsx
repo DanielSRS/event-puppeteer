@@ -3,7 +3,7 @@
  * being managed, notices from the shell and the page itself.
  *
  * From the `md` breakpoint up the navigation is a sidebar; on phones it
- * collapses into a top bar whose "Seções" button opens it in a panel.
+ * collapses into a top bar whose "Seções" button opens it in a bottom sheet.
  *
  * @module
  */
@@ -27,35 +27,35 @@ export function DashboardLayout({ notices, children, ...sidebar }: DashboardLayo
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (
-    <div className="flex w-full min-w-0 flex-1 flex-col md:flex-row">
-      <aside aria-label="Navegação do painel" className="hidden w-64 shrink-0 border-r border-muted p-4 md:block">
-        <div className="sticky top-4">
+    <div className="flex w-full max-w-[1400px] mx-auto min-w-0 flex-1 flex-col md:flex-row md:gap-2 md:px-4 md:pt-4">
+      <aside aria-label="Navegação do painel" className="hidden w-68 shrink-0 md:block">
+        <div className="glass sticky top-24 max-h-[calc(100dvh-7rem)] overflow-y-auto rounded-3xl p-3">
           <DashboardSidebar {...sidebar} />
         </div>
       </aside>
 
-      <div className="between gap-3 border-b border-muted px-4 py-2 md:hidden">
+      <div className="glass sticky top-[5.25rem] z-30 mx-3 mt-3 between gap-3 rounded-2xl py-2 pl-4 pr-2 md:hidden">
         <p className="min-w-0 truncate text-sm">
-          <span className="text-foreground/80">Painel · </span>
+          <span className="text-foreground/75">Painel · </span>
           <span className="font-semibold">{sidebar.contextName}</span>
         </p>
         <button
           type="button"
           onClick={() => setMenuOpen(true)}
           aria-expanded={menuOpen}
-          className="button clean min-h-10 shrink-0"
+          className="button clean min-h-11 shrink-0"
         >
           <MdMenu aria-hidden className="icon" /> Seções
         </button>
       </div>
 
-      <Drawer isOpen={menuOpen} onClose={() => setMenuOpen(false)} title="Menu do painel">
+      <Drawer isOpen={menuOpen} onClose={() => setMenuOpen(false)} title="Menu do painel" placement="bottom">
         <DashboardSidebar {...sidebar} onNavigate={() => setMenuOpen(false)} />
       </Drawer>
 
-      <main className="column min-w-0 flex-1 gap-4 p-4 sm:p-6 lg:p-8">
-        <p className="text-sm text-foreground/80">
-          Gerenciando: <strong className="text-foreground">{sidebar.contextName}</strong>
+      <main className="column min-w-0 flex-1 gap-4 p-4 sm:p-6 md:pt-2 lg:px-8">
+        <p className="label-mono">
+          Gerenciando: <strong className="text-main font-semibold">{sidebar.contextName}</strong>
         </p>
         {notices}
         <div className="column min-w-0 gap-6">{children}</div>
