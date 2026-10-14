@@ -81,3 +81,34 @@ export function ThemeSync() {
 
   return null;
 }
+
+/** The theme shown right now ("dark" on the server). */
+function ShownTheme(): "light" | "dark" {
+  return document.documentElement.dataset.theme === "light" ? "light" : "dark";
+}
+
+/** Re-reads the shown theme when the preference or the system theme changes. */
+function SubscribeShownTheme(onChange: () => void): () => void {
+  const media = window.matchMedia("(prefers-color-scheme: light)");
+  const later = () => window.setTimeout(onChange, 0);
+  media.addEventListener("change", later);
+  const unsubscribe = SubscribeTheme(later);
+  return () => {
+    media.removeEventListener("change", later);
+    unsubscribe();
+  };
+}
+
+/** One icon button that switches between light and dark (the top bar's compact control). */
+export function ThemeIconButton({ className = "" }: { className?: string }) {
+  const shown = useSyncExternalStore(SubscribeShownTheme, ShownTheme, () => "dark" as const);
+  const next = shown === "dark" ? "light" : "dark";
+  const label = next === "light" ? "Usar tema claro" : "Usar tema escuro";
+  const Icon = next === "light" ? MdLightMode : MdDarkMode;
+
+  return (
+    <button type="button" onClick={() => ApplyTheme(next)} aria-label={label} title={label} className={`button ghost icon-only ${className}`}>
+      <Icon aria-hidden className="h-[19px] w-[19px]" />
+    </button>
+  );
+}

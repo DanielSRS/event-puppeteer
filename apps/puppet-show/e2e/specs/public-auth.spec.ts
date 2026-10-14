@@ -63,7 +63,7 @@ describe("Público: login e cadastro", () => {
     await page.getByLabel("Senha").fill(E2E.password);
     await page.getByRole("button", { name: "Entrar", exact: true }).click();
     await page.waitForURL((url) => url.pathname === "/");
-    await page.getByRole("button", { name: "Abrir navegação" }).click();
+    await page.getByRole("button", { name: /^Sua conta:/ }).click();
     await page.locator("p", { hasText: "Olá, Nina" }).waitFor();
 
     assert.deepEqual(Unexpected(errors, [403]), []);
@@ -84,42 +84,47 @@ describe("Público: login e cadastro", () => {
 });
 
 describe("Público: navegação", () => {
-  test("menu do celular abre, navega pelo teclado e fecha com Escape", async () => {
+  test("visitante no celular: marca, tema, Entrar e Criar conta na barra, sem Mural nem Modo TV", async () => {
     const { page, context, errors } = await OpenPage("mobile");
     await page.goto(`${WEB}/`);
-    const button = page.getByRole("button", { name: "Abrir navegação" });
-    assert.equal(await button.getAttribute("aria-expanded"), "false");
-
-    await button.focus();
-    await page.keyboard.press("Enter");
-    const close = page.getByRole("button", { name: "Fechar navegação" });
-    assert.equal(await close.getAttribute("aria-expanded"), "true");
-
-    await page.keyboard.press("Tab");
-    const focused = await page.evaluate(() => document.activeElement?.textContent);
-    assert.equal(focused, "Mural");
-    for (const name of ["Modo TV", "Entrar", "Criar conta"]) assert.ok(await page.getByRole("link", { name, exact: true }).isVisible(), name);
-
-    await page.keyboard.press("Escape");
-    assert.equal(await page.getByRole("button", { name: "Abrir navegação" }).getAttribute("aria-expanded"), "false");
-    assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")), "Abrir navegação");
-    assert.equal(await page.getByRole("link", { name: "Modo TV" }).isVisible(), false);
-
-    await page.getByRole("button", { name: "Abrir navegação" }).click();
-    await page.getByRole("link", { name: "Modo TV" }).click();
-    await page.waitForURL(`${WEB}/display`);
-
+    const bar = page.getByRole("navigation", { name: "Principal" });
+    assert.ok(await bar.getByRole("link", { name: /Universidade Estadual/ }).isVisible());
+    assert.ok(await bar.getByRole("button", { name: /Usar tema/ }).isVisible());
+    for (const name of ["Entrar", "Criar conta"]) assert.ok(await bar.getByRole("link", { name, exact: true }).isVisible(), name);
+    for (const name of ["Mural", "Modo TV"]) assert.equal(await page.getByRole("link", { name, exact: true }).count(), 0, name);
     assert.deepEqual(errors, []);
     await context.close();
   });
 
-  test("logado no desktop: saudação, Painel, Publicar e Sair", async () => {
+  test("logado no celular: Mural, Publicar e Painel na barra de baixo", async () => {
+    const { page, context, errors } = await OpenPage("mobile");
+    await LoginAs(page, "member");
+    const tabs = page.getByRole("navigation", { name: "Atalhos" });
+    await tabs.waitFor();
+    assert.equal(await tabs.getByRole("link", { name: "Mural" }).getAttribute("aria-current"), "page");
+    assert.equal(await tabs.getByRole("link", { name: "Publicar" }).getAttribute("href"), "/eventos/novo");
+    assert.equal(await tabs.getByRole("link", { name: "Painel" }).getAttribute("href"), "/dashboard");
+    assert.deepEqual(errors, []);
+    await context.close();
+  });
+
+  test("logado no desktop: Painel, Publicar e menu da conta com saudação e Sair", async () => {
     const { page, context, errors } = await OpenPage("desktop");
     await LoginAs(page, "member");
-    await page.getByText("Olá, Maria").first().waitFor();
     assert.equal(await page.getByRole("link", { name: "Painel" }).getAttribute("href"), "/dashboard");
     assert.equal(await page.getByRole("link", { name: "Publicar" }).getAttribute("href"), "/eventos/novo");
     assert.ok(await page.getByRole("link", { name: /Universidade Estadual/ }).isVisible());
+
+    const account = page.getByRole("button", { name: /^Sua conta:/ });
+    await account.focus();
+    await page.keyboard.press("Enter");
+    await page.getByText("Olá, Maria").waitFor();
+    assert.equal(await account.getAttribute("aria-expanded"), "true");
+    await page.keyboard.press("Escape");
+    assert.equal(await account.getAttribute("aria-expanded"), "false");
+    assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")?.startsWith("Sua conta:")), true);
+
+    await account.click();
     await page.getByRole("button", { name: "Sair" }).click();
     await page.getByRole("link", { name: "Entrar", exact: true }).waitFor();
     assert.deepEqual(errors, []);

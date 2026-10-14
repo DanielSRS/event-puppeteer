@@ -14,6 +14,8 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const SecondsAgo: Story = {
+  // Measured when the story renders, not when the file loads (the suite may run much later).
+  render: () => <UpdatedAgo updatedAt={Date.now() - 12_000} />,
   play: async ({ canvas }) => {
     await expect(await canvas.findByText(/Atualizado há 1\d s/)).toBeInTheDocument();
   },

@@ -16,9 +16,8 @@ const MEMBER: User = {
 };
 
 /**
- * The top bar. Story tests run at 1200 px, so these assert the wide layout
- * (inline links, greeting); the phone menu (button, `aria-expanded`, Escape)
- * is covered end to end in `e2e/specs/public-navbar.spec.ts`.
+ * The top bar. Story tests run at 1200 px, so these assert the wide layout;
+ * the phone tab bar is covered end to end in `e2e/specs/public-auth.spec.ts`.
  */
 const meta = {
   title: "Components/Navbar/Navbar",
@@ -43,13 +42,13 @@ function Visible(elements: HTMLElement[]): HTMLElement[] {
   return elements.filter((element) => element.offsetParent !== null);
 }
 
-/** Visitor: organization name, Mural (current), Modo TV, Entrar, Criar conta. */
+/** Visitor: the brand (linking to the feed), a theme button, Entrar and Criar conta. */
 export const Anonymous: Story = {
   play: async ({ canvas }) => {
     await expect(canvas.getByRole("link", { name: /Universidade Estadual/ })).toHaveAttribute("href", "/");
     const links = Visible(canvas.getAllByRole("link")).map((link) => link.textContent);
-    await expect(links).toEqual(["Universidade EstadualMural de Eventos", "Mural", "Modo TV", "Entrar", "Criar conta"]);
-    await expect(Visible(canvas.getAllByRole("link", { name: "Mural" }))[0]).toHaveAttribute("aria-current", "page");
+    await expect(links).toEqual(["Mural de EventosUniversidade Estadual", "Entrar", "Criar conta"]);
+    await expect(canvas.getByRole("button", { name: /Usar tema/ })).toBeInTheDocument();
   },
 };
 
@@ -62,10 +61,15 @@ export const WithLogo: Story = {
   },
 };
 
-/** Logged in: greeting, Painel, Publicar and Sair. */
+/** Logged in: Painel, Publicar and the account menu (greeting, theme, Sair). */
 export const LoggedIn: Story = {
   args: { auth: { status: "authenticated", user: MEMBER }, pathname: "/dashboard/events" },
   play: async ({ canvas, args }) => {
+    const account = canvas.getByRole("button", { name: "Sua conta: Maria Souza" });
+    await expect(account).toHaveAttribute("aria-expanded", "false");
+    await expect(Visible(canvas.queryAllByText("Olá, Maria"))).toHaveLength(0);
+    await userEvent.click(account);
+    await expect(account).toHaveAttribute("aria-expanded", "true");
     await expect(Visible(canvas.getAllByText("Olá, Maria"))).toHaveLength(1);
     const painel = Visible(canvas.getAllByRole("link", { name: "Painel" }))[0];
     await expect(painel).toHaveAttribute("href", "/dashboard");
