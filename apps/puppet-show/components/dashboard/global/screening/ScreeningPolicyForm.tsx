@@ -12,7 +12,7 @@ import { useState, type FormEvent } from "react";
 import { SCREENING_CATEGORIES, type ScreeningCategory, type ScreeningPolicy } from "@/lib/api/schemas";
 import { ErrorAlert } from "@/components/ui/Feedback";
 import { CATEGORY_LABELS } from "../../images/screeningLabels";
-import { PolicyToForm, ValidateScreeningPolicyForm, type ScreeningPolicyFormValues } from "./screeningPolicyForm";
+import { PolicyToForm, ValidateScreeningPolicyForm, type ScreeningPolicyFormValues } from "./screening-policy-form-values";
 
 export type ScreeningPolicyFormProps = {
   /** The policy in force; `null` while none was ever set. */

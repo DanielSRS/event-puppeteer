@@ -19,7 +19,7 @@ import { ErrorAlert, StatusMessage } from "@/components/ui/Feedback";
 import {
   EmptyOrganizationForm, OrganizationChanges, OrganizationToForm, ToSlug, ValidateOrganizationForm,
   type OrganizationFormErrors, type OrganizationFormField, type OrganizationFormValues,
-} from "./organizationForm";
+} from "./organization-form-values";
 
 /** Props shared by both modes. */
 type CommonProps = {

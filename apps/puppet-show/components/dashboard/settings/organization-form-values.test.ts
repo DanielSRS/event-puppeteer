@@ -3,7 +3,7 @@ import type { Organization } from "@/lib/api/schemas";
 import {
   CANNOT_CLEAR_MESSAGE, EmptyOrganizationForm, IsHttpUrl, OrganizationChanges, OrganizationToForm, ParseCoordinate,
   ParseThreshold, ToSlug, ValidateOrganizationForm, type OrganizationFormValues,
-} from "./organizationForm";
+} from "./organization-form-values";
 
 const ORG: Organization = {
   id: "o1", name: "Universidade Estadual", slug: "uefs", description: "Campus", url: "https://uefs.br",
