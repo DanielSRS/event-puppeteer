@@ -18,15 +18,15 @@ export default async function EventPage(props: PageProps<"/eventos/[id]">) {
   const { id } = await props.params;
 
   return (
-    <main className="w-full py-6 px-4 sm:px-6 lg:px-8 column gap-4">
-      <div className="w-full max-w-4xl mx-auto">
-        <Link href="/" className="button clean touch">
+    <main className="w-full px-3 pb-20 pt-4 sm:px-4 lg:pt-6">
+      <div className="mx-auto column w-full max-w-6xl gap-6">
+        <Link href="/" className="t2 row min-h-11 self-start gap-2 rounded-xl font-medium transition-colors hover:text-foreground focus-ring">
           <MdArrowBack aria-hidden className="icon" />
-          Voltar para o mural
+          Voltar ao mural
         </Link>
-      </div>
 
-      <EventDetailsContainer eventId={id} />
+        <EventDetailsContainer eventId={id} />
+      </div>
     </main>
   );
 }

@@ -7,6 +7,7 @@
 "use client";
 
 import { useState } from "react";
+import { MdEvent } from "react-icons/md";
 import type { FeedCard } from "@/domain/feed";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { StatusMessage } from "@/components/ui/Feedback";
@@ -33,7 +34,11 @@ export type EventListProps = {
   onDelete: (eventId: string) => Promise<Result<void, string>>;
 };
 
-/** The cards, an empty state, and the confirmation before deleting an own event. */
+/**
+ * The cards in a responsive grid (one column of compact rows on phones, as
+ * many 320 px columns as fit above that), an empty state, and the
+ * confirmation before deleting an own event.
+ */
 export function EventList({
   cards, today, emptyMessage, isLikeInFlight, loginPromptFor, loginRedirect, onToggleLike, onIntent, onDelete,
 }: EventListProps) {
@@ -61,9 +66,12 @@ export function EventList({
       <StatusMessage>{notice}</StatusMessage>
 
       {cards.length === 0 ? (
-        <p className="card py-10 text-center text-foreground/80">{emptyMessage}</p>
+        <div className="glass column items-center gap-3 rounded-[26px] px-6 py-12 text-center">
+          <MdEvent aria-hidden className="t3 h-8 w-8" />
+          <p className="t2 max-w-md">{emptyMessage}</p>
+        </div>
       ) : (
-        <ul aria-label="Eventos" className="grid gap-4 md:grid-cols-2">
+        <ul aria-label="Eventos" className="grid grid-cols-1 gap-3 sm:gap-5 sm:[grid-template-columns:repeat(auto-fill,minmax(min(320px,100%),1fr))]">
           {cards.map((card) => (
             <li key={card.id} className="min-w-0">
               <EventCard

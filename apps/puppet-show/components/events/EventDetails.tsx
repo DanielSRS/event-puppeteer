@@ -3,6 +3,11 @@
  * actions people can take (like, share, report; hide for moderators; delete,
  * and change or remove the banner, for the creator).
  *
+ * Laid out as the design's two columns: banner, title and description, then
+ * "Programação" and "Local" on the left; on the right a summary card (dates,
+ * time, place, the registration link and the like/share/report buttons) and
+ * the other links. On phones the summary comes right after the description.
+ *
  * @module
  */
 
@@ -10,8 +15,8 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import type { IconType } from "react-icons";
 import {
-  MdCalendarToday, MdDeleteOutline, MdDescription, MdFlag, MdHowToReg, MdLanguage, MdLink, MdLocationOn, MdMap,
-  MdOndemandVideo, MdPeople, MdShare, MdVisibility, MdVisibilityOff,
+  MdAccessTime, MdCalendarToday, MdDeleteOutline, MdDescription, MdFlag, MdHowToReg, MdLanguage, MdLink,
+  MdLocationOn, MdMap, MdOndemandVideo, MdOpenInNew, MdPeople, MdShare, MdVisibility, MdVisibilityOff,
 } from "react-icons/md";
 import { ErrorAlert, StatusMessage } from "@/components/ui/Feedback";
 import { ImageCropper } from "@/components/ui/ImageCropper";
@@ -19,7 +24,7 @@ import { ImageWithPlaceholder } from "@/components/ui/ImageWithPlaceholder";
 import { BANNER_RULES } from "@/utils/crop";
 import type { ShownVote } from "@/domain/likes";
 import { IsSafeHttpUrl, LinkKindFor, OsmEmbedUrl, OsmPageUrl, type LinkKind } from "@/domain/links";
-import { FullDate, TimeRange } from "@/domain/schedule";
+import { DateBadge as BadgeParts, DaysBetween, FullDate, NextDay, ShortDate, SortedDays, TimeRange } from "@/domain/schedule";
 import type { DetailLink, EventDetail } from "@/lib/api/mappers";
 import { LikeButton, LikesLabel, TagChips } from "./EventParts";
 
@@ -69,28 +74,80 @@ export type EventDetailsProps = {
   onReplaceBanner: (picture: Blob) => void;
   /** The creator removed the banner. */
   onRemoveBanner: () => void;
+  /** `YYYY-MM-DD` in Brazil; when given, the summary says how far away the event is. */
+  today?: string;
 };
 
-/** A titled block of the page. */
-function Section({ title, icon, children }: { title: string; icon: ReactNode; children: ReactNode }) {
+/** A titled block of the left column. */
+function Section({ id, title, children }: { id: string; title: string; children: ReactNode }) {
   return (
-    <section className="column gap-3">
-      <h2 className="row gap-2 text-lg font-semibold">
-        {icon}
-        {title}
-      </h2>
+    <section aria-labelledby={id} className="column gap-4">
+      <h2 id={id} className="h2 text-[26px]">{title}</h2>
       {children}
     </section>
   );
 }
 
-/** One external link as a button with its icon; an address that isn't http(s) is shown, not linked. */
-function LinkButton({ link }: { link: DetailLink }) {
+/** One line of the summary card: an icon tile, a main line and an optional hint. */
+function SummaryRow({ icon: Icon, title, hint }: { icon: IconType; title: string; hint?: string | null }) {
+  return (
+    <div className="flex items-start gap-3.5">
+      <span aria-hidden className="surface-2 center h-10 w-10 shrink-0 rounded-xl">
+        <Icon className="h-[19px] w-[19px]" />
+      </span>
+      <div className="column min-w-0">
+        <span className="font-semibold break-words">{title}</span>
+        {hint != null && hint !== "" && <span className="t3 text-sm">{hint}</span>}
+      </div>
+    </div>
+  );
+}
+
+/** `"15 out"` for one day, `"15 out – 17 out"` for several; `null` without days. */
+function DatesTitle(event: EventDetail): string | null {
+  const days = SortedDays(event.schedule);
+  const first = days[0];
+  const last = days[days.length - 1];
+  if (first === undefined || last === undefined) return null;
+  return days.length === 1 ? ShortDate(first.date) : `${ShortDate(first.date)} – ${ShortDate(last.date)}`;
+}
+
+/** How far away the next day is: "É hoje", "Amanhã", "Começa em 3 dias", "Já aconteceu". */
+function Countdown(event: EventDetail, today: string): string | null {
+  if (event.schedule.length === 0) return null;
+  const next = NextDay(event.schedule, today);
+  if (next === null) return "Já aconteceu";
+  const days = DaysBetween(today, next.date);
+  if (days === null) return null;
+  if (days === 0) return "É hoje";
+  if (days === 1) return "Amanhã";
+  return `Começa em ${days} dias`;
+}
+
+/** The start of the first day in words, without repeating the schedule's own wording. */
+function StartTitle(event: EventDetail): { title: string; hint: string | null } | null {
+  const first = SortedDays(event.schedule)[0];
+  if (first === undefined) return null;
+  if (first.startTime === undefined) return { title: "O dia inteiro", hint: null };
+  const hint = event.schedule.length > 1
+    ? "Horários de cada dia na programação"
+    : first.endTime === undefined ? null : `Termina às ${first.endTime}`;
+  return { title: `Começa às ${first.startTime}`, hint };
+}
+
+/** The registration link shown as the summary's main button: the first safe one. */
+function RegistrationLink(links: DetailLink[]): DetailLink | null {
+  const found = links.find((link) => link.label !== null && LinkKindFor(link.label) === "registration" && IsSafeHttpUrl(link.url));
+  return found === undefined ? null : found;
+}
+
+/** One external link as a row with its icon; an address that isn't http(s) is shown, not linked. */
+function LinkRow({ link }: { link: DetailLink }) {
   const name = link.label === null ? link.url : link.label;
   const Icon = LINK_ICONS[link.label === null ? "generic" : LinkKindFor(link.label)];
 
   if (!IsSafeHttpUrl(link.url)) {
-    return <p className="text-sm text-danger break-all">Link inválido ({name}): {link.url}</p>;
+    return <p className="c-bad px-1 text-sm break-all">Link inválido ({name}): {link.url}</p>;
   }
 
   return (
@@ -98,101 +155,78 @@ function LinkButton({ link }: { link: DetailLink }) {
       href={link.url}
       target="_blank"
       rel="noopener noreferrer"
-      className={`button touch justify-start ${LinkKindFor(name) === "registration" ? "main" : "clean"}`}
+      className="nav-item focus-ring min-h-[52px] border border-[var(--line)] text-foreground"
     >
-      <Icon aria-hidden className="icon shrink-0" />
-      <span className="break-all">{name}</span>
+      <Icon aria-hidden className="h-[19px] w-[19px] shrink-0" />
+      <span className="flex-1 font-medium break-all">{name}</span>
       <span className="sr-only">(abre em nova aba)</span>
+      <MdOpenInNew aria-hidden className="t3 h-4 w-4 shrink-0" />
     </a>
   );
 }
 
+/** Classes of the stacked buttons under the summary (icon over label). */
+const STACKED = "min-h-16 flex-col gap-1 rounded-2xl px-1 text-[13px]";
+
 /** The details page body. */
 export function EventDetails({
   event, likes, likeBusy = false, canModerate, isCreator, canDelete, reported, loginPrompt, loginRedirect, notice, error,
-  onToggleLike, onShare, onReport, onHide, onUnhide, onDelete, bannerBusy, onReplaceBanner, onRemoveBanner,
+  onToggleLike, onShare, onReport, onHide, onUnhide, onDelete, bannerBusy, onReplaceBanner, onRemoveBanner, today,
 }: EventDetailsProps) {
+  const dates = DatesTitle(event);
+  const start = StartTitle(event);
+  const registration = RegistrationLink(event.links);
+  const otherLinks = event.links.filter((link) => link !== registration);
+  const canReport = !isCreator;
+
   return (
     <>
     {event.banner !== null && event.banner.url !== undefined && (
       // The page takes its colors from the banner: a blurred copy fills the background.
-      // Kept outside the glass card: backdrop-filter would trap a fixed child inside it.
       <div aria-hidden className="photo-backdrop">
         {/* eslint-disable-next-line @next/next/no-img-element -- decorative copy of the signed banner URL */}
         <img src={event.banner.url} alt="" />
       </div>
     )}
-    <article aria-labelledby="event-title" className="glass w-full max-w-4xl mx-auto rounded-[2rem] overflow-hidden">
-      {event.banner !== null && (
-        <ImageWithPlaceholder image={event.banner} alt={`Banner do evento ${event.title}`} className="aspect-video w-full" />
-      )}
+    <article
+      aria-labelledby="event-title"
+      className="grid w-full grid-cols-1 gap-7 lg:grid-cols-[minmax(0,1fr)_minmax(300px,360px)] lg:grid-rows-[auto_1fr] lg:items-start"
+    >
+      <div className="column min-w-0 gap-7 lg:col-start-1 lg:row-start-1 lg:gap-[34px]">
+        {event.banner !== null && (
+          <ImageWithPlaceholder
+            image={event.banner}
+            alt={`Banner do evento ${event.title}`}
+            className="aspect-video w-full rounded-3xl border border-[var(--line-2)] shadow-[0_40px_80px_-40px_rgba(0,0,0,.7)] lg:rounded-[32px]"
+          />
+        )}
 
-      <div className="column gap-6 p-4 sm:p-8">
-        <header className="column gap-3">
+        <header className="column gap-4">
           {event.isHidden && (
-            <p className="row gap-2 text-sm rounded-lg border border-main/40 bg-main/10 p-3">
-              <MdVisibilityOff aria-hidden className="icon shrink-0" />
+            <p className="notice n-warn">
+              <MdVisibilityOff aria-hidden className="mt-px h-[18px] w-[18px] shrink-0" />
               Oculto pela moderação: este evento não aparece no mural nem nos totens. Só você e a moderação conseguem vê-lo.
             </p>
           )}
           <TagChips tags={event.tags} />
-          <h1 id="event-title" className="title break-words">{event.title}</h1>
+          <h1
+            id="event-title"
+            className="font-display text-[40px] font-bold leading-[.98] tracking-[-.035em] break-words lg:text-[clamp(40px,5vw,68px)]"
+          >
+            {event.title}
+          </h1>
+          <p className="t2 max-w-[62ch] text-lg leading-relaxed whitespace-pre-line break-words">{event.description}</p>
         </header>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <LikeButton title={event.title} voted={likes.voted} count={likes.count} busy={likeBusy} onToggle={onToggleLike} />
-          <span className="sr-only" aria-live="polite">{LikesLabel(likes.count)}</span>
-
-          <button type="button" onClick={onShare} className="button clean touch">
-            <MdShare aria-hidden className="icon" />
-            Compartilhar
-          </button>
-
-          {!isCreator && (
-            <button type="button" onClick={onReport} disabled={reported} className="button clean touch hover:border-danger">
-              <MdFlag aria-hidden className="icon" />
-              {reported ? "Denunciado" : "Denunciar"}
-            </button>
-          )}
-
-          {canModerate && (event.isHidden ? (
-            <button type="button" onClick={onUnhide} className="button clean touch">
-              <MdVisibility aria-hidden className="icon" />
-              Reexibir evento
-            </button>
-          ) : (
-            <button type="button" onClick={onHide} className="button clean touch">
-              <MdVisibilityOff aria-hidden className="icon" />
-              Ocultar evento
-            </button>
-          ))}
-
-          {canDelete && (
-            <button type="button" onClick={onDelete} className="button clean touch text-danger hover:border-danger">
-              <MdDeleteOutline aria-hidden className="icon" />
-              Excluir
-            </button>
-          )}
-        </div>
-
-        {loginPrompt !== null && (
-          <p role="status" className="text-sm rounded-lg border border-main/40 bg-main/10 p-3">
-            Você precisa entrar na sua conta para {loginPrompt} eventos.{" "}
-            <Link href={`/entrar?redirect=${encodeURIComponent(loginRedirect)}`} className="text-main underline font-medium">
-              Entrar
-            </Link>
-          </p>
-        )}
-        <StatusMessage>{notice}</StatusMessage>
-        <ErrorAlert>{error}</ErrorAlert>
-
         {isCreator && (
-          <details className="rounded-lg border border-muted p-3">
-            <summary className="cursor-pointer font-medium">{event.banner === null ? "Adicionar banner" : "Trocar ou remover o banner"}</summary>
-            <div className="column gap-3 pt-3">
+          <details className="glass rounded-[22px] px-5 py-4">
+            <summary className="cursor-pointer rounded font-semibold focus-ring">
+              {event.banner === null ? "Adicionar banner" : "Trocar ou remover o banner"}
+            </summary>
+            <div className="column gap-3 pt-4">
               <ImageCropper rules={BANNER_RULES} purpose="banner do evento" disabled={bannerBusy} onCropped={onReplaceBanner} />
               {event.banner !== null && (
-                <button type="button" disabled={bannerBusy} onClick={onRemoveBanner} className="button clean self-start min-h-10 text-danger hover:border-danger">
+                <button type="button" disabled={bannerBusy} onClick={onRemoveBanner} className="button danger-soft focus-ring self-start">
                   <MdDeleteOutline aria-hidden className="icon" />
                   Remover banner
                 </button>
@@ -200,63 +234,159 @@ export function EventDetails({
             </div>
           </details>
         )}
+      </div>
 
-        <p className="whitespace-pre-line break-words">{event.description}</p>
+      <aside aria-label="Resumo e ações" className="column min-w-0 gap-4 lg:col-start-2 lg:row-span-2 lg:row-start-1">
+        <div className="glass column gap-5 rounded-[28px] p-[22px]">
+          <div className="column gap-3.5">
+            <SummaryRow
+              icon={MdCalendarToday}
+              title={dates === null ? "Sem data definida" : dates}
+              hint={today === undefined ? null : Countdown(event, today)}
+            />
+            {start !== null && <SummaryRow icon={MdAccessTime} title={start.title} hint={start.hint} />}
+            <SummaryRow icon={MdLocationOn} title={event.location} />
+          </div>
 
-        <div className="grid gap-8 md:grid-cols-2">
-          <Section title="Programação" icon={<MdCalendarToday aria-hidden className="text-main" />}>
-            {event.schedule.length === 0 ? (
-              <p className="text-sm text-foreground/80">Sem data definida.</p>
-            ) : (
-              <ol className="column gap-2">
-                {event.schedule.map((day) => (
-                  <li key={day.date} className="column rounded-2xl border border-muted bg-well p-3">
-                    <span className="font-medium first-letter:uppercase">{FullDate(day.date)}</span>
-                    <span className="text-sm text-foreground/80">{TimeRange(day)}</span>
-                  </li>
-                ))}
-              </ol>
-            )}
-          </Section>
+          {registration !== null && registration.label !== null && (
+            <a
+              href={registration.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="button main focus-ring min-h-[52px] rounded-2xl text-base"
+            >
+              {registration.label}
+              <span className="sr-only">(abre em nova aba)</span>
+              <MdOpenInNew aria-hidden className="icon" />
+            </a>
+          )}
 
-          <div className="column gap-8 min-w-0">
-            <Section title="Local" icon={<MdLocationOn aria-hidden className="text-main" />}>
-              <p className="rounded-2xl border border-muted bg-well p-3 break-words">{event.location}</p>
-              {event.coordinates !== null && (
-                <>
-                  <iframe
-                    title={`Mapa: ${event.location}`}
-                    src={OsmEmbedUrl(event.coordinates)}
-                    loading="lazy"
-                    className="aspect-video w-full rounded-lg border border-muted bg-muted"
-                  />
-                  <a
-                    href={OsmPageUrl(event.coordinates)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="button clean touch self-start"
-                  >
-                    <MdMap aria-hidden className="icon" />
-                    Abrir no mapa
-                    <span className="sr-only">(abre em nova aba)</span>
-                  </a>
-                </>
-              )}
-            </Section>
-
-            {event.links.length > 0 && (
-              <Section title="Links" icon={<MdLink aria-hidden className="text-main" />}>
-                <ul className="column gap-2">
-                  {event.links.map((link, index) => (
-                    <li key={`${link.url}-${index}`} className="column">
-                      <LinkButton link={link} />
-                    </li>
-                  ))}
-                </ul>
-              </Section>
+          <div className={`grid gap-2 ${canReport ? "grid-cols-3" : "grid-cols-2"}`}>
+            <LikeButton
+              title={event.title}
+              voted={likes.voted}
+              count={likes.count}
+              busy={likeBusy}
+              onToggle={onToggleLike}
+              className={STACKED}
+            />
+            <button type="button" onClick={onShare} className={`button focus-ring ${STACKED}`}>
+              <MdShare aria-hidden className="icon" />
+              Compartilhar
+            </button>
+            {canReport && (
+              <button type="button" onClick={onReport} disabled={reported} className={`button focus-ring ${STACKED}`}>
+                <MdFlag aria-hidden className="icon" />
+                {reported ? "Denunciado" : "Denunciar"}
+              </button>
             )}
           </div>
+          <span className="sr-only" aria-live="polite">{LikesLabel(likes.count)}</span>
+
+          {(canModerate || canDelete) && (
+            <div className="flex flex-wrap gap-2 border-t border-[var(--line)] pt-4">
+              {canModerate && (event.isHidden ? (
+                <button type="button" onClick={onUnhide} className="button focus-ring flex-1">
+                  <MdVisibility aria-hidden className="icon" />
+                  Reexibir evento
+                </button>
+              ) : (
+                <button type="button" onClick={onHide} className="button warn-soft focus-ring flex-1">
+                  <MdVisibilityOff aria-hidden className="icon" />
+                  Ocultar evento
+                </button>
+              ))}
+
+              {canDelete && (
+                <button type="button" onClick={onDelete} className="button danger-soft focus-ring flex-1">
+                  <MdDeleteOutline aria-hidden className="icon" />
+                  Excluir
+                </button>
+              )}
+            </div>
+          )}
+
+          {loginPrompt !== null && (
+            <p role="status" className="notice n-info">
+              <span>
+                Você precisa entrar na sua conta para {loginPrompt} eventos.{" "}
+                <Link href={`/entrar?redirect=${encodeURIComponent(loginRedirect)}`} className="ink rounded font-semibold underline focus-ring">
+                  Entrar
+                </Link>
+              </span>
+            </p>
+          )}
+          <StatusMessage>{notice}</StatusMessage>
+          <ErrorAlert>{error}</ErrorAlert>
         </div>
+
+        {otherLinks.length > 0 && (
+          <section aria-labelledby="event-links" className="glass column gap-1.5 rounded-[28px] p-[18px]">
+            <h2 id="event-links" className="h2 mx-1 mb-1.5 text-lg">Links</h2>
+            <ul className="column gap-1.5">
+              {otherLinks.map((link, index) => (
+                <li key={`${link.url}-${index}`} className="column">
+                  <LinkRow link={link} />
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+      </aside>
+
+      <div className="column min-w-0 gap-7 lg:col-start-1 lg:row-start-2 lg:gap-[34px]">
+        <Section id="event-schedule" title="Programação">
+          {event.schedule.length === 0 ? (
+            <p className="glass t2 rounded-[22px] px-5 py-4">Sem data definida.</p>
+          ) : (
+            <ol className="column gap-3">
+              {event.schedule.map((day, index) => {
+                const badge = BadgeParts(day.date);
+                return (
+                  <li key={day.date} className="glass flex flex-wrap items-center gap-x-5 gap-y-3 rounded-[22px] px-5 py-4">
+                    <span
+                      aria-hidden
+                      className={`column w-16 shrink-0 items-center rounded-2xl py-2.5 leading-none ${index === 0 ? "bg-accent text-on-accent" : "surface-2"}`}
+                    >
+                      <span className="font-display text-[26px] font-bold">{badge === null ? "?" : badge.day}</span>
+                      <span className={`mt-1 font-mono text-[11px] uppercase ${index === 0 ? "font-semibold" : "t2"}`}>{badge === null ? "" : badge.month}</span>
+                    </span>
+                    <span className="min-w-0 flex-[1_1_200px] text-[17px] font-semibold first-letter:uppercase">{FullDate(day.date)}</span>
+                    <span className="font-mono whitespace-nowrap">{TimeRange(day)}</span>
+                  </li>
+                );
+              })}
+            </ol>
+          )}
+        </Section>
+
+        <Section id="event-place" title="Local">
+          <div className="glass overflow-hidden rounded-[26px]">
+            {event.coordinates !== null && (
+              <iframe
+                title={`Mapa: ${event.location}`}
+                src={OsmEmbedUrl(event.coordinates)}
+                loading="lazy"
+                className="well block h-[280px] w-full border-0"
+              />
+            )}
+            <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-[18px]">
+              <span className="min-w-0 text-base font-semibold break-words">{event.location}</span>
+              {event.coordinates !== null && (
+                <a
+                  href={OsmPageUrl(event.coordinates)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="button focus-ring"
+                >
+                  <MdMap aria-hidden className="icon" />
+                  Abrir no mapa
+                  <span className="sr-only">(abre em nova aba)</span>
+                </a>
+              )}
+            </div>
+          </div>
+        </Section>
       </div>
     </article>
     </>

@@ -9,7 +9,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { Drawer } from "@/components/ui/Drawer";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { ErrorAlert, LoadingMessage } from "@/components/ui/Feedback";
 import { useAuth } from "@/hooks/useAuth";
@@ -24,7 +23,9 @@ import {
 } from "@/lib/query/queries";
 import { useApiQuery, type ApiData } from "@/lib/query/useApiQuery";
 import { Ok } from "@/lib/result";
+import { TodayInBrazil } from "@/utils/date";
 import { EventDetails, type LoginPrompt } from "./EventDetails";
+import { ReportDialog } from "./report-dialog";
 import { ReportForm, type ReportFormData } from "./ReportForm";
 
 /**
@@ -134,13 +135,13 @@ export function EventDetailsContainer({ eventId }: EventDetailsContainerProps) {
   const changeEvent = (change: (current: EventWithVotes) => EventWithVotes) =>
     client.setQueryData(eventKey, (current) => (current !== undefined && current.ok ? Ok(change(current.value)) : current));
 
-  if (auth.status === "error") return <ErrorAlert className="max-w-4xl mx-auto">{auth.message}</ErrorAlert>;
-  if (ready && orgId === null) return <ErrorAlert className="max-w-4xl mx-auto">{MISSING_ORG_MESSAGE}</ErrorAlert>;
+  if (auth.status === "error") return <ErrorAlert className="w-full">{auth.message}</ErrorAlert>;
+  if (ready && orgId === null) return <ErrorAlert className="w-full">{MISSING_ORG_MESSAGE}</ErrorAlert>;
 
   const failure = LoadFailure(event.error, event.value, tags, labels, vote, report, viewerId !== null);
   if (failure !== null) {
     return (
-      <div className="column items-center gap-4 max-w-4xl mx-auto">
+      <div className="column w-full items-center gap-4">
         <ErrorAlert className="w-full">{failure}</ErrorAlert>
       </div>
     );
@@ -305,9 +306,10 @@ export function EventDetailsContainer({ eventId }: EventDetailsContainerProps) {
         bannerBusy={bannerBusy}
         onReplaceBanner={(picture) => void replaceBanner(picture)}
         onRemoveBanner={() => void removeBanner()}
+        today={TodayInBrazil()}
       />
 
-      <Drawer isOpen={reporting} onClose={() => { if (!reportSending) setReporting(false); }} title="Denunciar evento">
+      <ReportDialog isOpen={reporting} onClose={() => { if (!reportSending) setReporting(false); }} eventTitle={detail.title}>
         <ReportForm
           threshold={threshold}
           isSending={reportSending}
@@ -315,7 +317,7 @@ export function EventDetailsContainer({ eventId }: EventDetailsContainerProps) {
           onSubmit={(data) => void sendReport(data)}
           onCancel={() => setReporting(false)}
         />
-      </Drawer>
+      </ReportDialog>
 
       <ConfirmDialog
         isOpen={confirm !== null}

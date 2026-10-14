@@ -6,8 +6,11 @@ import { TvDisplay } from "./TvDisplay";
 
 const SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10" fill="#000"/></svg>';
 
-function Event(n: number, votes = 0): TvEvent {
-  return { id: `e${n}`, title: `Evento ${n}`, location: `Sala ${n}`, schedule: [{ date: "2026-10-15", startTime: "14:00", endTime: "16:00" }], voteCount: votes };
+function Event(n: number, votes = 0, date = "2026-10-15"): TvEvent {
+  return {
+    id: `e${n}`, title: `Evento ${n}`, location: `Sala ${n}`, schedule: [{ date, startTime: "14:00", endTime: "16:00" }], voteCount: votes,
+    description: `Descrição do evento ${n}.`, banner: null, tags: [{ id: "t1", name: "Tecnologia" }],
+  };
 }
 
 /** The kiosk screen. */
@@ -29,23 +32,36 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** Up to three events: one window, each shown once, no page counter. */
+/** One event featured at a time; the most liked one first, with "Em alta"; the agenda lists both. */
 export const FewEvents: Story = {
   play: async ({ canvas }) => {
-    await expect(canvas.getByRole("heading", { level: 1 })).toHaveTextContent("Universidade Estadual");
-    await expect(canvas.getAllByRole("listitem")).toHaveLength(2);
+    await expect(canvas.getByRole("heading", { level: 1 })).toHaveTextContent("Eventos · Universidade Estadual");
+    const featured = canvas.getByRole("article", { name: "Evento em exibição" });
+    await expect(featured).toHaveTextContent("Evento 1");
+    await expect(featured).toHaveTextContent("Em alta");
     await expect(canvas.getByText("2 curtidas")).toBeInTheDocument();
-    await expect(canvas.queryByText(/Página/)).toBeNull();
+    await expect(canvas.getByRole("list", { name: "Agenda" }).querySelectorAll("li")).toHaveLength(2);
     await expect(canvas.getByRole("img", { name: /QR Code/ })).toBeInTheDocument();
   },
 };
 
-/** More than three: windows of three, with a page counter. */
-export const Rotating: Story = {
-  args: { events: [Event(1), Event(2), Event(3), Event(4), Event(5)] },
+/** Today has events: they are listed under "Hoje"; the week counts its events and categories. */
+export const Today: Story = {
+  args: { events: [Event(1, 3, "2026-10-08"), Event(2, 0, "2026-10-08"), Event(3, 1, "2026-10-12")] },
   play: async ({ canvas }) => {
-    await expect(canvas.getAllByRole("listitem")).toHaveLength(3);
-    await expect(canvas.getByText("Página 1 de 2")).toBeInTheDocument();
+    const today = canvas.getByRole("region", { name: "Hoje" });
+    await expect(today).toHaveTextContent("2 eventos");
+    await expect(today).toHaveTextContent("Evento 1");
+    await expect(canvas.getByRole("region", { name: "Próximos 7 dias" })).toHaveTextContent("3eventosem 1 categoria");
+  },
+};
+
+/** More events than the agenda holds: five shown, the rest counted. */
+export const Rotating: Story = {
+  args: { events: [Event(1), Event(2), Event(3), Event(4), Event(5), Event(6), Event(7)] },
+  play: async ({ canvas }) => {
+    await expect(canvas.getByRole("list", { name: "Agenda" }).querySelectorAll("li")).toHaveLength(5);
+    await expect(canvas.getByText("e mais 2 eventos no site")).toBeInTheDocument();
   },
 };
 

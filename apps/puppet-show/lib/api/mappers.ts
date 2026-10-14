@@ -122,15 +122,24 @@ export type TvEvent = {
   location: string;
   schedule: ScheduleDay[];
   voteCount: number;
+  /** Optional so older callers and stories keep working; empty when unknown. */
+  description?: string;
+  /** The banner as the public sees it (`url` absent while under review); `null` without one. */
+  banner?: ImageView | null;
+  /** Public tags only. */
+  tags?: CardTag[];
 };
 
-/** A feed event as the TV display draws it. */
-export function ToTvEvent(event: FeedEvent): TvEvent {
+/** A feed event as the TV display draws it; `catalog` names its public tags. */
+export function ToTvEvent(event: FeedEvent, catalog: readonly Tag[] = []): TvEvent {
   return {
     id: event.id,
     title: event.title,
     location: event.location,
     schedule: Schedule(event),
     voteCount: event.voteCount,
+    description: event.description,
+    banner: event.banner ?? null,
+    tags: PublicTags(event, catalog),
   };
 }

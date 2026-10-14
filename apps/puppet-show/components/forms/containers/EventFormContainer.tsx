@@ -135,7 +135,7 @@ export function EventFormContainer({ orgId, onCreated, onCancel }: EventFormCont
         <ErrorAlert>
           O evento foi publicado, mas o banner não pôde ser enviado. {bannerFailure.message} Você pode enviar o banner de novo na página do evento.
         </ErrorAlert>
-        <button type="button" onClick={() => onCreated(bannerFailure.event)} className="button self-start min-h-10">Continuar</button>
+        <button type="button" onClick={() => onCreated(bannerFailure.event)} className="button self-start">Continuar</button>
       </div>
     );
   }
@@ -150,7 +150,7 @@ export function EventFormContainer({ orgId, onCreated, onCancel }: EventFormCont
     return (
       <div className="column gap-3">
         <ErrorAlert>{message}</ErrorAlert>
-        <button type="button" onClick={reloadCatalog} className="button clean self-start min-h-10">Tentar de novo</button>
+        <button type="button" onClick={reloadCatalog} className="button self-start">Tentar de novo</button>
       </div>
     );
   }

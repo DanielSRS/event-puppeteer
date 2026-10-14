@@ -45,6 +45,8 @@ export type LikeButtonProps = {
   /** While the vote request runs the button waits. */
   busy?: boolean;
   onToggle: () => void;
+  /** Extra classes for where the button sits (on a photo, stacked in a grid…). */
+  className?: string;
 };
 
 /** `"1 curtida"` / `"3 curtidas"`. */
@@ -52,12 +54,15 @@ export function LikesLabel(count: number): string {
   return `${count} ${count === 1 ? "curtida" : "curtidas"}`;
 }
 
+/** The design's fixed "liked" pink; only the heart takes it, so the counter keeps the text contrast. */
+const LIKED_PINK = "#FF6B8A";
+
 /**
  * Heart toggle with the live counter; `aria-pressed` tells whether the viewer
- * liked it. Its name reads "Curtir “Título”, 3 curtidas" (the number is the
- * visible part, so speech commands like "click 3" work too).
+ * liked it (the heart fills in pink). Its name reads "Curtir “Título”, 3 curtidas"
+ * (the number is the visible part, so speech commands like "click 3" work too).
  */
-export function LikeButton({ title, voted, count, busy = false, onToggle }: LikeButtonProps) {
+export function LikeButton({ title, voted, count, busy = false, onToggle, className = "" }: LikeButtonProps) {
   return (
     <button
       type="button"
@@ -65,12 +70,14 @@ export function LikeButton({ title, voted, count, busy = false, onToggle }: Like
       disabled={busy}
       aria-pressed={voted}
       aria-busy={busy}
-      className={`button clean touch ${voted ? "border-main text-main" : ""}`}
+      className={`button touch focus-ring font-semibold ${className}`}
     >
-      {voted ? <MdFavorite aria-hidden className="icon" /> : <MdFavoriteBorder aria-hidden className="icon" />}
+      {voted
+        ? <MdFavorite aria-hidden className="icon shrink-0" style={{ color: LIKED_PINK }} />
+        : <MdFavoriteBorder aria-hidden className="icon shrink-0" />}
       <span>
         <span className="sr-only">Curtir “{title}”,</span>
-        <span className="tabular-nums">{count}</span>
+        <span className="font-mono tabular-nums">{count}</span>
         <span className="sr-only">{count === 1 ? "curtida" : "curtidas"}</span>
       </span>
     </button>

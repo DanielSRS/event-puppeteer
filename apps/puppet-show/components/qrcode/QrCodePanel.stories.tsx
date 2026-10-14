@@ -23,7 +23,11 @@ export const Side: Story = {
   },
 };
 
-export const Tv: Story = { args: { variant: "tv" } };
+/** The TV tile, at the TV's scale. */
+export const Tv: Story = {
+  args: { variant: "tv" },
+  decorators: [(Story) => <div className="tv w-[300px]"><Story /></div>],
+};
 
 /** No site address configured: says what to set instead of a made-up code. */
 export const MissingSiteUrl: Story = {

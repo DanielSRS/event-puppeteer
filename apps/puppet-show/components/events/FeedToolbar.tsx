@@ -1,5 +1,5 @@
 /**
- * Search box and filter pills above the feed.
+ * Search box and filter pills above the feed, in one glass bar.
  *
  * @module
  */
@@ -15,6 +15,8 @@ export type FeedToolbarProps = {
   tags: CardTag[];
   onQueryChange: (query: string) => void;
   onFilterChange: (filter: FeedFilter) => void;
+  /** Shown at the end of the bar (e.g. how fresh the feed is). */
+  trailing?: ReactNode;
 };
 
 /** The fixed pills, before the tag pills. */
@@ -25,31 +27,34 @@ const GENERAL: ReadonlyArray<{ filter: FeedFilter; label: string; icon: ReactNod
 ];
 
 /**
- * Free-text search (title, description, location) and one row of pills:
- * "Todos", "Mais próximos", "Mais curtidos", then the tags. The pills scroll
- * sideways inside their own row on narrow screens.
+ * Free-text search (title, description, location) and one group of pills:
+ * "Todos", "Mais próximos", "Mais curtidos", then the tags. The search label
+ * is visually hidden (the icon and placeholder say it). The pills wrap on
+ * wide screens and scroll sideways inside their own row on phones.
  */
-export function FeedToolbar({ query, filter, tags, onQueryChange, onFilterChange }: FeedToolbarProps) {
+export function FeedToolbar({ query, filter, tags, onQueryChange, onFilterChange, trailing }: FeedToolbarProps) {
   const searchId = useId();
 
   return (
-    <div className="column gap-3">
-      <div className="column">
-        <label htmlFor={searchId}>Buscar eventos</label>
-        <div className="relative">
-          <MdSearch aria-hidden className="icon absolute left-3 top-1/2 -translate-y-1/2 text-foreground/60" />
-          <input
-            id={searchId}
-            type="search"
-            value={query}
-            onChange={(event) => onQueryChange(event.target.value)}
-            placeholder="Nome, descrição ou local"
-            className="input pl-10 min-h-11"
-          />
-        </div>
+    <section aria-label="Busca e filtros" className="glass flex flex-wrap items-center gap-3 rounded-[22px] p-2.5">
+      <div className="relative min-w-0 flex-[1_1_260px]">
+        <label htmlFor={searchId} className="sr-only">Buscar eventos</label>
+        <MdSearch aria-hidden className="icon t3 pointer-events-none absolute left-4 top-1/2 -translate-y-1/2" />
+        <input
+          id={searchId}
+          type="search"
+          value={query}
+          onChange={(event) => onQueryChange(event.target.value)}
+          placeholder="Buscar por nome, descrição ou local"
+          className="input pl-12"
+        />
       </div>
 
-      <div role="group" aria-label="Filtrar eventos" className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+      <div
+        role="group"
+        aria-label="Filtrar eventos"
+        className="-mx-2.5 -my-1 flex min-w-0 flex-[999_1_540px] gap-1.5 overflow-x-auto px-2.5 py-1 [scrollbar-width:none] sm:mx-0 sm:my-0 sm:py-0 sm:flex-wrap sm:overflow-visible sm:px-0 [&::-webkit-scrollbar]:hidden"
+      >
         {GENERAL.map((option) => (
           <button
             key={option.label}
@@ -63,7 +68,7 @@ export function FeedToolbar({ query, filter, tags, onQueryChange, onFilterChange
           </button>
         ))}
 
-        {tags.length > 0 && <span aria-hidden className="w-px shrink-0 self-stretch bg-muted mx-1" />}
+        {tags.length > 0 && <span aria-hidden className="mx-1 w-px shrink-0 self-stretch bg-muted" />}
 
         {tags.map((tag) => {
           const tagFilter: FeedFilter = { kind: "tag", tagId: tag.id };
@@ -80,6 +85,8 @@ export function FeedToolbar({ query, filter, tags, onQueryChange, onFilterChange
           );
         })}
       </div>
-    </div>
+
+      {trailing !== undefined && <div className="ml-auto px-2">{trailing}</div>}
+    </section>
   );
 }
