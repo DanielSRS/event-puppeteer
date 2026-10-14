@@ -59,7 +59,8 @@ export function ConfirmDialog({
       aria-describedby={bodyId}
       onCancel={(event) => { event.preventDefault(); if (!busy) onCancel(); }}
       onClose={() => {
-        if (!isOpen) return;
+        // A `close` event is dispatched asynchronously: if the dialog was reopened meanwhile, it is stale.
+        if (!isOpen || ref.current?.open) return;
         if (busy) ref.current?.showModal();
         else onCancel();
       }}

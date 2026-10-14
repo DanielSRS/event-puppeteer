@@ -56,7 +56,8 @@ export function Drawer({ isOpen, onClose, title, children, width = "md", placeme
       aria-labelledby={titleId}
       onCancel={(event) => { event.preventDefault(); onClose(); }}
       onClose={() => {
-        if (!isOpen) return;
+        // A `close` event is dispatched asynchronously: if the panel was reopened meanwhile, it is stale.
+        if (!isOpen || ref.current?.open) return;
         ref.current?.showModal();
         onClose();
       }}
