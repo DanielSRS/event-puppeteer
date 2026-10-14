@@ -22,7 +22,7 @@ import { ErrorAlert, LoadingMessage, StatusMessage } from "@/components/ui/Feedb
 import { SectionDenialFor, useDashboard } from "../../DashboardContext";
 import { AccessNotice } from "../AccessNotice";
 import { OrganizationForm } from "../../settings/OrganizationForm";
-import { OrgManager } from "./OrgManager";
+import { OrgManager, OrgsHeader } from "./OrgManager";
 
 /** What the side panel is doing. */
 type Editing = { kind: "closed" } | { kind: "create" } | { kind: "edit"; org: Organization };
@@ -47,7 +47,7 @@ function SaveErrorMessage(error: ApiError): string {
 export function GlobalOrgsContainer() {
   const { user, orgId } = useDashboard();
   const denial = SectionDenialFor("global-orgs", user, orgId);
-  if (denial !== null) return <AccessNotice denial={denial} />;
+  if (denial !== null) return <><OrgsHeader /><AccessNotice denial={denial} /></>;
   return <Organizations />;
 }
 
@@ -87,8 +87,8 @@ function Organizations() {
     finish(await api.organizations.update(id, changes), "atualizada");
   };
 
-  if (orgs === null) return <LoadingMessage>Carregando organizações...</LoadingMessage>;
-  if (!orgs.ok) return <ErrorAlert>{orgs.error}</ErrorAlert>;
+  if (orgs === null) return <><OrgsHeader /><LoadingMessage>Carregando organizações...</LoadingMessage></>;
+  if (!orgs.ok) return <><OrgsHeader /><ErrorAlert>{orgs.error}</ErrorAlert></>;
 
   const editingId = editing.kind === "edit" ? editing.org.id : null;
   const takenSlugs = orgs.value.filter((o) => o.id !== editingId).map((o) => o.slug);
@@ -96,8 +96,9 @@ function Organizations() {
 
   return (
     <div className="column gap-4">
-      <StatusMessage>{status}</StatusMessage>
-      <OrgManager organizations={orgs.value} onCreate={() => open({ kind: "create" })} onEdit={(org) => open({ kind: "edit", org })} />
+      <OrgManager organizations={orgs.value} onCreate={() => open({ kind: "create" })} onEdit={(org) => open({ kind: "edit", org })}
+        notice={<StatusMessage>{status}</StatusMessage>}
+      />
 
       <Drawer
         isOpen={editing.kind !== "closed"}

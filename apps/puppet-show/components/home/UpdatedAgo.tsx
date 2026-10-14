@@ -14,18 +14,24 @@ export type UpdatedAgoProps = {
   updatedAt: number;
 };
 
-/** Ticks once a second on its own, so the list around it doesn't re-render. */
+/** Ticks once a second on its own, so the list around it doesn't re-render. A green dot marks it live. */
 export function UpdatedAgo({ updatedAt }: UpdatedAgoProps) {
   const [now, setNow] = useState(updatedAt);
 
   useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
+    const tick = () => setNow(Date.now());
+    const first = setTimeout(tick, 0);
+    const timer = setInterval(tick, 1000);
+    return () => {
+      clearTimeout(first);
+      clearInterval(timer);
+    };
   }, []);
 
   const label = ElapsedLabel(updatedAt, Math.max(now, updatedAt));
   return (
-    <p className="text-xs text-foreground/80">
+    <p className="t3 row gap-2 whitespace-nowrap text-xs">
+      <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--ok)]" />
       {label === "agora" ? "Atualizado agora" : `Atualizado há ${label}`}
     </p>
   );

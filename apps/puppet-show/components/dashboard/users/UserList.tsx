@@ -1,21 +1,25 @@
 /**
- * People of the organization: name, e-mail, shadow-ban status, a labelled
- * role selector, a remove button and, for a Superadmin, a promote-to-Superadmin
- * button. The logged-in person can't change their
- * own role or remove themselves (the API refuses it too), and the controls
- * say so.
+ * People of the organization: avatar, name and e-mail, shadow-ban status as a
+ * badge, a labelled role selector, a remove button and, for a Superadmin, a
+ * promote-to-Superadmin button. The logged-in person can't change their own
+ * role or remove themselves (the API refuses it too); the note under the
+ * table says so and describes their disabled controls.
  *
- * Shown as a table on larger screens and as stacked cards on phones.
+ * A table that becomes stacked cards when the dashboard column is narrow
+ * (`.rtable`); the container draws the card around it.
  *
  * @module
  */
 
 import type { OrgRole, User } from "@/lib/api/schemas";
-import { MdAdminPanelSettings, MdPersonRemove } from "react-icons/md";
+import { MdArrowUpward } from "react-icons/md";
 import { ROLE_LABELS } from "../roleLabels";
 
 /** Roles an Admin can give, lowest first. */
 const ORG_ROLES: OrgRole[] = ["Member", "Moderator", "Admin"];
+
+/** Id of the note that explains why the viewer's own controls are disabled. */
+const SELF_NOTE_ID = "users-self-note";
 
 export type UserListProps = {
   users: User[];
@@ -37,9 +41,14 @@ export function FullName(user: User): string {
   return `${user.firstName} ${user.lastName}`;
 }
 
-/** Label shown before a value on phones, where the header row is hidden. */
+/** `"MM"` for Maria Membro. */
+function Initials(user: User): string {
+  return `${user.firstName.charAt(0)}${user.lastName.charAt(0)}`.toUpperCase();
+}
+
+/** Label shown before a value when the table is stacked, where the header row is hidden. */
 function CellLabel({ children }: { children: string }) {
-  return <span aria-hidden className="block text-xs text-foreground/70 md:hidden">{children}</span>;
+  return <span aria-hidden className="cell-label">{children}</span>;
 }
 
 /** Type guard for the role select's value. */
@@ -47,103 +56,119 @@ function IsOrgRole(value: string): value is OrgRole {
   return ORG_ROLES.some((role) => role === value);
 }
 
-/** The table of people; the container renders the empty and loading states. */
+/** The table of people and the note about one's own account; the container renders the empty and loading states. */
 export function UserList({
   users, currentUserId, busyUserId, onChangeRole, onRemove, canPromoteToSuperadmin, onPromoteToSuperadmin,
 }: UserListProps) {
   return (
-    <table className="block w-full text-sm md:table">
-      <caption className="sr-only">Pessoas da organização</caption>
-      <thead className="sr-only md:not-sr-only md:table-header-group">
-        <tr className="border-b border-muted text-left">
-          <th scope="col" className="p-3 font-semibold">Nome</th>
-          <th scope="col" className="p-3 font-semibold">E-mail</th>
-          <th scope="col" className="p-3 font-semibold">Situação</th>
-          <th scope="col" className="p-3 font-semibold">Papel</th>
-          <th scope="col" className="p-3 font-semibold"><span className="sr-only">Ações</span></th>
-        </tr>
-      </thead>
-      <tbody className="column gap-3 md:table-row-group">
-        {users.map((user) => {
-          const name = FullName(user);
-          const isMe = user.id === currentUserId;
-          const busy = busyUserId === user.id;
-          const selfNoteId = `self-note-${user.id}`;
+    <>
+      <table className="rtable text-sm">
+        <caption className="sr-only">Pessoas da organização</caption>
+        <thead>
+          <tr>
+            <th scope="col" className="pl-5">Nome</th>
+            <th scope="col">Situação</th>
+            <th scope="col">Papel</th>
+            <th scope="col" className="pr-5 text-right">Ações</th>
+          </tr>
+        </thead>
+        <tbody>
+          {users.map((user) => {
+            const name = FullName(user);
+            const isMe = user.id === currentUserId;
+            const busy = busyUserId === user.id;
 
-          return (
-            <tr key={user.id} className="card block md:table-row md:rounded-none md:border-0 md:border-b md:bg-transparent">
-              <th scope="row" className="block py-1 text-left font-medium md:table-cell md:p-3 md:align-middle">
-                <span className="break-words">{name}</span>
-                {isMe && <span className="ml-2 text-xs font-normal text-foreground/70">(você)</span>}
-              </th>
-              <td className="block py-1 md:table-cell md:p-3 md:align-middle">
-                <CellLabel>E-mail</CellLabel>
-                <span className="break-all">{user.email}</span>
-              </td>
-              <td className="block py-1 md:table-cell md:p-3 md:align-middle">
-                <CellLabel>Situação</CellLabel>
-                {user.isShadowBanned
-                  ? <span className="rounded-md bg-danger/10 px-2 py-1 text-xs font-medium text-danger ring-1 ring-inset ring-danger/30">Em shadow ban</span>
-                  : <span className="text-foreground/80">Normal</span>}
-              </td>
-              <td className="block py-1 md:table-cell md:p-3 md:align-middle">
-                {user.role === "Superadmin" ? (
-                  <>
-                    <CellLabel>Papel</CellLabel>
-                    {ROLE_LABELS.Superadmin}
-                  </>
-                ) : (
-                  <>
-                    <label htmlFor={`role-${user.id}`} className="mb-1 block text-xs md:sr-only">
-                      Papel<span className="sr-only"> de {name}</span>
-                    </label>
-                    <select
-                      id={`role-${user.id}`}
-                      value={user.role}
-                      disabled={isMe || busy}
-                      aria-describedby={isMe ? selfNoteId : undefined}
-                      onChange={(event) => { if (IsOrgRole(event.target.value)) onChangeRole(user, event.target.value); }}
-                      className="input min-h-10 md:w-44"
-                    >
-                      {ORG_ROLES.map((role) => <option key={role} value={role}>{ROLE_LABELS[role]}</option>)}
-                    </select>
-                  </>
-                )}
-              </td>
-              <td className="block pt-2 md:table-cell md:p-3 md:align-middle md:text-right">
-                <div className="flex flex-col gap-2 md:flex-row md:justify-end">
-                {canPromoteToSuperadmin && user.role !== "Superadmin" && !isMe && (
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => onPromoteToSuperadmin(user)}
-                    className="button clean min-h-10 w-full md:w-auto"
-                  >
-                    <MdAdminPanelSettings aria-hidden className="icon" /> Promover<span className="sr-only"> {name}</span> a Superadmin
-                  </button>
-                )}
-                {user.role !== "Superadmin" && (
-                  <button
-                    type="button"
-                    disabled={isMe || busy}
-                    aria-describedby={isMe ? selfNoteId : undefined}
-                    onClick={() => onRemove(user)}
-                    className="button clean min-h-10 w-full text-danger md:w-auto"
-                  >
-                    <MdPersonRemove aria-hidden className="icon" /> Remover<span className="sr-only"> {name}</span>
-                  </button>
-                )}
-                </div>
-                {isMe && (
-                  <p id={selfNoteId} className="mt-1 text-xs text-foreground/70">
-                    Você não pode alterar o próprio papel nem remover a própria conta.
-                  </p>
-                )}
-              </td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
+            return (
+              <tr key={user.id}>
+                <th scope="row" className="pl-5 font-normal">
+                  <span className="flex min-w-0 items-center gap-3">
+                    <span aria-hidden className="avatar">{Initials(user)}</span>
+                    <span className="column min-w-0 leading-snug">
+                      <span className="font-semibold break-words">
+                        {name}
+                        {isMe && <span className="t2 font-normal"> (você)</span>}
+                      </span>
+                      <span className="t3 text-[13px] break-all">{user.email}</span>
+                    </span>
+                  </span>
+                </th>
+                <td>
+                  <CellLabel>Situação</CellLabel>
+                  {user.isShadowBanned
+                    ? <span className="badge b-bad">Em shadow ban</span>
+                    : <span className="badge b-neutral">Normal</span>}
+                </td>
+                <td>
+                  {user.role === "Superadmin" ? (
+                    <>
+                      <CellLabel>Papel</CellLabel>
+                      <span className="badge b-violet">{ROLE_LABELS.Superadmin}</span>
+                    </>
+                  ) : (
+                    <>
+                      <label htmlFor={`role-${user.id}`} className="sr-only">Papel de {name}</label>
+                      <span className="relative flex w-full max-w-[200px]">
+                        <select
+                          id={`role-${user.id}`}
+                          value={user.role}
+                          disabled={isMe || busy}
+                          aria-describedby={isMe ? SELF_NOTE_ID : undefined}
+                          onChange={(event) => { if (IsOrgRole(event.target.value)) onChangeRole(user, event.target.value); }}
+                          className="input min-h-11 appearance-none pr-9"
+                        >
+                          {ORG_ROLES.map((role) => <option key={role} value={role}>{ROLE_LABELS[role]}</option>)}
+                        </select>
+                        <svg
+                          aria-hidden width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"
+                          strokeLinecap="round" strokeLinejoin="round"
+                          className="t2 pointer-events-none absolute right-3 top-1/2 -translate-y-1/2"
+                        >
+                          <path d="m6 9 6 6 6-6" />
+                        </svg>
+                      </span>
+                    </>
+                  )}
+                </td>
+                <td className="pr-5">
+                  <span className="flex flex-wrap justify-end gap-1.5 [@container_dash_(max-width:760px)]:justify-start [@container_dash_(max-width:760px)]:pt-1">
+                    {canPromoteToSuperadmin && user.role !== "Superadmin" && !isMe && (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => onPromoteToSuperadmin(user)}
+                        className="button focus-ring px-3 text-[13px]"
+                      >
+                        <MdArrowUpward aria-hidden className="h-4 w-4" /> Promover<span className="sr-only"> {name}</span> a Superadmin
+                      </button>
+                    )}
+                    {user.role !== "Superadmin" && (
+                      <button
+                        type="button"
+                        disabled={isMe || busy}
+                        aria-describedby={isMe ? SELF_NOTE_ID : undefined}
+                        onClick={() => onRemove(user)}
+                        className="button danger-soft focus-ring px-3 text-[13px]"
+                      >
+                        Remover<span className="sr-only"> {name}</span>
+                      </button>
+                    )}
+                  </span>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      <p id={SELF_NOTE_ID} className="t3 flex items-center gap-2 border-t border-[color:var(--line)] px-5 py-3.5 text-[13px]">
+        <svg
+          aria-hidden width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9"
+          strokeLinecap="round" strokeLinejoin="round" className="shrink-0"
+        >
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 16v-4M12 8h.01" />
+        </svg>
+        Você não pode alterar o próprio papel nem remover a própria conta.
+      </p>
+    </>
   );
 }

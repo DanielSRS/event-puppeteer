@@ -59,11 +59,12 @@ export function ConfirmDialog({
       aria-describedby={bodyId}
       onCancel={(event) => { event.preventDefault(); if (!busy) onCancel(); }}
       onClose={() => {
-        if (!isOpen) return;
+        // A `close` event is dispatched asynchronously: if the dialog was reopened meanwhile, it is stale.
+        if (!isOpen || ref.current?.open) return;
         if (busy) ref.current?.showModal();
         else onCancel();
       }}
-      className="m-auto w-[calc(100%-2rem)] max-w-md rounded-xl border border-muted bg-surface text-foreground p-0 shadow-2xl backdrop:bg-black/60"
+      className="m-auto w-[calc(100%-2rem)] max-w-md rounded-3xl glass-strong text-foreground p-0 backdrop:bg-black/50 backdrop:backdrop-blur-sm"
     >
       {isOpen && (
         <div className="column gap-4 p-6">
@@ -80,7 +81,7 @@ export function ConfirmDialog({
               type="button"
               onClick={onConfirm}
               disabled={busy}
-              className={`button ${danger ? "bg-danger text-background hover:opacity-90" : "main"}`}
+              className={`button ${danger ? "danger" : "main"}`}
             >
               {busy ? "Aguarde..." : confirmLabel}
             </button>

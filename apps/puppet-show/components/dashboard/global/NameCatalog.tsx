@@ -1,7 +1,8 @@
 /**
  * A system-wide list of names with a form to add one: used for the official
- * tags and for the link labels. The API can't delete or rename these, so the
- * list has no such buttons.
+ * tags and for the link labels. The creation form is a glass bar (input plus
+ * button); below it, a glass card lists the names as chips with their count.
+ * The API can't delete or rename these, so the list has no such buttons.
  *
  * @module
  */
@@ -32,7 +33,7 @@ export type NameCatalogProps = {
   onCreate: (name: string) => Promise<boolean>;
 };
 
-/** The list plus the creation form. */
+/** The creation form plus the list. */
 export function NameCatalog({ title, inputLabel, placeholder, submitLabel, emptyText, items, saving, error, onCreate }: NameCatalogProps) {
   const [name, setName] = useState("");
   const [blank, setBlank] = useState(false);
@@ -47,41 +48,42 @@ export function NameCatalog({ title, inputLabel, placeholder, submitLabel, empty
   };
 
   return (
-    <div className="column gap-6 max-w-3xl">
-      <form onSubmit={handleSubmit} noValidate className="card column gap-3">
-        <div className="column gap-1">
-          <label htmlFor="catalog-name">{inputLabel}</label>
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <input
-              id="catalog-name"
-              value={name}
-              onChange={(event) => { setName(event.target.value); setBlank(false); }}
-              placeholder={placeholder}
-              disabled={saving}
-              aria-invalid={blank}
-              aria-describedby={blank ? "catalog-name-error" : undefined}
-              className={`input min-h-10 flex-1 ${blank ? "input-error" : ""}`}
-            />
-            <button type="submit" disabled={saving} className="button main min-h-10">
-              <MdAdd aria-hidden className="icon" /> {saving ? "Criando..." : submitLabel}
-            </button>
-          </div>
-          {blank && <p id="catalog-name-error" className="error-message">Informe um nome.</p>}
-        </div>
+    <div className="column gap-[22px]">
+      <div className="column gap-2.5">
+        <form onSubmit={handleSubmit} noValidate aria-label={submitLabel} className="glass flex flex-wrap gap-2.5 rounded-[22px] p-2.5">
+          <label htmlFor="catalog-name" className="sr-only">{inputLabel}</label>
+          <input
+            id="catalog-name"
+            value={name}
+            onChange={(event) => { setName(event.target.value); setBlank(false); }}
+            placeholder={placeholder}
+            disabled={saving}
+            aria-invalid={blank}
+            aria-describedby={blank ? "catalog-name-error" : undefined}
+            className={`input min-h-[50px] min-w-0 flex-[1_1_240px] ${blank ? "input-error" : ""}`}
+          />
+          <button type="submit" disabled={saving} className="button main min-h-[50px] px-5 max-sm:w-full">
+            <MdAdd aria-hidden className="icon" /> {saving ? "Criando..." : submitLabel}
+          </button>
+        </form>
+        {blank && <p id="catalog-name-error" className="error-message px-2.5">Informe um nome.</p>}
         <ErrorAlert>{error}</ErrorAlert>
-      </form>
+      </div>
 
-      <section aria-labelledby="catalog-title" className="column gap-3">
-        <h2 id="catalog-title" className="subtitle">{title} ({items.length})</h2>
+      <section aria-labelledby="catalog-title" className="glass column gap-4 rounded-[26px] p-[22px]">
+        <h2 id="catalog-title" className="h2 flex items-center gap-2.5 text-xl">
+          {title}{" "}<span aria-hidden className="count count-n">{items.length}</span><span className="sr-only">({items.length})</span>
+        </h2>
         {sorted.length === 0 ? (
-          <p className="text-sm text-foreground/70">{emptyText}</p>
+          <p className="t2 text-sm">{emptyText}</p>
         ) : (
           <ul className="flex flex-wrap gap-2">
             {sorted.map((item) => (
-              <li key={item.id} className="rounded-full border border-muted bg-surface px-3 py-1 text-sm break-all">{item.name}</li>
+              <li key={item.id} className="chip px-4 py-[9px] text-sm break-all">{item.name}</li>
             ))}
           </ul>
         )}
+        <p className="t3 text-[13px]">Nomes não podem ser renomeados nem excluídos depois de criados.</p>
       </section>
     </div>
   );

@@ -1,7 +1,8 @@
 /**
  * Link labels page (Superadmin, global context): lists the names event links
  * can have and creates new ones. A name that already exists (ignoring case)
- * is refused by the API with 409.
+ * is refused by the API with 409. The page header is drawn here, in every
+ * state.
  *
  * @module
  */
@@ -21,6 +22,7 @@ import { ErrorAlert, LoadingMessage, StatusMessage } from "@/components/ui/Feedb
 import { SectionDenialFor, useDashboard } from "../../DashboardContext";
 import { AccessNotice } from "../AccessNotice";
 import { NameCatalog } from "../NameCatalog";
+import { GlobalPage } from "../global-page";
 
 /** Loads every link label. */
 async function LoadLabels(): Promise<Result<LinkLabel[], string>> {
@@ -36,8 +38,15 @@ export const globalLabelsQuery = () => LoadedQuery(["dashboard", "global-links"]
 export function GlobalLinksContainer() {
   const { user, orgId } = useDashboard();
   const denial = SectionDenialFor("global-links", user, orgId);
-  if (denial !== null) return <AccessNotice denial={denial} />;
-  return <LinkLabels />;
+  return (
+    <GlobalPage
+      title="Rótulos de Links"
+      description="Os rótulos que quem publica pode dar aos links de um evento. O mural escolhe o ícone de cada link pelo rótulo, e “Inscrição” vira o botão principal."
+      className="max-w-[920px]"
+    >
+      {denial !== null ? <AccessNotice denial={denial} /> : <LinkLabels />}
+    </GlobalPage>
+  );
 }
 
 /** The labels and their creation form. */
@@ -73,7 +82,7 @@ function LinkLabels() {
   if (!labels.ok) return <ErrorAlert>{labels.error}</ErrorAlert>;
 
   return (
-    <div className="column gap-4">
+    <div className="column gap-3.5">
       <StatusMessage>{status}</StatusMessage>
       <NameCatalog
         title="Rótulos de links"

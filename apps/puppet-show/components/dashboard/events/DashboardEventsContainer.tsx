@@ -1,7 +1,8 @@
 /**
  * "Meus Eventos": the logged-in person's events in the managed organization
  * (`GET .../events/mine`, so hidden and past ones too), creating new ones with
- * the event editor and deleting with confirmation.
+ * the event editor and deleting with confirmation. "Novo evento" sits in the
+ * page header on wide screens and floats at the bottom right on phones.
  *
  * A Superadmin inside an organization sees the events they created there.
  *
@@ -17,6 +18,7 @@ import { EventFormContainer } from "@/components/forms/containers/EventFormConta
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Drawer } from "@/components/ui/Drawer";
 import { StatusMessage } from "@/components/ui/Feedback";
+import { PageHeader } from "@/components/dashboard/page-header";
 import { api, ApiErrorMessage } from "@/lib/api/client";
 import { Freshness } from "@/lib/query/options";
 import { LoadedQuery } from "@/lib/query/loaded";
@@ -40,6 +42,21 @@ async function LoadOwnEvents(orgId: string): Promise<Result<OwnEvent[], string>>
 export const ownEventListQuery = (orgId: string) =>
   LoadedQuery(ownEventsKey(orgId), () => LoadOwnEvents(orgId), Freshness.short);
 
+/** Title and description of the page; `onCreate` adds the "Novo evento" button (hidden on phones, which get a floating one). */
+function EventsHeader({ onCreate }: { onCreate?: () => void }) {
+  return (
+    <PageHeader
+      title="Meus Eventos"
+      description="Os eventos que você publicou e o que cada um precisa de você."
+      actions={onCreate === undefined ? undefined : (
+        <button type="button" onClick={onCreate} className="button main min-h-12 px-5 text-[15px] max-md:hidden">
+          <MdAdd aria-hidden className="h-[18px] w-[18px]" /> Novo evento
+        </button>
+      )}
+    />
+  );
+}
+
 /** The "Meus Eventos" page. */
 export function DashboardEventsContainer() {
   const { orgId } = useDashboard();
@@ -52,7 +69,7 @@ export function DashboardEventsContainer() {
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState("");
 
-  if (orgId === null) return <SelectOrgNotice />;
+  if (orgId === null) return <><EventsHeader /><SelectOrgNotice /></>;
 
   const state: UserEventListState = events.result === null
     ? { status: "loading" }
@@ -81,14 +98,11 @@ export function DashboardEventsContainer() {
     eventsChanged(id);
   }
 
+  const startCreating = () => { setNotice(""); setCreating(true); };
+
   return (
     <>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="title">Meus Eventos</h1>
-        <button type="button" onClick={() => { setNotice(""); setCreating(true); }} className="button main min-h-10">
-          <MdAdd aria-hidden className="icon" /> Novo evento
-        </button>
-      </div>
+      <EventsHeader onCreate={startCreating} />
 
       <StatusMessage>{notice}</StatusMessage>
 
@@ -97,6 +111,14 @@ export function DashboardEventsContainer() {
         onDelete={(event) => { setNotice(""); setDeleteError(""); setDeleting(event); }}
         onRetry={events.reload}
       />
+
+      <button
+        type="button"
+        onClick={startCreating}
+        className="button main fixed bottom-5 right-4 z-20 min-h-14 rounded-[18px] px-5 text-[15px] shadow-[0_16px_40px_-12px_var(--accent)] md:hidden"
+      >
+        <MdAdd aria-hidden className="h-5 w-5" /> Novo evento
+      </button>
 
       <Drawer isOpen={creating} onClose={() => setCreating(false)} title="Novo evento" width="lg">
         <EventFormContainer

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { PolicyToForm, ValidateScreeningPolicyForm, type ScreeningPolicyFormValues } from "./screeningPolicyForm";
+import { PolicyToForm, ValidateScreeningPolicyForm, type ScreeningPolicyFormValues } from "./screening-policy-form-values";
 
 /** Every category at 30% / 80%. */
 function Filled(): ScreeningPolicyFormValues {

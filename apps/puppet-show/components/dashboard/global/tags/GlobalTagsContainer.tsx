@@ -1,7 +1,8 @@
 /**
  * Official tags page (Superadmin, global context): lists the system-defined
  * tags and creates new ones. A name that already exists (official or
- * free-form, ignoring case) is refused by the API with 409.
+ * free-form, ignoring case) is refused by the API with 409. The page header
+ * is drawn here, in every state.
  *
  * @module
  */
@@ -21,6 +22,7 @@ import { ErrorAlert, LoadingMessage, StatusMessage } from "@/components/ui/Feedb
 import { SectionDenialFor, useDashboard } from "../../DashboardContext";
 import { AccessNotice } from "../AccessNotice";
 import { NameCatalog } from "../NameCatalog";
+import { GlobalPage } from "../global-page";
 
 /** Loads every tag. */
 async function LoadTags(): Promise<Result<Tag[], string>> {
@@ -36,8 +38,15 @@ export const globalTagsQuery = () => LoadedQuery(["dashboard", "global-tags"], L
 export function GlobalTagsContainer() {
   const { user, orgId } = useDashboard();
   const denial = SectionDenialFor("global-tags", user, orgId);
-  if (denial !== null) return <AccessNotice denial={denial} />;
-  return <GlobalTags />;
+  return (
+    <GlobalPage
+      title="Tags Globais"
+      description="Tags oficiais valem para todas as organizações e viram filtros no mural. Para aproveitar uma sugestão, promova-a em Tags Sugeridas no contexto da organização."
+      className="max-w-[920px]"
+    >
+      {denial !== null ? <AccessNotice denial={denial} /> : <GlobalTags />}
+    </GlobalPage>
+  );
 }
 
 /** The official tags and their creation form. */
@@ -73,7 +82,7 @@ function GlobalTags() {
   if (!tags.ok) return <ErrorAlert>{tags.error}</ErrorAlert>;
 
   return (
-    <div className="column gap-4">
+    <div className="column gap-3.5">
       <StatusMessage>{status}</StatusMessage>
       <NameCatalog
         title="Tags oficiais"

@@ -11,6 +11,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { MdRefresh } from "react-icons/md";
 import { api, ApiErrorMessage, type ApiError } from "@/lib/api/client";
 import type { CommandType, CreateCommandInput } from "@/lib/api/schemas";
 import { Err, Ok, type Result } from "@/lib/result";
@@ -111,15 +112,15 @@ function DevicePage({ orgId, deviceId }: { orgId: string; deviceId: string }) {
     return (
       <div className="column items-start gap-3">
         <ErrorAlert>{loadError}</ErrorAlert>
-        <button type="button" onClick={() => { setLoadError(""); setReloadKey((key) => key + 1); }} className="button clean min-h-10">
-          Tentar de novo
+        <button type="button" onClick={() => { setLoadError(""); setReloadKey((key) => key + 1); }} className="button focus-ring">
+          <MdRefresh aria-hidden className="h-[18px] w-[18px]" /> Tentar de novo
         </button>
       </div>
     );
   }
 
   return (
-    <div className="column gap-4">
+    <div className="column gap-[22px]">
       {feedback !== null && (feedback.ok ? <StatusMessage>{feedback.text}</StatusMessage> : <ErrorAlert>{feedback.text}</ErrorAlert>)}
       <DeviceTelemetry
         details={loaded.details}

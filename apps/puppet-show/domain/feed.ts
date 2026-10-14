@@ -13,6 +13,13 @@ import { NextDay, SortedDays, type ScheduleDay } from "./schedule";
 /** A public (system-defined) tag shown on a card. */
 export type CardTag = { id: string; name: string };
 
+/**
+ * A picture as the viewer may see it (same shape as the API's `ImageView`):
+ * `url` is absent while the viewer may not see it yet, and only the blurred
+ * `thumbhash` placeholder is shown.
+ */
+export type CardImage = { url?: string; thumbhash: string };
+
 /** One event as a feed card draws it. */
 export type FeedCard = {
   id: string;
@@ -29,6 +36,8 @@ export type FeedCard = {
   voted: boolean;
   /** Whether the viewer may delete the event: its creator or a Superadmin. */
   canDelete: boolean;
+  /** The event's banner; absent or `null` when it has none. */
+  banner?: CardImage | null;
 };
 
 /** Which pill is selected. */

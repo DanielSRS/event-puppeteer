@@ -1,6 +1,6 @@
 /**
  * TV display (kiosk mode) against the real API: branding, clock, real QR code,
- * events without repetition, no site navigation.
+ * the featured event, the agenda without repetition, no site navigation.
  *
  * @module
  */
@@ -13,19 +13,22 @@ after(CloseBrowser);
 
 describe("Público: modo TV", () => {
   for (const viewport of ["desktop", "mobile"] as const) {
-    test(`mostra organização, relógio, QR Code e eventos sem repetir (${viewport})`, async () => {
+    test(`mostra organização, relógio, QR Code, evento em destaque e agenda sem repetir (${viewport})`, async () => {
       const { orgA } = await State();
       const { page, context, errors } = await OpenPage(viewport);
       await page.goto(`${WEB}/display`);
 
       await page.getByRole("heading", { level: 1, name: `Eventos · ${orgA.name}` }).waitFor();
-      const list = page.getByRole("list", { name: "Eventos em exibição" });
-      await list.waitFor();
+      const featured = page.getByRole("article", { name: "Evento em exibição" });
+      await featured.waitFor();
+      const title = (await featured.locator("h2").textContent()) ?? "";
+      assert.ok(title.trim() !== "", "an event is featured");
+      assert.notEqual(title, "Evento da Outra Org");
 
-      const titles = await list.locator("h2").allTextContents();
-      assert.ok(titles.length >= 1 && titles.length <= 3, "a window holds up to three events");
-      assert.equal(new Set(titles).size, titles.length, "no repeated event");
-      assert.ok(!titles.includes("Evento da Outra Org"));
+      const agenda = await page.getByRole("list", { name: "Agenda" }).locator("h3").allTextContents();
+      assert.ok(agenda.length >= 1 && agenda.length <= 5, "the agenda holds up to five events");
+      assert.equal(new Set(agenda).size, agenda.length, "no repeated event in the agenda");
+      assert.ok(!agenda.includes("Evento da Outra Org"));
 
       assert.match((await page.locator("time").textContent()) ?? "", /^\d{2}:\d{2}$/);
       assert.equal(await page.locator('[role="img"][aria-label^="QR Code para"] svg').count(), 1);

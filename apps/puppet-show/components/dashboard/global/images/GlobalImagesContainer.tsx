@@ -2,7 +2,8 @@
  * Escalated Image Review page (Superadmin, global context): Images only
  * Superadmins can decide, those sent by Superadmins and those of
  * organizations with no other Moderator or Admin to review them. Each shows
- * the organization it comes from.
+ * the organization it comes from. The page header is drawn here, in every
+ * state; the queue itself is the shared Image Review list.
  *
  * @module
  */
@@ -17,6 +18,7 @@ import { ErrorAlert, LoadingMessage } from "@/components/ui/Feedback";
 import { SectionDenialFor, useDashboard } from "../../DashboardContext";
 import { AccessNotice } from "../AccessNotice";
 import { ImageReviewQueue, imageReviewQuery } from "../../images/ImageReviewQueue";
+import { GlobalPage } from "../global-page";
 
 /** Loads the escalated queue. */
 const LoadEscalated = () => api.images.escalated();
@@ -31,8 +33,14 @@ export const escalatedImagesQuery = () => imageReviewQuery(ESCALATED_KEY, LoadEs
 export function GlobalImagesContainer() {
   const { user, orgId } = useDashboard();
   const denial = SectionDenialFor("global-images", user, orgId);
-  if (denial !== null) return <AccessNotice denial={denial} />;
-  return <EscalatedQueue />;
+  return (
+    <GlobalPage
+      title="Imagens Escalonadas"
+      description="Imagens que só um Superadmin pode decidir: enviadas por Superadmins ou de organizações sem outra pessoa para revisar."
+    >
+      {denial !== null ? <AccessNotice denial={denial} /> : <EscalatedQueue />}
+    </GlobalPage>
+  );
 }
 
 /** The escalated queue, with organization names. */

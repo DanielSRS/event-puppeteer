@@ -1,6 +1,7 @@
 /**
- * Feeds the TV display from the API: the public organization's branding and
- * feed, refreshed every {@link TV_REFRESH_MS}.
+ * Feeds the TV display from the API: the public organization's branding (its
+ * color paints the screen), the public tag names and the feed, refreshed
+ * every {@link TV_REFRESH_MS}.
  *
  * @module
  */
@@ -15,6 +16,8 @@ import { MISSING_ORG_MESSAGE, PUBLIC_ORG_ID } from "@/lib/api/session";
 import { ToTvEvent, type TvEvent } from "@/lib/api/mappers";
 import { TV_REFRESH_MS } from "@/domain/tv";
 import { TodayInBrazil } from "@/utils/date";
+import type { Tag } from "@/lib/api/schemas";
+import { ApplyOrgColor } from "@/lib/theme/theme";
 import { TvDisplay, type TvBranding } from "./TvDisplay";
 
 export type TvDisplayContainerProps = {
@@ -39,18 +42,28 @@ export function TvDisplayContainer({ qr }: TvDisplayContainerProps) {
 
     api.organizations.get(orgId).then((org) => {
       if (!active) return;
-      if (org.ok) setBranding({ name: org.value.name, logo: org.value.logo === undefined ? null : org.value.logo });
-      else setBrandingError(`Não foi possível carregar a organização. ${ApiErrorMessage(org.error)}`);
+      if (org.ok) {
+        setBranding({ name: org.value.name, logo: org.value.logo === undefined ? null : org.value.logo });
+        ApplyOrgColor(org.value.colorScheme);
+      } else setBrandingError(`Não foi possível carregar a organização. ${ApiErrorMessage(org.error)}`);
+    });
+
+    // Tag names for the featured event's chips and the week's category count; without them the
+    // screen just shows no chips (nothing a kiosk viewer needs to be told about).
+    let catalog: Tag[] = [];
+    const catalogLoaded = api.tags.list().then((tags) => {
+      if (tags.ok) catalog = tags.value;
     });
 
     const refresh = async () => {
       const feed = await api.organizations.feed(orgId);
+      await catalogLoaded;
       if (!active) return;
       if (!feed.ok) {
         setFeedError(`Não foi possível atualizar os eventos. ${ApiErrorMessage(feed.error)}`);
         return;
       }
-      setEvents(feed.value.map(ToTvEvent));
+      setEvents(feed.value.map((event) => ToTvEvent(event, catalog)));
       setFeedError(null);
     };
 

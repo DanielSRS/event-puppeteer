@@ -17,7 +17,7 @@
 
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { ErrorAlert, LoadingMessage } from "@/components/ui/Feedback";
 import { useAuth } from "@/hooks/useAuth";
@@ -27,7 +27,9 @@ import { useApiQuery } from "@/lib/query/useApiQuery";
 import { usePrefetch } from "@/lib/query/usePrefetch";
 import { UserOrgId } from "@/lib/api/schemas";
 import { SortByName } from "@/utils/text";
+import { ApplyOrgColor } from "@/lib/theme/theme";
 import { AccessDeniedNotice } from "./AccessDeniedNotice";
+import { ROLE_LABELS } from "./roleLabels";
 import type { ContextOrganization } from "./ContextSwitcher";
 import { DashboardProvider, type DashboardSession } from "./DashboardContext";
 import { CONTEXT_NOT_REMEMBERED_MESSAGE, ReadStoredContext, StoreContext } from "./DashboardContextStorage";
@@ -72,7 +74,10 @@ function ShellErrorMessage(superadmin: boolean, error: ApiError): string {
 
 /** Wraps every dashboard page. */
 export function DashboardContainer({ children }: { children: ReactNode }) {
-  const { state } = useAuth();
+  const { state, logout } = useAuth();
+  const [logoutError, setLogoutError] = useState("");
+  /** Set on logout, so the shell goes to the home page instead of asking to log in again. */
+  const leaving = useRef(false);
   const prefetch = usePrefetch();
   const router = useRouter();
   const pathname = usePathname();
@@ -90,7 +95,7 @@ export function DashboardContainer({ children }: { children: ReactNode }) {
   }, [superadmin, allOrgs.value, ownOrg.value]);
 
   useEffect(() => {
-    if (state.status === "anonymous") router.replace(`/entrar?redirect=${encodeURIComponent(pathname)}`);
+    if (state.status === "anonymous" && !leaving.current) router.replace(`/entrar?redirect=${encodeURIComponent(pathname)}`);
   }, [state.status, router, pathname]);
 
   /** The Superadmin's context: what they picked in this session, else the remembered one. */
@@ -103,6 +108,18 @@ export function DashboardContainer({ children }: { children: ReactNode }) {
     if (!superadmin) return { user, orgId: ownOrgId };
     return choice === null ? null : { user, orgId: choice.orgId };
   }, [user, superadmin, ownOrgId, organizations, choice]);
+
+  // The palette follows the context being managed: the chosen organization's color, the default one for Sistema Global.
+  const contextOrgId = session === null ? undefined : session.orgId;
+  const contextColor = contextOrgId === undefined || contextOrgId === null
+    ? null
+    : superadmin
+      ? allOrgs.value?.find((org) => org.id === contextOrgId)?.colorScheme ?? null
+      : ownOrg.value?.colorScheme ?? null;
+  useEffect(() => {
+    if (contextOrgId === undefined) return;
+    ApplyOrgColor(contextColor);
+  }, [contextOrgId, contextColor]);
 
   if (state.status === "loading") return <LoadingMessage>Carregando painel...</LoadingMessage>;
   if (state.status === "error") return <ErrorAlert className="m-4">{state.message}</ErrorAlert>;
@@ -159,7 +176,22 @@ export function DashboardContainer({ children }: { children: ReactNode }) {
         pathname={pathname}
         onSelectOrg={selectContext}
         onIntent={(target) => prefetch(...SectionWarmups(target, me, orgId))}
-        notices={notice === "" ? undefined : <ErrorAlert>{notice}</ErrorAlert>}
+        account={{ name: `${me.firstName} ${me.lastName}`.trim(), roleLabel: ROLE_LABELS[me.role] }}
+        onLogout={() => {
+          leaving.current = true;
+          const result = logout();
+          if (result.ok) router.push("/");
+          else {
+            leaving.current = false;
+            setLogoutError(result.error);
+          }
+        }}
+        notices={notice === "" && logoutError === "" ? undefined : (
+          <>
+            {notice !== "" && <ErrorAlert>{notice}</ErrorAlert>}
+            {logoutError !== "" && <ErrorAlert>{logoutError}</ErrorAlert>}
+          </>
+        )}
       >
         {denial === null
           ? children

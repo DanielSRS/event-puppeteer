@@ -2,7 +2,10 @@
  * The event editor: the one form used to create an event, both in the
  * dashboard (Meus Eventos) and on `/eventos/novo`.
  *
- * Three steps (Informações, Data e horário, Mídia e links). Leaving a step
+ * Three steps (Informações, Programação, Tags, links e banner). Each step's
+ * heading reads "Etapa N de 3" above the question it answers, followed by a
+ * progress bar; Voltar/Cancelar and Avançar/Publicar stay pinned at the
+ * bottom while the step scrolls. Leaving a step
  * checks its fields; publishing checks everything and lists what is wrong in a
  * summary whose entries take the person to the field. Every error sits next to
  * its control (`aria-invalid` + `aria-describedby`). The component is
@@ -15,7 +18,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
-import { MdArrowBack, MdArrowForward, MdCheck } from "react-icons/md";
+import { MdArrowForward } from "react-icons/md";
 import { ErrorAlert } from "@/components/ui/Feedback";
 import type { CreateEventInput, LinkLabel, Tag } from "@/lib/api/schemas";
 import type { Result } from "@/lib/result";
@@ -51,6 +54,13 @@ export type EventFormProps = {
   onCreateTag: (name: string) => Promise<Result<Tag, string>>;
   /** Reads the device position. */
   onLocate: () => Promise<Result<Coordinates, string>>;
+};
+
+/** What each step is called in the progress bar, and the question its heading asks. */
+const STEP_TEXT: Record<(typeof EVENT_FORM_STEPS)[number], { label: string; question: string }> = {
+  "Informações": { label: "Informações", question: "O que vai acontecer?" },
+  "Data e horário": { label: "Programação", question: "Quando acontece?" },
+  "Mídia e links": { label: "Tags, links e banner", question: "Últimos detalhes" },
 };
 
 /** Labels of the error summary entries, by field. */
@@ -170,48 +180,53 @@ export function EventForm({
   }
 
   const summaryEntries = Object.entries(allErrors);
+  const stepText = STEP_TEXT[EVENT_FORM_STEPS[step]];
+  const stepCount = EVENT_FORM_STEPS.length;
 
   return (
-    <form onSubmit={handleSubmit} noValidate className="column gap-6" aria-label="Editor de evento">
-      <ol className="grid grid-cols-3 gap-2" aria-label="Etapas">
-        {EVENT_FORM_STEPS.map((name, index) => (
-          <li
-            key={name}
-            aria-current={index === step ? "step" : undefined}
-            className="column items-center gap-1 text-center sm:flex-row sm:gap-2 sm:text-left"
-          >
-            <span
-              aria-hidden
-              className={`center h-8 w-8 shrink-0 rounded-full text-sm font-bold ${
-                index <= step ? "bg-main text-background" : "border border-muted text-foreground/80"
-              }`}
-            >
-              {index + 1}
-            </span>
-            <span className={`text-xs sm:text-sm ${index === step ? "font-semibold" : "text-foreground/80"}`}>{name}</span>
-          </li>
-        ))}
-      </ol>
-
-      {showSummary && HasEventErrors(allErrors) && (
-        <div ref={summaryRef} tabIndex={-1} role="alert" className="column gap-2 rounded-lg border border-danger/40 bg-danger/10 p-4 outline-none">
-          <h2 className="text-sm font-semibold text-danger">Corrija {summaryEntries.length === 1 ? "o campo" : `os ${summaryEntries.length} campos`} abaixo antes de publicar:</h2>
-          <ul className="column gap-1 text-sm">
-            {summaryEntries.map(([path, message]) => (
-              <li key={path}>
-                <button type="button" onClick={() => jumpToField(path)} className="min-h-10 text-left underline text-danger">
-                  {FieldLabel(path)}: {message}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      <section aria-labelledby={`${idPrefix}-step-heading`} className="column gap-4">
-        <h2 id={`${idPrefix}-step-heading`} ref={headingRef} tabIndex={-1} className="subtitle outline-none">
-          Etapa {step + 1} de {EVENT_FORM_STEPS.length}: {EVENT_FORM_STEPS[step]}
+    <form onSubmit={handleSubmit} noValidate className="column gap-5" aria-label="Editor de evento">
+      <section aria-labelledby={`${idPrefix}-step-heading`} className="column gap-5">
+        <h2 id={`${idPrefix}-step-heading`} ref={headingRef} tabIndex={-1} className="column gap-1 outline-none">
+          <span className="sr-only">Etapa {step + 1} de {stepCount}: {stepText.label}. </span>
+          <span aria-hidden className="caption">Etapa {step + 1} de {stepCount} · {stepText.label}</span>
+          <span className="h1 text-[26px] leading-[1.05] md:text-[30px]">{stepText.question}</span>
         </h2>
+
+        <ol className="grid grid-cols-3 gap-2" aria-label="Etapas">
+          {EVENT_FORM_STEPS.map((name, index) => (
+            <li key={name} aria-current={index === step ? "step" : undefined} className="column gap-2">
+              <span
+                aria-hidden
+                className="h-1 rounded-full"
+                style={{
+                  background: index < step
+                    ? "var(--accent-ink)"
+                    : index === step
+                      ? "linear-gradient(90deg, var(--accent-ink) 50%, var(--surface-2) 50%)"
+                      : "var(--surface-2)",
+                }}
+              />
+              <span className={`text-xs ${index === step ? "font-semibold" : index < step ? "text-fg-2" : "text-fg-3"}`}>
+                {STEP_TEXT[name].label}
+              </span>
+            </li>
+          ))}
+        </ol>
+
+        {showSummary && HasEventErrors(allErrors) && (
+          <div ref={summaryRef} tabIndex={-1} role="alert" className="notice n-bad flex-col items-stretch gap-2 outline-none focus-visible:ring-2 focus-visible:ring-danger">
+            <h2 className="text-sm font-semibold">Corrija {summaryEntries.length === 1 ? "o campo" : `os ${summaryEntries.length} campos`} abaixo antes de publicar:</h2>
+            <ul className="column gap-0.5 text-sm">
+              {summaryEntries.map(([path, message]) => (
+                <li key={path}>
+                  <button type="button" onClick={() => jumpToField(path)} className="min-h-11 rounded-lg text-left underline focus-ring">
+                    {FieldLabel(path)}: {message}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {step === 0 && (
           <EventFormBasics idPrefix={idPrefix} data={data} errors={shownErrors} disabled={busy} onChange={change} onLocate={onLocate} />
@@ -223,6 +238,7 @@ export function EventForm({
             errors={shownErrors}
             disabled={busy}
             today={today}
+            title={data.title}
             onChange={(days) => change({ days })}
             onAddDay={() => change({ days: [...data.days, { key: newKey("day"), date: "", startTime: "", endTime: "" }] })}
           />
@@ -244,21 +260,21 @@ export function EventForm({
 
       <ErrorAlert>{generalError}</ErrorAlert>
 
-      <div className="flex flex-col-reverse gap-3 border-t border-muted pt-4 sm:flex-row sm:items-center">
-        {step > 0 && (
-          <button type="button" onClick={() => goTo(step - 1)} disabled={busy} className="button clean min-h-10">
-            <MdArrowBack aria-hidden className="icon" /> Voltar
+      <div className="sticky -bottom-5 z-10 between gap-3 border-t border-line bg-[var(--glass-strong)] pb-5 pt-4 backdrop-blur-xl">
+        {step > 0 ? (
+          <button type="button" onClick={() => goTo(step - 1)} disabled={busy} className="button min-h-12 px-5">
+            Voltar
           </button>
-        )}
-        {step === 0 && onCancel !== undefined && (
-          <button type="button" onClick={onCancel} disabled={busy} className="button clean min-h-10">
+        ) : onCancel !== undefined ? (
+          <button type="button" onClick={onCancel} disabled={busy} className="button min-h-12 px-5">
             Cancelar
           </button>
+        ) : (
+          <span />
         )}
-        <div className="hidden flex-1 sm:block" />
-        <button type="submit" disabled={busy} className="button main min-h-10">
+        <button type="submit" disabled={busy} className="button main min-h-12 px-[22px] text-[15px]">
           {isLast ? (busy ? "Publicando..." : "Publicar evento") : "Avançar"}
-          {isLast ? <MdCheck aria-hidden className="icon" /> : <MdArrowForward aria-hidden className="icon" />}
+          <MdArrowForward aria-hidden className="h-[18px] w-[18px]" />
         </button>
       </div>
     </form>

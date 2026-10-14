@@ -4,6 +4,9 @@
  * Only changed fields are sent, so the threshold change is audited only when
  * it really changed. The logo is uploaded and removed on its own.
  *
+ * Layout: the page header (drawn here in every state, so the `<h1>` is always
+ * there), then the form's cards beside the logo card (stacked when narrow).
+ *
  * @module
  */
 
@@ -19,6 +22,7 @@ import { Freshness } from "@/lib/query/options";
 import { LoadedQuery } from "@/lib/query/loaded";
 import { useLoaded } from "@/lib/query/useLoaded";
 import { ErrorAlert, LoadingMessage, StatusMessage } from "@/components/ui/Feedback";
+import { PageHeader } from "../page-header";
 import { SectionDenialFor, SelectOrgNotice, useDashboard } from "../DashboardContext";
 import { AccessNotice } from "../global/AccessNotice";
 import { OrganizationForm } from "./OrganizationForm";
@@ -35,12 +39,22 @@ async function LoadOrganization(orgId: string): Promise<Result<Organization, str
 export const settingsQuery = (orgId: string) =>
   LoadedQuery(["dashboard", "settings", orgId], () => LoadOrganization(orgId), Freshness.short);
 
+/** Title and description; names the organization once it is loaded. */
+function SettingsHeader({ orgName }: { orgName?: string }) {
+  return (
+    <PageHeader
+      title="Configurações"
+      description={`Como ${orgName ?? "a organização"} aparece no mural, nos totens e no Painel, e o limite de denúncias para ocultar eventos automaticamente.`}
+    />
+  );
+}
+
 /** The page, guarded by the section rules. */
 export function DashboardSettingsContainer() {
   const { user, orgId } = useDashboard();
   const denial = SectionDenialFor("settings", user, orgId);
-  if (denial !== null) return <AccessNotice denial={denial} />;
-  if (orgId === null) return <SelectOrgNotice />;
+  if (denial !== null) return <><SettingsHeader /><AccessNotice denial={denial} /></>;
+  if (orgId === null) return <><SettingsHeader /><SelectOrgNotice /></>;
   return <Settings key={orgId} orgId={orgId} />;
 }
 
@@ -101,33 +115,38 @@ function Settings({ orgId }: { orgId: string }) {
     return answer.ok ? { ok: true, logo: undefined } : { ok: false, error: `Não foi possível remover o logo. ${ApiErrorMessage(answer.error)}` };
   }, "Logo removido.");
 
-  if (org === null) return <LoadingMessage>Carregando configurações...</LoadingMessage>;
-  if (!org.ok) return <ErrorAlert>{org.error}</ErrorAlert>;
+  if (org === null) return <><SettingsHeader /><LoadingMessage>Carregando configurações...</LoadingMessage></>;
+  if (!org.ok) return <><SettingsHeader /><ErrorAlert>{org.error}</ErrorAlert></>;
 
   return (
-    <div className="column gap-4 max-w-2xl">
+    <>
+      <SettingsHeader orgName={org.value.name} />
       <StatusMessage>{saved}</StatusMessage>
-      <div className="card">
-        <OrganizationForm
-          key={org.value.updatedAt}
-          mode="edit"
-          original={org.value}
-          slugEditable={false}
-          takenSlugs={[]}
-          saving={saving}
-          error={saveError}
-          onUpdate={handleUpdate}
+      <div className="flex flex-wrap items-start gap-4">
+        <div className="min-w-0 flex-[999_1_480px]">
+          <OrganizationForm
+            key={org.value.updatedAt}
+            mode="edit"
+            layout="cards"
+            original={org.value}
+            slugEditable={false}
+            takenSlugs={[]}
+            saving={saving}
+            error={saveError}
+            onUpdate={handleUpdate}
+          />
+        </div>
+        <LogoPanel
+          className="flex-[1_1_280px]"
+          orgName={org.value.name}
+          logo={org.value.logo === undefined ? null : org.value.logo}
+          busy={logoBusy}
+          notice={logoNotice}
+          error={logoError}
+          onUpload={(picture) => void uploadLogo(picture)}
+          onRemove={() => void removeLogo()}
         />
       </div>
-      <LogoPanel
-        orgName={org.value.name}
-        logo={org.value.logo === undefined ? null : org.value.logo}
-        busy={logoBusy}
-        notice={logoNotice}
-        error={logoError}
-        onUpload={(picture) => void uploadLogo(picture)}
-        onRemove={() => void removeLogo()}
-      />
-    </div>
+    </>
   );
 }

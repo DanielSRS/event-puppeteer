@@ -1,7 +1,8 @@
 /**
  * Orphan devices page (Superadmin, global context): assigns a device that
  * connected without an organization to one (approving it with a name and
- * location) or rejects it after confirmation.
+ * location) or rejects it after confirmation. The page header is drawn here,
+ * in every state.
  *
  * @module
  */
@@ -23,6 +24,7 @@ import { SectionDenialFor, useDashboard } from "../../DashboardContext";
 import { AccessNotice } from "../AccessNotice";
 import { ApproveDeviceForm, type ApprovalSubmission } from "../../devices/ApproveDeviceForm";
 import { DeviceIdentifierText } from "../../devices/telemetryFormat";
+import { GlobalPage } from "../global-page";
 import { OrphanDeviceList } from "./OrphanDeviceList";
 
 /** What the page needs. */
@@ -43,8 +45,14 @@ export const orphansQuery = () => LoadedQuery(["dashboard", "global-devices"], L
 export function GlobalDevicesContainer() {
   const { user, orgId } = useDashboard();
   const denial = SectionDenialFor("global-devices", user, orgId);
-  if (denial !== null) return <AccessNotice denial={denial} />;
-  return <Orphans />;
+  return (
+    <GlobalPage
+      title="Dispositivos Órfãos"
+      description="Totens que se conectaram sem informar a organização. Ao atribuir um a uma organização, ele já é aprovado com nome e local."
+    >
+      {denial !== null ? <AccessNotice denial={denial} /> : <Orphans />}
+    </GlobalPage>
+  );
 }
 
 /** The orphan queue. */
@@ -92,7 +100,7 @@ function Orphans() {
   const busyDeviceId = busy ? (assigning !== null ? assigning.id : rejecting !== null ? rejecting.id : null) : null;
 
   return (
-    <div className="column gap-4">
+    <div className="column gap-3.5">
       <StatusMessage>{status}</StatusMessage>
       <OrphanDeviceList devices={data.value.devices} busyDeviceId={busyDeviceId} onAssign={open(setAssigning)} onReject={open(setRejecting)} />
 

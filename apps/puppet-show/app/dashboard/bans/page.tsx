@@ -1,10 +1,14 @@
 /**
  * Shadow-banned users page (Moderator+).
  *
+ * The header (with the "Moderação" badge) is drawn here, so the `<h1>` is
+ * there in every state of the client container.
+ *
  * @module
  */
 
 import type { Metadata } from "next";
+import { PageHeader } from "@/components/dashboard/page-header";
 import { DashboardBansContainer } from "@/components/dashboard/bans/DashboardBansContainer";
 
 export const metadata: Metadata = { title: "Usuários Banidos - Painel" };
@@ -12,11 +16,12 @@ export const metadata: Metadata = { title: "Usuários Banidos - Painel" };
 /** Heading and description; the client container does the rest. */
 export default function Page() {
   return (
-    <div className="column gap-6">
-      <header>
-        <h1 className="title">Usuários Banidos</h1>
-        <p className="mt-1 text-sm text-foreground/70">Pessoas em shadow ban: os eventos que publicam não aparecem no mural até o banimento ser removido.</p>
-      </header>
+    <div className="column gap-[22px]">
+      <PageHeader
+        badge={{ label: "Moderação", tone: "bad" }}
+        title="Usuários Banidos"
+        description="Pessoas em shadow ban nesta organização."
+      />
 
       <DashboardBansContainer />
     </div>
