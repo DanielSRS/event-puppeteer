@@ -70,7 +70,8 @@ describe("agenda helpers", () => {
 
   test("the next seven days count events and distinct tags", () => {
     expect(WeekSummary(events, today)).toEqual({ events: 4, categories: 2 });
-    expect(WeekSummary(events, "2026-10-08")).toEqual({ events: 3, categories: 2 });
+    // From the 8th the week ends on the 14th: only the two events of the 14th count.
+    expect(WeekSummary(events, "2026-10-08")).toEqual({ events: 2, categories: 2 });
   });
 
   test("the most liked event is hot only with likes", () => {

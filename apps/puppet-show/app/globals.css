@@ -698,8 +698,26 @@
  */
 .tv {
   --u: 0.62px;
-  --tv-card: color-mix(in oklab, var(--fg) 6%, var(--bg));
-  --tv-card-2: color-mix(in oklab, var(--fg) 10%, var(--bg));
+}
+
+/* Bento grid: featured event, Hoje, QR code and the week. Stacks on phones. */
+.tv-bento {
+  display: grid;
+  gap: calc(24 * var(--u));
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "feature" "today" "qr" "week";
+}
+
+.tv-feature { grid-area: feature; }
+.tv-today { grid-area: today; }
+.tv-qr { grid-area: qr; }
+.tv-week { grid-area: week; }
+
+@media (min-width: 640px) {
+  .tv-bento {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-areas: "feature feature" "today today" "qr week";
+  }
 }
 
 /* The featured event's time bar: fills up over the event's time on screen. */
@@ -716,6 +734,12 @@
 @media (min-width: 1024px) {
   .tv {
     --u: min(calc(100vw / 1920), calc(100dvh / 1080));
+  }
+
+  .tv-bento {
+    grid-template-columns: minmax(0, 1fr) calc(300 * var(--u)) calc(300 * var(--u));
+    grid-template-rows: calc(300 * var(--u)) calc(256 * var(--u));
+    grid-template-areas: "feature today today" "feature qr week";
   }
 }
 

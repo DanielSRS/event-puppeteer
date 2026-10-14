@@ -13,7 +13,6 @@ import { MdBrightnessAuto, MdDarkMode, MdLightMode } from "react-icons/md";
 import type { IconType } from "react-icons";
 import {
   ApplyTheme,
-  DARK_ONLY_PATHS,
   ResolveTheme,
   StoredThemePreference,
   SubscribeTheme,
@@ -58,8 +57,8 @@ export function ThemeToggle({ compact = false, className = "" }: ThemeToggleProp
 }
 
 /**
- * Keeps `data-theme` right after client-side navigation (the TV display is
- * always dark) and follows the operating system when the preference is "system".
+ * Keeps `data-theme` right after client-side navigation and follows the
+ * operating system when the preference is "system".
  */
 export function ThemeSync() {
   const pathname = usePathname();
@@ -67,7 +66,7 @@ export function ThemeSync() {
   useEffect(() => {
     const root = document.documentElement;
     const update = () => {
-      root.dataset.theme = DARK_ONLY_PATHS.includes(pathname) ? "dark" : ResolveTheme(StoredThemePreference());
+      root.dataset.theme = ResolveTheme(StoredThemePreference());
     };
     update();
     const media = window.matchMedia("(prefers-color-scheme: light)");

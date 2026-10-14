@@ -20,9 +20,6 @@ export const ORG_COLOR_STORAGE_KEY = "mural:org-color";
 /** Brand color used when the organization has none (and for the Superadmin). */
 export const DEFAULT_ORG_COLOR = "#f59e0b";
 
-/** Paths that always use the dark theme (the TV display keeps its own look). */
-export const DARK_ONLY_PATHS = ["/display"];
-
 const HEX_COLOR = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
 
 /** Whether `value` is a `#rgb` or `#rrggbb` color (the format of `Organization.colorScheme`). */
@@ -76,9 +73,7 @@ export function SubscribeTheme(onChange: () => void): () => void {
 /** Shows and remembers a theme preference. */
 export function ApplyTheme(preference: ThemePreference): void {
   Write(THEME_STORAGE_KEY, preference);
-  if (!DARK_ONLY_PATHS.includes(window.location.pathname)) {
-    document.documentElement.dataset.theme = ResolveTheme(preference);
-  }
+  document.documentElement.dataset.theme = ResolveTheme(preference);
   window.dispatchEvent(new Event(THEME_EVENT));
 }
 
@@ -90,13 +85,12 @@ export function ApplyOrgColor(color: string | null | undefined): void {
 }
 
 /**
- * Runs in <head> before the page paints: picks the theme (dark on the TV
- * display) and the last organization color. Kept dependency-free and tiny.
+ * Runs in <head> before the page paints: picks the theme and the last
+ * organization color. Kept dependency-free and tiny.
  */
 export const THEME_INIT_SCRIPT = `(function(){try{
 var d=document.documentElement,p=localStorage.getItem(${JSON.stringify(THEME_STORAGE_KEY)}),c=localStorage.getItem(${JSON.stringify(ORG_COLOR_STORAGE_KEY)});
-var dark=${JSON.stringify(DARK_ONLY_PATHS)}.indexOf(location.pathname)>=0;
-var t=dark?"dark":(p==="light"||p==="dark")?p:(matchMedia("(prefers-color-scheme: light)").matches?"light":"dark");
+var t=(p==="light"||p==="dark")?p:(matchMedia("(prefers-color-scheme: light)").matches?"light":"dark");
 d.dataset.theme=t;
 if(c&&${HEX_COLOR.toString()}.test(c))d.style.setProperty("--org",c);
 }catch(e){}})();`;
