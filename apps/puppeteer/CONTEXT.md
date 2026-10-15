@@ -121,3 +121,11 @@ _Avoid_: Metrics, diagnostics, monitoring data
 **Command**:
 An instruction sent from Puppeteer to a Puppet device (restart, shutdown, binary update, open SSH connection, etc.). Enables full remote device management.
 _Avoid_: Action, instruction, directive
+
+**Installation**:
+Placing the Puppet on a Device so it starts on its own at every boot. Happens locally on the Device, before Enrollment, and is repaired whenever what is installed diverges from what is expected.
+_Avoid_: Setup, provisioning, bootstrap, deployment
+
+**Device Audit Trail**:
+The record, kept on the Device itself, of every change made to that Device: when it happened, who made it, what changed, and the state before and after. Lost when the Device is reinstalled.
+_Avoid_: Device log, change log, history
