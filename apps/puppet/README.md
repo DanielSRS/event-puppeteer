@@ -25,6 +25,16 @@ At startup the agent takes an exclusive, non-blocking `flock` on `/run/dsrs-pupp
 | 6           | Another agent already holds the lock                       |
 | 7           | The lock could not be opened or locked at all              |
 
+### Device Audit Trail
+
+Every change the agent makes to the Device is appended to `/var/lib/dsrs-puppet/audit-trail.jsonl`, one JSON object per line with `when`, `who`, `what`, `before` and `after`:
+
+```json
+{"when":"2026-01-02T03:04:05Z","who":{"kind":"command","identifier":"<command id>"},"what":"self-update","before":"0.0.1","after":"0.0.2 sha256:<hex>"}
+```
+
+`who` is `agent` (no identifier), `command` (the Puppeteer Command id) or `user` (a local operating-system user, for the Installation). The agent records Enrollment changes, every executed Command with its result, self-updates, and reboots and power-offs before they are triggered. The file is only ever appended to, concurrent writers produce separate intact lines, and a failed write is logged as an error without stopping the work. Resuming stored credentials is not an Enrollment change, so a restart records nothing by itself.
+
 Connection failures back off exponentially (5 s up to 5 min, with jitter). `SIGTERM`, `SIGINT` and `SIGHUP` shut it down gracefully.
 
 ### Commands
@@ -73,6 +83,7 @@ cmake -B build -DPUPPET_SERVER_URL=https://puppeteer.example
 | Data directory | `/var/lib/dsrs-puppet`                    |
 | Unit           | `/etc/systemd/system/dsrs-puppet.service` |
 | Agent lock     | `/run/dsrs-puppet.lock`                   |
+| Audit Trail    | `/var/lib/dsrs-puppet/audit-trail.jsonl`  |
 
 The Device's identity is always `/etc/machine-id`; the Puppet fails if it is missing or empty. It never sends an Organization on connect, so every Device enrolls through the Superadmin queue.
 
