@@ -204,9 +204,19 @@ static bool sha256ParseHexDigest(const char *text, uint8_t *digest) {
   return true;
 }
 
+static void sha256FormatHexDigest(const uint8_t *digest, char *text) {
+  static const char HEX_DIGITS[] = "0123456789abcdef";
+  for (size_t index = 0; index < SHA256_DIGEST_LENGTH; index++) {
+    text[index * 2]     = HEX_DIGITS[digest[index] >> 4];
+    text[index * 2 + 1] = HEX_DIGITS[digest[index] & 0x0F];
+  }
+  text[SHA256_DIGEST_LENGTH * 2] = '\0';
+}
+
 const struct Sha256Type Sha256I = {
-  .create         = sha256Create,
-  .update         = sha256Update,
-  .finish         = sha256Finish,
-  .parseHexDigest = sha256ParseHexDigest,
+  .create          = sha256Create,
+  .update          = sha256Update,
+  .finish          = sha256Finish,
+  .parseHexDigest  = sha256ParseHexDigest,
+  .formatHexDigest = sha256FormatHexDigest,
 };

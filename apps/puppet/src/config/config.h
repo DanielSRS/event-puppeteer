@@ -27,6 +27,9 @@
 #define CONFIG_UNIT_PATH       "/etc/systemd/system/dsrs-puppet.service"
 #define CONFIG_AGENT_LOCK_PATH "/run/dsrs-puppet.lock"
 
+/** The Device Audit Trail: append-only, kept in the data directory. */
+#define CONFIG_AUDIT_TRAIL_PATH CONFIG_DATA_DIRECTORY "/audit-trail.jsonl"
+
 #define CONFIG_SERVER_URL_CAPACITY        ((size_t)256)
 #define CONFIG_DEVICE_IDENTIFIER_CAPACITY ((size_t)128)
 

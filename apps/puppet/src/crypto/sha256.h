@@ -61,6 +61,12 @@ struct Sha256Type {
    * @return false when `text` is not exactly 64 hexadecimal characters.
    */
   bool (*const parseHexDigest)(const char *text, uint8_t *digest);
+
+  /**
+   * Write `digest` as lowercase hexadecimal into `text`, which must hold
+   * `SHA256_HEX_DIGEST_CAPACITY` bytes.
+   */
+  void (*const formatHexDigest)(const uint8_t *digest, char *text);
 };
 
 extern const struct Sha256Type Sha256I;

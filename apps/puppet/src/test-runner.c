@@ -20,6 +20,9 @@
 #define PUPPET_SELF_UPDATE_IMPLEMENTATION
 #include "update/self-update.h"
 
+#define PUPPET_AUDIT_TRAIL_IMPLEMENTATION
+#include "audit-trail/audit-trail.h"
+
 #define PUPPET_AGENT_LOCK_IMPLEMENTATION
 #include "agent-lock/agent-lock.h"
 
@@ -33,6 +36,7 @@
 #include "config/config.test.c"
 #include "agent/agent-schedule.test.c"
 #include "agent-lock/agent-lock.test.c"
+#include "audit-trail/audit-trail.test.c"
 #include "crypto/sha256.test.c"
 #include "update/self-update.test.c"
 
@@ -47,6 +51,7 @@ static const TestSuite *const TEST_SUITES[] = {
   &ConfigTestSuite,
   &AgentScheduleTestSuite,
   &AgentLockTestSuite,
+  &AuditTrailTestSuite,
   &Sha256TestSuite,
   &SelfUpdateTestSuite,
 };
