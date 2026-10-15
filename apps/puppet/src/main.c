@@ -31,6 +31,9 @@
 #define PUPPET_SELF_UPDATE_IMPLEMENTATION
 #include "update/self-update.h"
 
+#define PUPPET_AGENT_LOCK_IMPLEMENTATION
+#include "agent-lock/agent-lock.h"
+
 #define PUPPET_AGENT_SCHEDULE_IMPLEMENTATION
 #include "agent/agent-schedule.h"
 
@@ -47,6 +50,10 @@ typedef enum {
   PUPPET_EXIT_HTTP_CLIENT_ALLOCATION  = 3,
   PUPPET_EXIT_STORAGE_INITIALIZATION  = 4,
   PUPPET_EXIT_RESTART_FAILED          = 5,
+  /** Another agent already holds the agent lock. */
+  PUPPET_EXIT_AGENT_ALREADY_RUNNING   = 6,
+  /** The agent lock could not be opened or locked at all. */
+  PUPPET_EXIT_AGENT_LOCK_UNAVAILABLE  = 7,
 } PuppetExitStatus;
 
 static const char *configErrorDescription(const ConfigResultCode code) {
@@ -75,6 +82,26 @@ int main(const int argumentCount, char *argumentValues[]) {
 
   char puppetStartTime[LIFECYCLE_TIMESTAMP_CAPACITY];
   LifecycleI.formatUtcNow(puppetStartTime);
+
+  /** Before anything touches storage: two agents must never share it. */
+  const AgentLockResultCode lockCode = AgentLockI.acquire(CONFIG_AGENT_LOCK_PATH);
+  if (lockCode == AGENT_LOCK_ERROR_HELD) {
+    fprintf(
+      stderr,
+      "[error] another agent is already running (lock %s is held)\n",
+      CONFIG_AGENT_LOCK_PATH
+    );
+    return PUPPET_EXIT_AGENT_ALREADY_RUNNING;
+  }
+  if (lockCode != AGENT_LOCK_RESULT_OK) {
+    fprintf(
+      stderr,
+      "[error] cannot take the agent lock %s (%d)\n",
+      CONFIG_AGENT_LOCK_PATH,
+      lockCode
+    );
+    return PUPPET_EXIT_AGENT_LOCK_UNAVAILABLE;
+  }
 
   ConfigSourceStorage    sourceStorage;
   const ConfigSources    sources = ConfigI.readSources(&sourceStorage);
@@ -148,6 +175,13 @@ int main(const int argumentCount, char *argumentValues[]) {
   MmkvI.shutdown();
 
   if (exitReason == AGENT_EXIT_RESTART_REQUESTED) {
+    const AgentLockResultCode keepCode = AgentLockI.keepAcrossRestart();
+    if (keepCode != AGENT_LOCK_RESULT_OK) {
+      fprintf(
+        stderr, "[error] cannot keep the agent lock across the restart (%d)\n", keepCode
+      );
+      return PUPPET_EXIT_RESTART_FAILED;
+    }
     SelfUpdateI.restart(&updatePaths, argumentValues);
     fprintf(stderr, "[error] restart into the updated binary failed\n");
     return PUPPET_EXIT_RESTART_FAILED;
