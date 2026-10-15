@@ -1,20 +1,15 @@
 /**
  * @file config.h
- * @brief Runtime configuration of a Puppet.
+ * @brief Configuration of a Puppet, fixed when it is built (ADR-0001).
  *
- * Following the zero-touch Enrollment model (ADR-0002), a Puppet only needs
- * to know where Puppeteer is. Everything else has a sensible default.
- *
- * | Variable                   | Meaning                                        | Default                                   |
- * |----------------------------|------------------------------------------------|-------------------------------------------|
- * | `PUPPET_SERVER_URL`        | Base URL of Puppeteer (http:// or https://)    | required                                  |
- * | `PUPPET_ORGANIZATION_ID`   | Organization to request Enrollment into        | none (Superadmin queue)                   |
- * | `PUPPET_DATA_DIRECTORY`    | Where credentials and the feed are persisted   | `$XDG_DATA_HOME/puppet`, else `$HOME/.local/share/puppet` |
- * | `PUPPET_DEVICE_IDENTIFIER` | Stable identity announced on connect           | contents of `/etc/machine-id`             |
+ * The Puppet reads no environment variables. Puppeteer's URL is given to
+ * CMake (`-DPUPPET_SERVER_URL=...`, validated at configure time) and reaches
+ * the code as the `PUPPET_SERVER_URL` compile definition. Every path is a
+ * constant below. The Device identity is always `/etc/machine-id`.
  *
  * Resolution is split in two so the rules stay pure and testable:
- * `ConfigI.readSources` performs the IO (environment, machine id) and
- * `ConfigI.resolve` applies defaults and validation.
+ * `ConfigI.readSources` performs the IO (the machine id file) and
+ * `ConfigI.resolve` applies validation.
  */
 #ifndef PUPPET_CONFIG_H_
 #define PUPPET_CONFIG_H_
@@ -22,45 +17,41 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+/**
+ * Layout of the Installation. Every name visible to the operating system
+ * carries the `dsrs-` prefix so it never collides with Debian's `puppet`
+ * package.
+ */
+#define CONFIG_BINARY_PATH     "/opt/dsrs-puppet/puppet"
+#define CONFIG_DATA_DIRECTORY  "/var/lib/dsrs-puppet"
+#define CONFIG_UNIT_PATH       "/etc/systemd/system/dsrs-puppet.service"
+#define CONFIG_AGENT_LOCK_PATH "/run/dsrs-puppet.lock"
+
 #define CONFIG_SERVER_URL_CAPACITY        ((size_t)256)
-#define CONFIG_ORGANIZATION_ID_CAPACITY   ((size_t)64)
-#define CONFIG_DATA_DIRECTORY_CAPACITY    ((size_t)512)
 #define CONFIG_DEVICE_IDENTIFIER_CAPACITY ((size_t)128)
 
 typedef enum {
   CONFIG_RESULT_OK = 0,
 
-  /** `PUPPET_SERVER_URL` is not set. */
+  /** The Puppeteer URL is empty. */
   CONFIG_ERROR_MISSING_SERVER_URL = 3001,
-  /** `PUPPET_SERVER_URL` is not an http:// or https:// URL. */
+  /** The Puppeteer URL is not an http:// or https:// URL. */
   CONFIG_ERROR_INVALID_SERVER_URL = 3002,
-  /** `PUPPET_SERVER_URL` exceeds `CONFIG_SERVER_URL_CAPACITY`. */
+  /** The Puppeteer URL exceeds `CONFIG_SERVER_URL_CAPACITY`. */
   CONFIG_ERROR_SERVER_URL_TOO_LONG = 3003,
-  /** `PUPPET_ORGANIZATION_ID` exceeds its capacity. */
-  CONFIG_ERROR_ORGANIZATION_ID_TOO_LONG = 3004,
-  /** No data directory is set and `HOME` is unknown. */
-  CONFIG_ERROR_MISSING_DATA_DIRECTORY = 3005,
-  /** The data directory path exceeds its capacity. */
-  CONFIG_ERROR_DATA_DIRECTORY_TOO_LONG = 3006,
-  /** No identifier is set and the machine id is unavailable. */
+  /** The machine id is missing or empty. */
   CONFIG_ERROR_MISSING_DEVICE_IDENTIFIER = 3007,
-  /** The device identifier exceeds its capacity. */
+  /** The machine id exceeds `CONFIG_DEVICE_IDENTIFIER_CAPACITY`. */
   CONFIG_ERROR_DEVICE_IDENTIFIER_TOO_LONG = 3008,
 } ConfigResultCode;
 
 /**
- * Raw inputs to configuration. Each field is NULL (or empty) when unset.
- * Strings are borrowed and must outlive the `resolve` call.
+ * Raw inputs to configuration. Each field is NULL (or empty) when
+ * unavailable. Strings are borrowed and must outlive the `resolve` call.
  */
 typedef struct {
+  /** Puppeteer's URL, as given to CMake at build time. */
   const char *serverUrl;
-  const char *organizationId;
-  const char *dataDirectory;
-  const char *deviceIdentifier;
-
-  /** `XDG_DATA_HOME` and `HOME`, used to derive the default data directory. */
-  const char *dataHome;
-  const char *home;
 
   /** Contents of the system's machine id, without trailing whitespace. */
   const char *machineIdentifier;
@@ -70,10 +61,6 @@ typedef struct {
   /** Base URL without a trailing slash, e.g. "https://puppeteer.example". */
   char serverUrl[CONFIG_SERVER_URL_CAPACITY];
 
-  bool hasOrganization;
-  char organizationId[CONFIG_ORGANIZATION_ID_CAPACITY];
-
-  char dataDirectory[CONFIG_DATA_DIRECTORY_CAPACITY];
   char deviceIdentifier[CONFIG_DEVICE_IDENTIFIER_CAPACITY];
 } PuppetConfig;
 
@@ -87,12 +74,12 @@ typedef struct {
 
 struct ConfigType {
   /**
-   * Gather sources from the process environment and the machine id file.
-   * Never fails: unavailable sources are left NULL for `resolve` to judge.
+   * Gather the build-time URL and the machine id file. Never fails: an
+   * unreadable machine id is left empty for `resolve` to judge.
    */
   ConfigSources (*const readSources)(ConfigSourceStorage *storage);
 
-  /** Apply defaults and validation to `sources`, filling `config`. */
+  /** Validate `sources`, filling `config`. */
   ConfigResultCode (*const resolve)(
     const ConfigSources *sources, PuppetConfig *config
   );

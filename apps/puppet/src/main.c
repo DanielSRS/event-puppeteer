@@ -52,21 +52,15 @@ typedef enum {
 static const char *configErrorDescription(const ConfigResultCode code) {
   switch (code) {
   case CONFIG_ERROR_MISSING_SERVER_URL:
-    return "PUPPET_SERVER_URL is not set";
+    return "the Puppeteer URL baked into this build is empty";
   case CONFIG_ERROR_INVALID_SERVER_URL:
-    return "PUPPET_SERVER_URL must start with http:// or https://";
+    return "the Puppeteer URL baked into this build must start with http:// or https://";
   case CONFIG_ERROR_SERVER_URL_TOO_LONG:
-    return "PUPPET_SERVER_URL is too long";
-  case CONFIG_ERROR_ORGANIZATION_ID_TOO_LONG:
-    return "PUPPET_ORGANIZATION_ID is too long";
-  case CONFIG_ERROR_MISSING_DATA_DIRECTORY:
-    return "set PUPPET_DATA_DIRECTORY (HOME is unknown)";
-  case CONFIG_ERROR_DATA_DIRECTORY_TOO_LONG:
-    return "the data directory path is too long";
+    return "the Puppeteer URL baked into this build is too long";
   case CONFIG_ERROR_MISSING_DEVICE_IDENTIFIER:
-    return "set PUPPET_DEVICE_IDENTIFIER (/etc/machine-id is unavailable)";
+    return "/etc/machine-id is missing or empty";
   case CONFIG_ERROR_DEVICE_IDENTIFIER_TOO_LONG:
-    return "the device identifier is too long";
+    return "/etc/machine-id is too long";
   case CONFIG_RESULT_OK:
     break;
   }
@@ -96,11 +90,11 @@ int main(const int argumentCount, char *argumentValues[]) {
     return PUPPET_EXIT_INVALID_CONFIGURATION;
   }
 
-  MmkvI.initialize(config.dataDirectory);
+  MmkvI.initialize(CONFIG_DATA_DIRECTORY);
   MMKVHandle_t storage = MmkvI.createDefault();
   if (storage == NULL) {
     fprintf(
-      stderr, "[error] cannot open storage in %s\n", config.dataDirectory
+      stderr, "[error] cannot open storage in %s\n", CONFIG_DATA_DIRECTORY
     );
     MmkvI.shutdown();
     return PUPPET_EXIT_STORAGE_INITIALIZATION;

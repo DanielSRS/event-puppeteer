@@ -218,7 +218,7 @@ static void agentConnect(AgentRuntime *runtime, const uint64_t now) {
   char                body[AGENT_REQUEST_BODY_CAPACITY];
   const ProtocolResultCode written = ProtocolI.writeConnectRequest(
     config->deviceIdentifier,
-    config->hasOrganization ? config->organizationId : NULL,
+    NULL,
     (RequestBody){.buffer = body, .capacity = sizeof(body)}
   );
 
