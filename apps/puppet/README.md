@@ -4,7 +4,7 @@ The C application running on kiosk Devices. It enrolls itself with Puppeteer, wa
 
 ## What it does
 
-1. **Enrollment** (ADR-0002): on first start it calls `POST /devices/connect` and stores the issued credentials. The Device then appears in the pending queue: the Organization Admin's when `PUPPET_ORGANIZATION_ID` is set, otherwise the Superadmin's.
+1. **Enrollment** (ADR-0002): on first start it calls `POST /devices/connect` and stores the issued credentials. The Device then appears in the Superadmin's pending queue.
 2. **Pending**: it checks its status every 15 s and sends heartbeats, waiting indefinitely without flooding Puppeteer.
 3. **Active**: once approved, it also polls Commands every 10 s and refreshes the Organization's event feed every 5 minutes, storing the last valid feed in MMKV.
 4. **Rejected**: it goes quiet, checking its status only hourly.
@@ -42,12 +42,24 @@ Displaying events on screen is not implemented yet. The feed is stored under the
 
 ## Configuration
 
-| Variable                   | Meaning                                       | Default                                    |
-|----------------------------|-----------------------------------------------|--------------------------------------------|
-| `PUPPET_SERVER_URL`        | Puppeteer base URL (`http://` or `https://`)  | **required**                               |
-| `PUPPET_ORGANIZATION_ID`   | Organization to request Enrollment into       | none (Superadmin queue)                    |
-| `PUPPET_DATA_DIRECTORY`    | Persistent storage (credentials, feed)        | `$XDG_DATA_HOME/puppet`, else `~/.local/share/puppet` |
-| `PUPPET_DEVICE_IDENTIFIER` | Stable identity announced on connect          | `/etc/machine-id`                          |
+The Puppet is configured only when it is built (ADR-0001) and reads no environment variables.
+
+**Puppeteer's URL** is given to CMake and baked into the binary. Configuring fails when it is missing or is not an `http://` or `https://` URL:
+
+```bash
+cmake -B build -DPUPPET_SERVER_URL=https://puppeteer.example
+```
+
+**Paths** are fixed constants:
+
+| Piece          | Path                                      |
+|----------------|-------------------------------------------|
+| Binary         | `/opt/dsrs-puppet/puppet`                 |
+| Data directory | `/var/lib/dsrs-puppet`                    |
+| Unit           | `/etc/systemd/system/dsrs-puppet.service` |
+| Agent lock     | `/run/dsrs-puppet.lock`                   |
+
+The Device's identity is always `/etc/machine-id`; the Puppet fails if it is missing or empty. It never sends an Organization on connect, so every Device enrolls through the Superadmin queue.
 
 The data directory must be on persistent storage. Losing it makes the Device enroll again as a new pending Device.
 
@@ -68,7 +80,7 @@ On the Device itself only the libcurl runtime (`libcurl4` on Debian) is needed.
 1. Open your terminal and navigate to the root of the project directory.
 2. Configure the project:
    ```bash
-   cmake -B build
+   cmake -B build -DPUPPET_SERVER_URL=https://puppeteer.example
    ```
 3. Compile the application:
    ```bash
@@ -78,8 +90,11 @@ On the Device itself only the libcurl runtime (`libcurl4` on Debian) is needed.
 ## Running the Application
 
 **On Linux / macOS:**
+Build with the URL (see *Configuration*), then run as root, since the data directory is `/var/lib/dsrs-puppet`:
 ```bash
-PUPPET_SERVER_URL=http://localhost:3000 ./build/puppet
+cmake -B build -DPUPPET_SERVER_URL=http://localhost:3000
+cmake --build build
+sudo ./build/puppet
 ```
 
 **On Windows:**
@@ -111,7 +126,7 @@ You must install the ARM32 C and C++ cross-compilers on your host machine to com
 **Build Instructions:**
 Use the provided toolchain file. During the configuration step, CMake will **automatically download and set up the required target sysroot**, libcurl included (using `scripts/setup-arm32-sysroot.sh`), into a local `sysroot` directory. The setup runs again automatically whenever that script changes.
 ```bash
-cmake -B build-linux-arm32 -DCMAKE_TOOLCHAIN_FILE=toolchains/arm32-linux.cmake
+cmake -B build-linux-arm32 -DPUPPET_SERVER_URL=https://puppeteer.example -DCMAKE_TOOLCHAIN_FILE=toolchains/arm32-linux.cmake
 cmake --build build-linux-arm32
 ```
 
@@ -123,6 +138,7 @@ cmake --build build-linux-arm32
 **Build Instructions:**
 ```bash
 cmake -B build-android-arm32 \
+  -DPUPPET_SERVER_URL=https://puppeteer.example \
   -DCMAKE_SYSTEM_NAME=Android \
   -DCMAKE_ANDROID_ARCH_ABI=armeabi-v7a \
   -DCMAKE_ANDROID_NDK=/path/to/your/android-ndk
