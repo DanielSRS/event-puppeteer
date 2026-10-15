@@ -31,8 +31,14 @@
 #define PUPPET_SELF_UPDATE_IMPLEMENTATION
 #include "update/self-update.h"
 
+#define PUPPET_INSTALLATION_IMPLEMENTATION
+#include "installation/installation.h"
+
 #define PUPPET_AUDIT_TRAIL_IMPLEMENTATION
 #include "audit-trail/audit-trail.h"
+
+#define PUPPET_INSTALLER_IMPLEMENTATION
+#include "installer/installer.h"
 
 #define PUPPET_AGENT_LOCK_IMPLEMENTATION
 #include "agent-lock/agent-lock.h"
@@ -57,6 +63,14 @@ typedef enum {
   PUPPET_EXIT_AGENT_ALREADY_RUNNING   = 6,
   /** The agent lock could not be opened or locked at all. */
   PUPPET_EXIT_AGENT_LOCK_UNAVAILABLE  = 7,
+  /** The running executable's path could not be determined. */
+  PUPPET_EXIT_EXECUTABLE_UNKNOWN      = 8,
+  /** Installing needs root and `sudo` could not be started. */
+  PUPPET_EXIT_SUDO_UNAVAILABLE        = 9,
+  /** Only part of the Installation exists; nothing was changed. */
+  PUPPET_EXIT_PARTIAL_INSTALLATION    = 10,
+  /** An installation step failed; the steps already done are in the trail. */
+  PUPPET_EXIT_INSTALLATION_FAILED     = 11,
 } PuppetExitStatus;
 
 static const char *configErrorDescription(const ConfigResultCode code) {
@@ -77,8 +91,54 @@ static const char *configErrorDescription(const ConfigResultCode code) {
   return "unknown configuration error";
 }
 
+static PuppetExitStatus installerExitStatus(const InstallerResultCode code) {
+  switch (code) {
+  case INSTALLER_RESULT_OK:
+    return PUPPET_EXIT_SUCCESS;
+  case INSTALLER_ERROR_SUDO_UNAVAILABLE:
+    return PUPPET_EXIT_SUDO_UNAVAILABLE;
+  case INSTALLER_ERROR_PARTIAL_INSTALLATION:
+    return PUPPET_EXIT_PARTIAL_INSTALLATION;
+  default:
+    break;
+  }
+  return PUPPET_EXIT_INSTALLATION_FAILED;
+}
+
 int main(const int argumentCount, char *argumentValues[]) {
   (void)argumentCount; // argv is NULL-terminated; only re-exec needs it
+
+  /**
+   * Resolved now: once an update replaces the binary, the kernel no
+   * longer reports its original path.
+   */
+  SelfUpdatePaths            updatePaths;
+  const SelfUpdateResultCode pathsCode = SelfUpdateI.resolvePaths(&updatePaths);
+  if (pathsCode != SELF_UPDATE_RESULT_OK) {
+    fprintf(
+      stderr, "[error] cannot locate the running executable (%d)\n", pathsCode
+    );
+    return PUPPET_EXIT_EXECUTABLE_UNKNOWN;
+  }
+
+  /**
+   * Before the lifecycle blocks the termination signals: a terminal run must
+   * stay interruptible, and it never takes the agent lock.
+   */
+  const InstallationEnvironment installationEnvironment =
+    InstallationI.readEnvironment();
+  const InstallationInputs installationInputs = {
+    .invocationIdentifier = installationEnvironment.invocationIdentifier,
+    .executablePath       = updatePaths.executablePath,
+  };
+  if (InstallationI.decideRole(&installationInputs) == INSTALLATION_ROLE_TERMINAL) {
+    const InstallerContext installerContext = {
+      .executablePath = updatePaths.executablePath,
+      .sudoUser       = installationEnvironment.sudoUser,
+      .puppetVersion  = PUPPET_VERSION,
+    };
+    return installerExitStatus(InstallerI.run(&installerContext));
+  }
 
   /** Block termination signals before anything else (see lifecycle.h). */
   const Lifecycle lifecycle = LifecycleI.create();
@@ -149,18 +209,6 @@ int main(const int argumentCount, char *argumentValues[]) {
     return PUPPET_EXIT_HTTP_CLIENT_ALLOCATION;
   }
 
-  /** Resolved now: once an update replaces the binary, the kernel no
-   *  longer reports its original path. */
-  SelfUpdatePaths            updatePaths;
-  const SelfUpdateResultCode pathsCode = SelfUpdateI.resolvePaths(&updatePaths);
-  if (pathsCode != SELF_UPDATE_RESULT_OK) {
-    fprintf(
-      stderr,
-      "[warning] updates disabled: executable path unknown (%d)\n",
-      pathsCode
-    );
-  }
-
   const AgentEnvironment environment = {
     .config          = &config,
     .httpClient      = httpClient,
@@ -169,8 +217,7 @@ int main(const int argumentCount, char *argumentValues[]) {
     .auditTrailPath  = CONFIG_AUDIT_TRAIL_PATH,
     .puppetVersion   = PUPPET_VERSION,
     .puppetStartTime = puppetStartTime,
-    .updatePaths =
-      pathsCode == SELF_UPDATE_RESULT_OK ? &updatePaths : NULL,
+    .updatePaths     = &updatePaths,
   };
   const AgentExitReason exitReason = AgentI.run(&environment);
 
