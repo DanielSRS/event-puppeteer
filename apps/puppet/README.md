@@ -24,6 +24,12 @@ At startup the agent takes an exclusive, non-blocking `flock` on `/run/dsrs-pupp
 | 5           | Restart into an updated binary failed                      |
 | 6           | Another agent already holds the lock                       |
 | 7           | The lock could not be opened or locked at all              |
+| 8           | The running executable's path could not be determined      |
+| 9           | Installing needs root and `sudo` could not be started      |
+| 10          | The Installation is incomplete; nothing was changed        |
+| 11          | An installation step failed; completed steps are in the trail |
+
+When `sudo` itself fails (no password available, wrong password) its own message and exit status (1) are what the technician sees.
 
 ### Device Audit Trail
 
@@ -67,7 +73,7 @@ Displaying events on screen is not implemented yet. The feed is stored under the
 
 ## Configuration
 
-The Puppet is configured only when it is built (ADR-0001) and reads no environment variables.
+The Puppet is configured only when it is built (ADR-0001) and reads no environment variables for configuration. The only two it reads, `INVOCATION_ID` (set by systemd) and `SUDO_USER` (set by sudo), say who started the process.
 
 **Puppeteer's URL** is given to CMake and baked into the binary. Configuring fails when it is missing or is not an `http://` or `https://` URL:
 
@@ -113,21 +119,28 @@ On the Device itself only the libcurl runtime (`libcurl4` on Debian) is needed.
    cmake --build build
    ```
 
-## Running the Application
+## Running the Application: the Installation
 
-**On Linux / macOS:**
-Build with the URL (see *Configuration*), then run as root, since the data directory is `/var/lib/dsrs-puppet`:
+The Puppet installs itself (ADR-0001). Copy the one binary to the Device and run it as a normal user, with no arguments:
+
 ```bash
-cmake -B build -DPUPPET_SERVER_URL=http://localhost:3000
-cmake --build build
-sudo ./build/puppet
+./puppet
 ```
 
-**On Windows:**
-Depending on your generator (e.g., MSVC), the executable might be nested inside a build type directory:
-```cmd
-.\build\Debug\puppet.exe
-```
+On a Device with nothing installed it:
+
+1. re-runs itself through `sudo`, which asks for the password (it fails with a clear error, changing nothing, when `sudo` is missing or the password is wrong);
+2. creates `/var/lib/dsrs-puppet`;
+3. copies the running executable to `/opt/dsrs-puppet/puppet`;
+4. writes `/etc/systemd/system/dsrs-puppet.service`: it waits for `network-online.target`, runs as root, uses `Restart=always` and is `WantedBy=multi-user.target`;
+5. reloads systemd, then enables and starts `dsrs-puppet.service`;
+6. prints what it changed.
+
+Every change is appended to the Device Audit Trail with the technician (`SUDO_USER`) as "who". A failure partway leaves the steps already done in the trail and attempts nothing more. From then on systemd runs the agent at boot, restarts it if it crashes and keeps it independent of any terminal.
+
+Which role a process plays is decided from how it was started: the **agent** is only the process systemd starts (`INVOCATION_ID` set) from `/opt/dsrs-puppet/puppet`; every other run is a **terminal** that installs and never becomes the agent. Running `./puppet` when the binary and the unit both exist changes nothing and does not check the service. Repairing a diverging Installation is not implemented yet: it is refused with exit status 10.
+
+Running the binary on a developer machine installs the service there too, after the password prompt.
 
 ## Running the Tests
 
