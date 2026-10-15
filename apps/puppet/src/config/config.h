@@ -2,9 +2,10 @@
  * @file config.h
  * @brief Configuration of a Puppet, fixed when it is built (ADR-0001).
  *
- * The Puppet reads no environment variables. Puppeteer's URL is given to
- * CMake (`-DPUPPET_SERVER_URL=...`, validated at configure time) and reaches
- * the code as the `PUPPET_SERVER_URL` compile definition. Every path is a
+ * The Puppet reads no environment variables for configuration (the two it
+ * reads to tell who started it are in `installation.h`). Puppeteer's URL is
+ * given to CMake (`-DPUPPET_SERVER_URL=...`, validated at configure time)
+ * and reaches the code as the `PUPPET_SERVER_URL` compile definition. Every path is a
  * constant below. The Device identity is always `/etc/machine-id`.
  *
  * Resolution is split in two so the rules stay pure and testable:
@@ -22,9 +23,11 @@
  * carries the `dsrs-` prefix so it never collides with Debian's `puppet`
  * package.
  */
-#define CONFIG_BINARY_PATH     "/opt/dsrs-puppet/puppet"
+#define CONFIG_BINARY_DIRECTORY "/opt/dsrs-puppet"
+#define CONFIG_BINARY_PATH     CONFIG_BINARY_DIRECTORY "/puppet"
+#define CONFIG_SERVICE_NAME    "dsrs-puppet.service"
 #define CONFIG_DATA_DIRECTORY  "/var/lib/dsrs-puppet"
-#define CONFIG_UNIT_PATH       "/etc/systemd/system/dsrs-puppet.service"
+#define CONFIG_UNIT_PATH       "/etc/systemd/system/" CONFIG_SERVICE_NAME
 #define CONFIG_AGENT_LOCK_PATH "/run/dsrs-puppet.lock"
 
 /** The Device Audit Trail: append-only, kept in the data directory. */
