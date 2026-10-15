@@ -10,6 +10,21 @@ The C application running on kiosk Devices. It enrolls itself with Puppeteer, wa
 4. **Rejected**: it goes quiet, checking its status only hourly.
 5. **Revoked credentials** (HTTP 401): it forgets them and enrolls again.
 
+### Only one agent per Device
+
+At startup the agent takes an exclusive, non-blocking `flock` on `/run/dsrs-puppet.lock` and holds it for its whole life. The kernel releases it when the process dies, so a crash never leaves a stale lock. The lock survives the self-update `execv` restart, so no second agent can start in between.
+
+| Exit status | Meaning                                                    |
+|-------------|------------------------------------------------------------|
+| 0           | Graceful shutdown                                          |
+| 1           | Invalid configuration (`/etc/machine-id`, build-time URL)  |
+| 2           | HTTP could not be initialized                              |
+| 3           | The HTTP client could not be allocated                     |
+| 4           | Storage could not be opened                                |
+| 5           | Restart into an updated binary failed                      |
+| 6           | Another agent already holds the lock                       |
+| 7           | The lock could not be opened or locked at all              |
+
 Connection failures back off exponentially (5 s up to 5 min, with jitter). `SIGTERM`, `SIGINT` and `SIGHUP` shut it down gracefully.
 
 ### Commands
