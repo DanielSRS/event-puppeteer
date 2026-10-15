@@ -23,6 +23,13 @@
  * Authenticated calls send `Authorization: Bearer <token>`. A 401 means the
  * credentials were revoked: they are discarded and the Puppet enrolls again.
  *
+ * ## Device Audit Trail
+ *
+ * Every change the agent makes to the Device is appended to the trail (see
+ * `audit-trail.h`): Enrollment changes, every executed Command, self-updates
+ * and, before they are triggered, reboots and power-offs. A trail write that
+ * fails is logged as an error and never stops the work itself.
+ *
  * ## Logging
  *
  * Log lines go to standard error (picked up by journald) and are queued for
@@ -32,6 +39,7 @@
 #ifndef PUPPET_AGENT_H_
 #define PUPPET_AGENT_H_
 
+#include "audit-trail/audit-trail.h"
 #include "config/config.h"
 #include "http/http-client.h"
 #include "lifecycle/lifecycle.h"
@@ -44,6 +52,9 @@ typedef struct {
   HttpClient         *httpClient;
   MMKVHandle_t        storage;
   const Lifecycle    *lifecycle;
+
+  /** The Device Audit Trail the agent appends its changes to. */
+  const char *auditTrailPath;
 
   /** Version string of this build, e.g. "0.0.1". */
   const char *puppetVersion;

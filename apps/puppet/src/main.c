@@ -31,6 +31,9 @@
 #define PUPPET_SELF_UPDATE_IMPLEMENTATION
 #include "update/self-update.h"
 
+#define PUPPET_AUDIT_TRAIL_IMPLEMENTATION
+#include "audit-trail/audit-trail.h"
+
 #define PUPPET_AGENT_LOCK_IMPLEMENTATION
 #include "agent-lock/agent-lock.h"
 
@@ -163,6 +166,7 @@ int main(const int argumentCount, char *argumentValues[]) {
     .httpClient      = httpClient,
     .storage         = storage,
     .lifecycle       = &lifecycle,
+    .auditTrailPath  = CONFIG_AUDIT_TRAIL_PATH,
     .puppetVersion   = PUPPET_VERSION,
     .puppetStartTime = puppetStartTime,
     .updatePaths =
