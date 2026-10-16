@@ -34,7 +34,8 @@ Event banners (16:9, at least 960×540) and Organization logos (1:1, at least 25
 - Screening combines Sightengine and OpenAI omni-moderation (the most severe score wins) against the Screening Policy (`GET`/`PUT /screening-policy`, Superadmin). Until a policy is set, and whenever Screening fails, Images wait in Image Review.
 - Image Review: `GET /organizations/:id/image-reviews` (Moderator+), `GET /image-reviews/escalated` (Superadmin), `POST /image-reviews/:imageId/approve|reject`. Nobody reviews their own Image; a rejection there shadow-bans the uploader.
 - Responses carry `banner`/`logo` as `{ url?, thumbhash }` resolved per viewer: the uploader always sees their latest Image through an expiring signed URL; everyone else sees the latest Approved Image, or only the thumbhash.
-- Required environment: `SIGHTENGINE_API_USER`, `SIGHTENGINE_API_SECRET`, `OPENAI_API_KEY`, `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`. Tests use in-memory doubles (`createInMemoryIO`) and need none.
+- Puppet update binaries sent from the dashboard live in a **private** Vercel Blob store. The browser uploads straight to it with a one-upload credential from `POST /organizations/:id/devices/update-uploads`; an `update` Command then carries `{ blobPathname, sha256, version? }`, and each time a Device pulls it Puppeteer swaps the pathname for a download URL signed for one hour (`{ url, sha256, version? }`, what Puppet already expects). If the store cannot sign, the Command is marked failed.
+- Required environment: `SIGHTENGINE_API_USER`, `SIGHTENGINE_API_SECRET`, `OPENAI_API_KEY`, `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`, `BLOB_READ_WRITE_TOKEN`. Tests use in-memory doubles (`createInMemoryIO`) and need none.
 
 ### Access rules
 

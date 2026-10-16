@@ -17,6 +17,7 @@ import { DrizzleImageRepository } from './drizzle/image-repository.ts';
 import { DrizzleScreeningPolicyRepository } from './drizzle/screening-policy-repository.ts';
 import { InMemoryImageScreener } from './screening/in-memory.ts';
 import { InMemoryImageStore } from './image-store/in-memory.ts';
+import { InMemoryUpdateBinaryStore } from './update-binary-store/in-memory.ts';
 import type { AppIO } from './index.ts';
 
 /** The IO tests run on, with the test doubles exposed so tests can drive and inspect them. */
@@ -24,6 +25,7 @@ export type InMemoryIO = AppIO & {
   emailSender: InMemoryEmailSender;
   imageScreener: InMemoryImageScreener;
   imageStore: InMemoryImageStore;
+  updateBinaryStore: InMemoryUpdateBinaryStore;
 };
 
 export async function createInMemoryIO(): Promise<InMemoryIO> {
@@ -46,6 +48,7 @@ export async function createInMemoryIO(): Promise<InMemoryIO> {
     auth: new BetterAuthProvider(createAuth({ db, emailSender, apiUrl: 'http://localhost:8080', appUrl: 'http://localhost:3000' })),
     emailSender,
     imageScreener: new InMemoryImageScreener(),
-    imageStore: new InMemoryImageStore()
+    imageStore: new InMemoryImageStore(),
+    updateBinaryStore: new InMemoryUpdateBinaryStore()
   };
 }

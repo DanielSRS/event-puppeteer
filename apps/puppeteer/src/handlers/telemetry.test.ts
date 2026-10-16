@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { registerVerified } from '../test-support.ts';
 import { createInMemoryIO } from '../io/in-memory.ts';
 import { connectDeviceHandler, approveDeviceHandler } from './devices.ts';
-import { heartbeatHandler, postLogHandler, postTelemetryHandler, ackCommandHandler, completeCommandHandler, getDeviceStatusHandler, getDeviceLogsHandler, getDetailedTelemetryHandler, sendCommandHandler, requestTelemetryHandler, listCommandsHandler, pullPendingCommandsHandler } from './telemetry.ts';
+import { heartbeatHandler, postLogHandler, postTelemetryHandler, ackCommandHandler, completeCommandHandler, getDeviceStatusHandler, getDeviceLogsHandler, getDetailedTelemetryHandler, sendCommandHandler, requestTelemetryHandler, listCommandsHandler, pullPendingCommandsHandler, requestUpdateUploadHandler } from './telemetry.ts';
 
 async function setup() {
   const io = await createInMemoryIO();
@@ -158,5 +158,92 @@ test('Telemetry & Command Handlers', async (t) => {
     await assert.rejects(ackCommandHandler(otherReq, other.id, cmd.id, io), /NOT_FOUND/);
     await assert.rejects(completeCommandHandler(otherReq, other.id, cmd.id, true, io), /NOT_FOUND/);
     assert.equal((await io.commandRepo.getById(cmd.id))?.status, 'pending');
+  });
+
+  await t.test('an Admin gets a grant for one pathname inside their Organization, capped at Puppet\'s 64 MiB', async () => {
+    const { io, orgId, adminReq } = await setup();
+    const grant = await requestUpdateUploadHandler(adminReq, orgId, { sizeBytes: 1_000_000 }, io);
+
+    assert.match(grant.pathname, new RegExp(`^puppet-updates/${orgId}/[0-9a-f-]{36}$`));
+    assert.equal(grant.contentType, 'application/octet-stream');
+    assert.equal(grant.maxBytes, 64 * 1024 * 1024);
+    assert.deepEqual(io.updateBinaryStore.grants.map(g => [g.pathname, g.maxBytes]), [[grant.pathname, grant.maxBytes]]);
+  });
+
+  await t.test('every grant gets its own pathname, so one upload never replaces another', async () => {
+    const { io, orgId, adminReq } = await setup();
+    const first = await requestUpdateUploadHandler(adminReq, orgId, { sizeBytes: 10 }, io);
+    const second = await requestUpdateUploadHandler(adminReq, orgId, { sizeBytes: 10 }, io);
+    assert.notEqual(first.pathname, second.pathname);
+  });
+
+  await t.test('a binary over 64 MiB is refused before any grant exists', async () => {
+    const { io, orgId, adminReq } = await setup();
+    await assert.rejects(requestUpdateUploadHandler(adminReq, orgId, { sizeBytes: 64 * 1024 * 1024 + 1 }, io), /BAD_REQUEST/);
+    assert.equal(io.updateBinaryStore.grants.length, 0);
+  });
+
+  await t.test('members and other Organizations get no grant', async () => {
+    const { io, orgId, adminReq, memberReq } = await setup();
+    await assert.rejects(requestUpdateUploadHandler(memberReq, orgId, { sizeBytes: 10 }, io), /FORBIDDEN/);
+    const other = await io.orgRepo.create({ name: 'Other', slug: 'other', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), shadowBanThreshold: 5 });
+    await assert.rejects(requestUpdateUploadHandler(adminReq, other.id, { sizeBytes: 10 }, io), /FORBIDDEN/);
+    assert.equal(io.updateBinaryStore.grants.length, 0);
+  });
+
+  await t.test('without a session there is no grant', async () => {
+    const { io, orgId } = await setup();
+    await assert.rejects(requestUpdateUploadHandler(new Request('http://localhost/'), orgId, { sizeBytes: 10 }, io), /UNAUTHORIZED/);
+  });
+
+  await t.test('a store failure surfaces its reason', async () => {
+    const { io, orgId, adminReq } = await setup();
+    io.updateBinaryStore.failure = 'Blob is down';
+    await assert.rejects(requestUpdateUploadHandler(adminReq, orgId, { sizeBytes: 10 }, io), /UPDATE_STORE_FAILED: Blob is down/);
+  });
+
+  const SHA = 'a'.repeat(64);
+
+  await t.test('an update of an uploaded binary is stored by pathname and reaches the Device as a freshly signed URL', async () => {
+    const { io, orgId, adminReq, devReq, device } = await setup();
+    const { pathname } = await requestUpdateUploadHandler(adminReq, orgId, { sizeBytes: 10 }, io);
+    const cmd = await sendCommandHandler(adminReq, orgId, device.id, { type: 'update', payload: { blobPathname: pathname, sha256: SHA, version: '0.0.3' } }, io);
+    assert.deepEqual(cmd.payload, { blobPathname: pathname, sha256: SHA, version: '0.0.3' });
+
+    const before = Date.now();
+    const pulled = (await pullPendingCommandsHandler(devReq, device.id, io))[0]!;
+    assert.deepEqual(pulled.payload, { url: `memory://signed/${pathname}?valid-until=${io.updateBinaryStore.signed[0]!.validUntil}`, sha256: SHA, version: '0.0.3' });
+    const lifetime = io.updateBinaryStore.signed[0]!.validUntil - before;
+    assert.ok(lifetime > 59 * 60 * 1000 && lifetime <= 60 * 60 * 1000 + 1000);
+
+    await pullPendingCommandsHandler(devReq, device.id, io);
+    assert.equal(io.updateBinaryStore.signed.length, 2);
+    assert.deepEqual((await io.commandRepo.getById(cmd.id))?.payload, { blobPathname: pathname, sha256: SHA, version: '0.0.3' });
+  });
+
+  await t.test('an update with a URL reaches the Device untouched', async () => {
+    const { io, orgId, adminReq, devReq, device } = await setup();
+    await sendCommandHandler(adminReq, orgId, device.id, { type: 'update', payload: { url: 'https://example.com/puppet', sha256: SHA } }, io);
+    const pulled = (await pullPendingCommandsHandler(devReq, device.id, io))[0]!;
+    assert.deepEqual(pulled.payload, { url: 'https://example.com/puppet', sha256: SHA });
+    assert.equal(io.updateBinaryStore.signed.length, 0);
+  });
+
+  await t.test('a pathname outside the sender\'s Organization or climbing out of it is refused', async () => {
+    const { io, orgId, adminReq, device } = await setup();
+    for (const blobPathname of ['puppet-updates/other-org/x', `puppet-updates/${orgId}/../other-org/x`, 'anything']) {
+      await assert.rejects(sendCommandHandler(adminReq, orgId, device.id, { type: 'update', payload: { blobPathname, sha256: SHA } }, io), /BAD_REQUEST/);
+    }
+  });
+
+  await t.test('when the store cannot sign, the update fails visibly and the rest of the queue still arrives', async () => {
+    const { io, orgId, adminReq, devReq, device } = await setup();
+    const update = await sendCommandHandler(adminReq, orgId, device.id, { type: 'update', payload: { blobPathname: `puppet-updates/${orgId}/x`, sha256: SHA } }, io);
+    const restart = await sendCommandHandler(adminReq, orgId, device.id, { type: 'restart' }, io);
+    io.updateBinaryStore.failure = 'Blob is down';
+
+    const pulled = await pullPendingCommandsHandler(devReq, device.id, io);
+    assert.deepEqual(pulled.map(c => c.id), [restart.id]);
+    assert.equal((await io.commandRepo.getById(update.id))?.status, 'failed');
   });
 });
