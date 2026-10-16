@@ -34,7 +34,7 @@ import { TagSchema, CreateTagBody, LinkLabelSchema, CreateLinkLabelBody } from '
 import { EventSchema, EventViewSchema, CreateEventBody, FeedEventSchema, EventWithVotesSchema } from './types/event.ts';
 import { connectDeviceHandler, getCurrentDeviceHandler, listPendingDevicesGlobalHandler, listPendingDevicesOrgHandler, listActiveDevicesOrgHandler, getDeviceHandler, approveDeviceHandler, rejectDeviceHandler } from './handlers/devices.ts';
 import { PublicDeviceSchema, ConnectDeviceBody, ApproveDeviceBody } from './types/device.ts';
-import { heartbeatHandler, postLogHandler, postTelemetryHandler, pullPendingCommandsHandler, ackCommandHandler, completeCommandHandler, getDeviceStatusHandler, getDeviceLogsHandler, getDetailedTelemetryHandler, sendCommandHandler, requestTelemetryHandler, listCommandsHandler, requestUpdateUploadHandler } from './handlers/telemetry.ts';
+import { heartbeatHandler, postLogHandler, postTelemetryHandler, pullPendingCommandsHandler, ackCommandHandler, completeCommandHandler, getDeviceStatusHandler, getDeviceLogsHandler, getDetailedTelemetryHandler, sendCommandHandler, requestTelemetryHandler, listCommandsHandler, requestUpdateUploadHandler, downloadUpdateBinaryHandler } from './handlers/telemetry.ts';
 import { PostLogBody, DeviceTelemetrySchema, DeviceLogSchema, HeartbeatSchema } from './types/telemetry.ts';
 import { CreateCommandBody, CommandSchema, RequestUpdateUploadBody, UpdateUploadGrantSchema } from './types/command.ts';
 import { createTagHandler, listTagsHandler, createLinkLabelHandler, listLinkLabelsHandler } from './handlers/system.ts';
@@ -295,6 +295,17 @@ export function createServer(io: AppIO, { adapter, appUrl = 'http://localhost:30
             tags: ['Device'],
             summary: 'Pull pending Commands',
             description: 'Returns Commands not yet acknowledged, oldest first, marking pending ones as sent. A Command is redelivered on every poll until the Device acknowledges it (at-least-once). Returns an empty list while the Device is not active.',
+            security: asDevice
+          }
+        })
+        .get('/:deviceId/commands/:commandId/binary', async ({ request, params: { deviceId, commandId }, io, redirect }) => {
+          return redirect(await downloadUpdateBinaryHandler(request, deviceId, commandId, io));
+        }, {
+          params: t.Object({ deviceId: t.String(), commandId: t.String() }),
+          detail: {
+            tags: ['Device'],
+            summary: 'Download the binary of an uploaded update',
+            description: 'Answers 302 to a URL signed for a few minutes. Only the Device the update Command was sent to, while the Command is sent or acknowledged. Puppet reaches this through the short `url` it receives in the Command.',
             security: asDevice
           }
         })
