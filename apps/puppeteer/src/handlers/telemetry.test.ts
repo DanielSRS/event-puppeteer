@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { registerVerified } from '../test-support.ts';
 import { createInMemoryIO } from '../io/in-memory.ts';
 import { connectDeviceHandler, approveDeviceHandler } from './devices.ts';
-import { heartbeatHandler, postLogHandler, postTelemetryHandler, ackCommandHandler, completeCommandHandler, getDeviceStatusHandler, getDeviceLogsHandler, getDetailedTelemetryHandler, sendCommandHandler, requestTelemetryHandler, listCommandsHandler, pullPendingCommandsHandler, requestUpdateUploadHandler } from './telemetry.ts';
+import { heartbeatHandler, postLogHandler, postTelemetryHandler, ackCommandHandler, completeCommandHandler, getDeviceStatusHandler, getDeviceLogsHandler, getDetailedTelemetryHandler, sendCommandHandler, requestTelemetryHandler, listCommandsHandler, pullPendingCommandsHandler, requestUpdateUploadHandler, downloadUpdateBinaryHandler } from './telemetry.ts';
 
 async function setup() {
   const io = await createInMemoryIO();
@@ -204,21 +204,49 @@ test('Telemetry & Command Handlers', async (t) => {
 
   const SHA = 'a'.repeat(64);
 
-  await t.test('an update of an uploaded binary is stored by pathname and reaches the Device as a freshly signed URL', async () => {
+  await t.test('an update of an uploaded binary is stored by pathname and reaches the Device as a short path', async () => {
     const { io, orgId, adminReq, devReq, device } = await setup();
     const { pathname } = await requestUpdateUploadHandler(adminReq, orgId, { sizeBytes: 10 }, io);
     const cmd = await sendCommandHandler(adminReq, orgId, device.id, { type: 'update', payload: { blobPathname: pathname, sha256: SHA, version: '0.0.3' } }, io);
     assert.deepEqual(cmd.payload, { blobPathname: pathname, sha256: SHA, version: '0.0.3' });
 
-    const before = Date.now();
     const pulled = (await pullPendingCommandsHandler(devReq, device.id, io))[0]!;
-    assert.deepEqual(pulled.payload, { url: `memory://signed/${pathname}?valid-until=${io.updateBinaryStore.signed[0]!.validUntil}`, sha256: SHA, version: '0.0.3' });
+    assert.deepEqual(pulled.payload, { url: `/devices/${device.id}/commands/${cmd.id}/binary`, sha256: SHA, version: '0.0.3' });
+    assert.ok(pulled.payload!.url!.toString().length < 512 / 4);
+    assert.equal(io.updateBinaryStore.signed.length, 0);
+    assert.deepEqual((await io.commandRepo.getById(cmd.id))?.payload, { blobPathname: pathname, sha256: SHA, version: '0.0.3' });
+  });
+
+  await t.test('the Device downloads through a URL signed at that moment, for a few minutes', async () => {
+    const { io, orgId, adminReq, devReq, device } = await setup();
+    const cmd = await sendCommandHandler(adminReq, orgId, device.id, { type: 'update', payload: { blobPathname: `puppet-updates/${orgId}/x`, sha256: SHA } }, io);
+    await pullPendingCommandsHandler(devReq, device.id, io);
+
+    const before = Date.now();
+    const url = await downloadUpdateBinaryHandler(devReq, device.id, cmd.id, io);
     const lifetime = io.updateBinaryStore.signed[0]!.validUntil - before;
-    assert.ok(lifetime > 59 * 60 * 1000 && lifetime <= 60 * 60 * 1000 + 1000);
+    assert.match(url, /^memory:\/\/signed\/puppet-updates\//);
+    assert.ok(lifetime > 9 * 60 * 1000 && lifetime <= 10 * 60 * 1000 + 1000);
+
+    await downloadUpdateBinaryHandler(devReq, device.id, cmd.id, io);
+    assert.equal(io.updateBinaryStore.signed.length, 2);
+  });
+
+  await t.test('only the Device the update was sent to, and only before it ends, can download', async () => {
+    const { io, orgId, adminReq, devReq, device } = await setup();
+    const update = await sendCommandHandler(adminReq, orgId, device.id, { type: 'update', payload: { blobPathname: `puppet-updates/${orgId}/x`, sha256: SHA } }, io);
+    const restart = await sendCommandHandler(adminReq, orgId, device.id, { type: 'restart' }, io);
+    await assert.rejects(downloadUpdateBinaryHandler(devReq, device.id, update.id, io), /NOT_FOUND/);
 
     await pullPendingCommandsHandler(devReq, device.id, io);
-    assert.equal(io.updateBinaryStore.signed.length, 2);
-    assert.deepEqual((await io.commandRepo.getById(cmd.id))?.payload, { blobPathname: pathname, sha256: SHA, version: '0.0.3' });
+    await assert.rejects(downloadUpdateBinaryHandler(devReq, device.id, restart.id, io), /NOT_FOUND/);
+    const { device: other, token } = await connectDeviceHandler({ identifier: 'mac-2' }, io);
+    const otherReq = new Request('http://localhost/', { headers: { authorization: `Bearer ${token}` } });
+    await assert.rejects(downloadUpdateBinaryHandler(otherReq, device.id, update.id, io), /FORBIDDEN/);
+    await assert.rejects(downloadUpdateBinaryHandler(otherReq, other.id, update.id, io), /NOT_FOUND/);
+
+    await completeCommandHandler(devReq, device.id, update.id, true, io);
+    await assert.rejects(downloadUpdateBinaryHandler(devReq, device.id, update.id, io), /NOT_FOUND/);
   });
 
   await t.test('an update with a URL reaches the Device untouched', async () => {
@@ -236,14 +264,11 @@ test('Telemetry & Command Handlers', async (t) => {
     }
   });
 
-  await t.test('when the store cannot sign, the update fails visibly and the rest of the queue still arrives', async () => {
+  await t.test('when the store cannot sign, the download fails visibly', async () => {
     const { io, orgId, adminReq, devReq, device } = await setup();
     const update = await sendCommandHandler(adminReq, orgId, device.id, { type: 'update', payload: { blobPathname: `puppet-updates/${orgId}/x`, sha256: SHA } }, io);
-    const restart = await sendCommandHandler(adminReq, orgId, device.id, { type: 'restart' }, io);
+    await pullPendingCommandsHandler(devReq, device.id, io);
     io.updateBinaryStore.failure = 'Blob is down';
-
-    const pulled = await pullPendingCommandsHandler(devReq, device.id, io);
-    assert.deepEqual(pulled.map(c => c.id), [restart.id]);
-    assert.equal((await io.commandRepo.getById(update.id))?.status, 'failed');
+    await assert.rejects(downloadUpdateBinaryHandler(devReq, device.id, update.id, io), /UPDATE_STORE_FAILED: Blob is down/);
   });
 });
