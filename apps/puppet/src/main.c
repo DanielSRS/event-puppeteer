@@ -50,6 +50,7 @@
 #include "agent/agent.h"
 
 #include <stdio.h>
+#include <string.h>
 
 /** Process exit statuses, distinct per failure so supervisors can tell. */
 typedef enum {
@@ -67,10 +68,8 @@ typedef enum {
   PUPPET_EXIT_EXECUTABLE_UNKNOWN      = 8,
   /** Installing needs root and `sudo` or `su` could not be started. */
   PUPPET_EXIT_SUDO_UNAVAILABLE        = 9,
-  /** Only part of the Installation exists; nothing was changed. */
-  PUPPET_EXIT_PARTIAL_INSTALLATION    = 10,
   /** An installation step failed; the steps already done are in the trail. */
-  PUPPET_EXIT_INSTALLATION_FAILED     = 11,
+  PUPPET_EXIT_INSTALLATION_FAILED     = 10,
 } PuppetExitStatus;
 
 static const char *configErrorDescription(const ConfigResultCode code) {
@@ -98,8 +97,6 @@ static PuppetExitStatus installerExitStatus(const InstallerResultCode code) {
   case INSTALLER_ERROR_SUDO_UNAVAILABLE:
   case INSTALLER_ERROR_SU_UNAVAILABLE:
     return PUPPET_EXIT_SUDO_UNAVAILABLE;
-  case INSTALLER_ERROR_PARTIAL_INSTALLATION:
-    return PUPPET_EXIT_PARTIAL_INSTALLATION;
   default:
     break;
   }
@@ -107,7 +104,11 @@ static PuppetExitStatus installerExitStatus(const InstallerResultCode code) {
 }
 
 int main(const int argumentCount, char *argumentValues[]) {
-  (void)argumentCount; // argv is NULL-terminated; only re-exec needs it
+  /** The Installation asks the installed binary which version it is. */
+  if (argumentCount == 2 && strcmp(argumentValues[1], INSTALLER_VERSION_OPTION) == 0) {
+    printf("%s\n", PUPPET_VERSION);
+    return PUPPET_EXIT_SUCCESS;
+  }
 
   /**
    * Resolved now: once an update replaces the binary, the kernel no

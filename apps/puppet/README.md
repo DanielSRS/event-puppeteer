@@ -26,8 +26,7 @@ At startup the agent takes an exclusive, non-blocking `flock` on `/run/dsrs-pupp
 | 7           | The lock could not be opened or locked at all              |
 | 8           | The running executable's path could not be determined      |
 | 9           | Installing needs root and `sudo` or `su` could not be started |
-| 10          | The Installation is incomplete; nothing was changed        |
-| 11          | An installation step failed; completed steps are in the trail |
+| 10          | An installation step failed; completed steps are in the trail |
 
 When `sudo` or `su` itself fails (wrong password, user not allowed) its own message and exit status (1) are what the technician sees.
 
@@ -127,18 +126,26 @@ The Puppet installs itself (ADR-0001). Copy the one binary to the Device and run
 ./puppet
 ```
 
-On a Device with nothing installed it:
+Whether the Puppet is installed is never stored. Every run checks three pieces against the system:
 
-1. re-runs itself as root, saying which way: through `sudo` (your own password) when your user is in the `sudo` or `wheel` group, otherwise through `su` (the root password), so a user outside the sudo group can install too. It fails with a clear error, changing nothing, when the program is missing or the password is wrong. A Device whose root account is locked has no root password, so `su` cannot work there: install from a user in the `sudo` group;
-2. creates `/var/lib/dsrs-puppet`;
-3. copies the running executable to `/opt/dsrs-puppet/puppet`;
-4. writes `/etc/systemd/system/dsrs-puppet.service`: it waits for `network-online.target`, runs as root, uses `Restart=always` and is `WantedBy=multi-user.target`;
-5. reloads systemd, then enables and starts `dsrs-puppet.service`;
+- the binary at `/opt/dsrs-puppet/puppet` is an ELF executable for this architecture (the check self-update applies to a download);
+- the unit `/etc/systemd/system/dsrs-puppet.service` exists with exactly the expected content: it waits for `network-online.target`, runs as root, uses `Restart=always` and is `WantedBy=multi-user.target`;
+- `dsrs-puppet.service` is enabled.
+
+When all three hold, `./puppet` prints a status summary (installed version, service state, the last Enrollment state recorded in the Audit Trail, Device identifier), writes nothing and asks for no password. Otherwise it repairs each diverging piece on its own, so a Device with nothing installed gets all of them:
+
+1. re-runs itself as root, only because a repair is needed, saying which way: through `sudo` (your own password) when your user is in the `sudo` or `wheel` group, otherwise through `su` (the root password), so a user outside the sudo group can install too. It fails with a clear error, changing nothing, when the program is missing or the password is wrong. A Device whose root account is locked has no root password, so `su` cannot work there: install from a user in the `sudo` group;
+2. creates `/var/lib/dsrs-puppet` and `/opt/dsrs-puppet` when missing;
+3. copies the running executable to `/opt/dsrs-puppet/puppet` when the binary is missing, not an ELF or for another architecture. **A valid installed binary is never replaced by a terminal run**, even when it differs from the running one: only self-update changes it, so an old copy on a USB stick cannot downgrade a Device;
+4. writes the unit when it is missing or differs, and reloads systemd;
+5. enables the service when it is not (checked again after the unit is restored, which usually restores it too), and starts it when it is stopped;
 6. prints what it changed.
 
-Every change is appended to the Device Audit Trail with the technician (`SUDO_USER`, which the Puppet also sets for `su`) as "who". A failure partway leaves the steps already done in the trail and attempts nothing more. From then on systemd runs the agent at boot, restarts it if it crashes and keeps it independent of any terminal.
+Every change is appended to the Device Audit Trail with the technician (`SUDO_USER`, which the Puppet also sets for `su`) as "who", and before and after. Pieces that were already right are not recorded. A failure partway leaves the steps already done in the trail and attempts nothing more. From then on systemd runs the agent at boot, restarts it if it crashes and keeps it independent of any terminal.
 
-Which role a process plays is decided from how it was started: the **agent** is only the process systemd starts (`INVOCATION_ID` set) from `/opt/dsrs-puppet/puppet`; every other run is a **terminal** that installs and never becomes the agent. Running `./puppet` when the binary and the unit both exist changes nothing and does not check the service. Repairing a diverging Installation is not implemented yet: it is refused with exit status 10.
+The installed version comes from running the installed binary with `--version`. The Enrollment state is read from the Audit Trail, so it is only as current as the last recorded change (an approval that happened while the agent was not running is not in it). A service that is stopped but enabled is reported in the summary and left alone.
+
+Which role a process plays is decided from how it was started: the **agent** is only the process systemd starts (`INVOCATION_ID` set) from `/opt/dsrs-puppet/puppet`; every other run is a **terminal** that installs, repairs or reports, and never becomes the agent.
 
 Running the binary on a developer machine installs the service there too, after the password prompt.
 
