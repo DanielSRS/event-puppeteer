@@ -171,30 +171,34 @@ static void installationRejectsAUnitThatDoesNotFit(TestContext *context) {
   );
 }
 
-static void installationUsesSudoForAnAdministrativeGroupMember(TestContext *context) {
-  const char *const sudoGroups[]  = {"users", "sudo"};
-  const char *const wheelGroups[] = {"wheel"};
-
-  EXPECT(context, InstallationI.chooseElevation(sudoGroups, 2) == INSTALLATION_ELEVATION_SUDO);
-  EXPECT(context, InstallationI.chooseElevation(wheelGroups, 1) == INSTALLATION_ELEVATION_SUDO);
-}
-
-static void installationUsesSuForAnyoneElse(TestContext *context) {
-  const char *const lookalikes[] = {"users", "sudoers", "Sudo", "wheels"};
-
-  EXPECT(context, InstallationI.chooseElevation(lookalikes, 4) == INSTALLATION_ELEVATION_SU);
-  EXPECT(context, InstallationI.chooseElevation(lookalikes, 0) == INSTALLATION_ELEVATION_SU);
-}
+/** The arguments of a run from the technician's home, and of a hostile path. */
+static const char *const INSTALLATION_TEST_RUN[]         = {"/home/ana/puppet"};
+static const char *const INSTALLATION_TEST_HOSTILE_RUN[] = {"/tmp/o'; rm -rf x/puppet"};
 
 static void installationSetsTheTechnicianForRoot(TestContext *context) {
   char command[INSTALLATION_SU_COMMAND_CAPACITY];
 
   EXPECT(
     context,
-    InstallationI.formatSuCommand(command, sizeof(command), "/home/ana/puppet", "ana")
+    InstallationI.formatSuCommand(command, sizeof(command), "ana", INSTALLATION_TEST_RUN, 1)
       == INSTALLATION_RESULT_OK
   );
   EXPECT(context, strcmp(command, "SUDO_USER='ana' '/home/ana/puppet'") == 0);
+}
+
+static void installationKeepsTheArgumentsThroughSu(TestContext *context) {
+  char              command[INSTALLATION_SU_COMMAND_CAPACITY];
+  const char *const arguments[] = {"/home/ana/puppet", "first", "two words"};
+
+  EXPECT(
+    context,
+    InstallationI.formatSuCommand(command, sizeof(command), "ana", arguments, 3)
+      == INSTALLATION_RESULT_OK
+  );
+  EXPECT(
+    context,
+    strcmp(command, "SUDO_USER='ana' '/home/ana/puppet' 'first' 'two words'") == 0
+  );
 }
 
 static void installationQuotesWhatTheShellWouldInterpret(TestContext *context) {
@@ -202,7 +206,7 @@ static void installationQuotesWhatTheShellWouldInterpret(TestContext *context) {
 
   EXPECT(
     context,
-    InstallationI.formatSuCommand(command, sizeof(command), "/tmp/o'; rm -rf x/puppet", "a b")
+    InstallationI.formatSuCommand(command, sizeof(command), "a b", INSTALLATION_TEST_HOSTILE_RUN, 1)
       == INSTALLATION_RESULT_OK
   );
   EXPECT(
@@ -216,7 +220,7 @@ static void installationRejectsASuCommandThatDoesNotFit(TestContext *context) {
 
   EXPECT(
     context,
-    InstallationI.formatSuCommand(command, sizeof(command), "/home/ana/puppet", "ana")
+    InstallationI.formatSuCommand(command, sizeof(command), "ana", INSTALLATION_TEST_RUN, 1)
       == INSTALLATION_ERROR_SU_COMMAND_TOO_LONG
   );
 }
@@ -231,9 +235,8 @@ static const TestCase INSTALLATION_TEST_CASES[] = {
   {"recognizes only the expected unit", installationRecognizesOnlyTheExpectedUnit},
   {"writes the expected unit", installationWritesTheExpectedUnit},
   {"rejects a unit that does not fit instead of truncating", installationRejectsAUnitThatDoesNotFit},
-  {"uses sudo for members of an administrative group", installationUsesSudoForAnAdministrativeGroupMember},
-  {"uses su for everyone else", installationUsesSuForAnyoneElse},
   {"hands the technician's name to root through su", installationSetsTheTechnicianForRoot},
+  {"keeps the arguments through su", installationKeepsTheArgumentsThroughSu},
   {"quotes the path and the name for the shell", installationQuotesWhatTheShellWouldInterpret},
   {"rejects a su command that does not fit instead of truncating", installationRejectsASuCommandThatDoesNotFit},
 };

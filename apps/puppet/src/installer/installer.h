@@ -16,10 +16,10 @@
  * changes nothing, needing no password. Otherwise it repairs each diverging
  * piece on its own:
  *
- * 1. re-runs the Puppet as root when it is not: through `sudo` for a user in
- *    the `sudo` or `wheel` group (their own password), through `su` for any
- *    other user (the root password). It fails explicitly when the chosen
- *    program is missing or refuses;
+ * 1. re-runs the Puppet as root, with the same arguments, when it is not:
+ *    through `sudo` when `sudo -v` accepts the user (their own password),
+ *    otherwise through `su` (the root password), saying which on the
+ *    terminal. It fails explicitly when neither can run it;
  * 2. creates the data and binary directories when missing;
  * 3. copies the running executable to `CONFIG_BINARY_PATH` when the binary
  *    is missing or invalid. A valid installed binary is never replaced, even
@@ -45,6 +45,8 @@
 #ifndef PUPPET_INSTALLER_H_
 #define PUPPET_INSTALLER_H_
 
+#include <stddef.h>
+
 /**
  * The option that makes the Puppet print its version and exit. The
  * Installation passes it to the installed binary to report the version.
@@ -54,7 +56,7 @@
 typedef enum {
   INSTALLER_RESULT_OK = 0,
 
-  /** `sudo` could not be started. The wrong password is `sudo`'s own error. */
+  /** `sudo` is installed but could not be started to ask about this user. */
   INSTALLER_ERROR_SUDO_UNAVAILABLE = 8001,
   /** The file about to be replaced could not be opened to record it. */
   INSTALLER_ERROR_PREVIOUS_CONTENT_UNREADABLE = 8002,
@@ -80,8 +82,8 @@ typedef enum {
   INSTALLER_ERROR_START_FAILED = 8012,
   /** The service started but is not active. */
   INSTALLER_ERROR_NOT_ACTIVE = 8013,
-  /** The executable path does not fit the argument handed to `sudo`. */
-  INSTALLER_ERROR_SUDO_PATH_TOO_LONG = 8014,
+  /** More arguments than can be handed on to the Puppet run as root. */
+  INSTALLER_ERROR_TOO_MANY_ARGUMENTS = 8014,
   /** The binary's temporary path does not fit its buffer. */
   INSTALLER_ERROR_BINARY_TEMPORARY_PATH_TOO_LONG = 8015,
   /** The binary's temporary file could not be created. */
@@ -106,11 +108,11 @@ typedef enum {
   INSTALLER_ERROR_STATE_AUDIT_FAILED = 8025,
   /** `su` could not be started. The wrong password is `su`'s own error. */
   INSTALLER_ERROR_SU_UNAVAILABLE = 8026,
-  /** The user's groups could not be read, so the way to elevate is unknown. */
-  INSTALLER_ERROR_GROUPS_UNREADABLE = 8027,
+  /** Waiting for `sudo -v` failed. */
+  INSTALLER_ERROR_SUDO_WAIT_FAILED = 8027,
   /** The name of the user running the Puppet is unknown (needed for `su`). */
   INSTALLER_ERROR_USER_UNKNOWN = 8028,
-  /** The executable path or user name does not fit the command for `su`. */
+  /** The arguments or the user name do not fit the command for `su`. */
   INSTALLER_ERROR_SU_COMMAND_TOO_LONG = 8029,
   /** The running executable's header could not be read. */
   INSTALLER_ERROR_RUNNING_HEADER_UNREADABLE = 8030,
@@ -132,12 +134,21 @@ typedef enum {
   INSTALLER_ERROR_WATCH_TIMED_OUT = 8038,
   /** Watching the agent failed (the watcher's code is printed). */
   INSTALLER_ERROR_WATCH_FAILED = 8039,
+  /** `sudo` accepted the user but could not replace this process. */
+  INSTALLER_ERROR_SUDO_EXEC_FAILED = 8040,
 } InstallerResultCode;
 
 /** Everything the Installation needs from the outside. Borrowed. */
 typedef struct {
   /** Absolute path of the running executable: what gets installed. */
   const char *executablePath;
+
+  /**
+   * The process's arguments, the program name first, handed on unchanged
+   * to the Puppet run as root.
+   */
+  char *const *arguments;
+  size_t       argumentCount;
 
   /** `SUDO_USER` (also set by the `su` command), or NULL when unset. */
   const char *sudoUser;

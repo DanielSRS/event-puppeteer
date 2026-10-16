@@ -9,7 +9,6 @@
 #include "watcher/watcher.h"
 
 #include <errno.h>
-#include <grp.h>
 #include <fcntl.h>
 #include <pwd.h>
 #include <spawn.h>
@@ -23,11 +22,13 @@
 /** The process environment, required by posix_spawnp for the child. */
 extern char **environ;
 
-#define INSTALLER_SUDO_PROGRAM       "sudo"
-#define INSTALLER_SU_PROGRAM         "su"
-#define INSTALLER_SU_COMMAND_OPTION  "-c"
-#define INSTALLER_GROUP_CAPACITY     ((size_t)64)
-#define INSTALLER_GROUP_NAME_CAPACITY ((size_t)64)
+#define INSTALLER_SUDO_PROGRAM         "sudo"
+/** Makes `sudo` only check, and cache, that the user may become root. */
+#define INSTALLER_SUDO_VALIDATE_OPTION "-v"
+#define INSTALLER_SU_PROGRAM           "su"
+#define INSTALLER_SU_COMMAND_OPTION    "-c"
+/** Arguments handed on to the Puppet run as root. */
+#define INSTALLER_ARGUMENT_CAPACITY ((size_t)16)
 #define INSTALLER_SYSTEMCTL_PROGRAM  "systemctl"
 #define INSTALLER_TEMPORARY_SUFFIX   ".installing"
 #define INSTALLER_PATH_CAPACITY      ((size_t)512)
@@ -121,42 +122,93 @@ static bool installerFormatDigest(
   );
 }
 
-/** `sudo <this executable>`: replaces the process, so only failure returns. */
-static InstallerResultCode installerElevateWithSudo(const char *executablePath) {
-  char sudo[]  = INSTALLER_SUDO_PROGRAM;
-  char path[INSTALLER_PATH_CAPACITY];
-  if (!installerFits(
-        snprintf(path, sizeof(path), "%s", executablePath), sizeof(path)
-      )) {
-    fprintf(stderr, "[error] the executable path is too long to hand to sudo\n");
-    return INSTALLER_ERROR_SUDO_PATH_TOO_LONG;
+/**
+ * Ask `sudo` whether this user may become root: `sudo -v` asks for the
+ * user's password and caches it, so the `sudo` that follows does not ask
+ * again. Whether a user may use `sudo` is only known to `sudo` itself (a
+ * group, or an entry of their own in the sudoers file).
+ *
+ * @param available  False when `sudo` is not installed at all.
+ * @param allowed    Whether `sudo` accepted the user.
+ */
+static InstallerResultCode installerAskSudo(bool *available, bool *allowed) {
+  char          sudo[]     = INSTALLER_SUDO_PROGRAM;
+  char          validate[] = INSTALLER_SUDO_VALIDATE_OPTION;
+  char *const   arguments[] = {sudo, validate, NULL};
+  pid_t         child       = 0;
+  const int32_t spawned =
+    posix_spawnp(&child, INSTALLER_SUDO_PROGRAM, NULL, NULL, arguments, environ);
+  if (spawned == ENOENT) {
+    *available = false;
+    *allowed   = false;
+    return INSTALLER_RESULT_OK;
   }
-  char *const arguments[] = {sudo, path, NULL};
+  if (spawned != 0) {
+    fprintf(stderr, "[error] cannot run sudo: %s\n", strerror(spawned));
+    return INSTALLER_ERROR_SUDO_UNAVAILABLE;
+  }
+  int32_t exitStatus = 0;
+  if (waitpid(child, &exitStatus, 0) != child) {
+    fprintf(stderr, "[error] cannot wait for sudo: %s\n", strerror(errno));
+    return INSTALLER_ERROR_SUDO_WAIT_FAILED;
+  }
+  *available = true;
+  *allowed   = WIFEXITED(exitStatus) && WEXITSTATUS(exitStatus) == 0;
+  return INSTALLER_RESULT_OK;
+}
+
+/**
+ * `sudo <this executable> <its arguments>`: replaces the process, so only
+ * failure returns.
+ */
+static InstallerResultCode installerElevateWithSudo(const InstallerContext *context) {
+  char  sudo[] = INSTALLER_SUDO_PROGRAM;
+  char *arguments[INSTALLER_ARGUMENT_CAPACITY + 2];
+  if (context->argumentCount > INSTALLER_ARGUMENT_CAPACITY) {
+    fprintf(stderr, "[error] too many arguments to hand to sudo\n");
+    return INSTALLER_ERROR_TOO_MANY_ARGUMENTS;
+  }
+  arguments[0] = sudo;
+  for (size_t index = 0; index < context->argumentCount; index++) {
+    arguments[index + 1] = context->arguments[index];
+  }
+  arguments[context->argumentCount + 1] = NULL;
   execvp(INSTALLER_SUDO_PROGRAM, arguments);
   fprintf(
     stderr,
     "[error] installing needs root, and sudo could not be started: %s\n",
     strerror(errno)
   );
-  return INSTALLER_ERROR_SUDO_UNAVAILABLE;
+  return INSTALLER_ERROR_SUDO_EXEC_FAILED;
 }
 
 /**
  * `su -c <command> root`: replaces the process, so only failure returns. The
  * command sets `SUDO_USER` so the Audit Trail names the technician.
  */
-static InstallerResultCode installerElevateWithSu(
-  const char *executablePath, const char *userName
-) {
+static InstallerResultCode installerElevateWithSu(const InstallerContext *context) {
+  const struct passwd *user = getpwuid(getuid());
+  if (user == NULL) {
+    fprintf(stderr, "[error] cannot find the name of the user running the Puppet\n");
+    return INSTALLER_ERROR_USER_UNKNOWN;
+  }
   char command[INSTALLATION_SU_COMMAND_CAPACITY];
-  if (InstallationI.formatSuCommand(command, sizeof(command), executablePath, userName)
+  if (InstallationI.formatSuCommand(
+        command,
+        sizeof(command),
+        user->pw_name,
+        (const char *const *)context->arguments,
+        context->argumentCount
+      )
       != INSTALLATION_RESULT_OK) {
-    fprintf(stderr, "[error] the executable path or user name is too long to hand to su\n");
+    fprintf(stderr, "[error] the arguments or user name are too long to hand to su\n");
     return INSTALLER_ERROR_SU_COMMAND_TOO_LONG;
   }
-  char  su[]     = INSTALLER_SU_PROGRAM;
-  char  option[] = INSTALLER_SU_COMMAND_OPTION;
-  char  root[]   = INSTALLER_ROOT_USER;
+  printf("installing needs root: using su (type the root password)\n");
+  fflush(stdout);
+  char        su[]     = INSTALLER_SU_PROGRAM;
+  char        option[] = INSTALLER_SU_COMMAND_OPTION;
+  char        root[]   = INSTALLER_ROOT_USER;
   char *const arguments[] = {su, option, command, root, NULL};
   execvp(INSTALLER_SU_PROGRAM, arguments);
   fprintf(
@@ -167,61 +219,28 @@ static InstallerResultCode installerElevateWithSu(
   return INSTALLER_ERROR_SU_UNAVAILABLE;
 }
 
-/** Names of the groups the process belongs to, copied out of getgrgid's buffer. */
-static InstallerResultCode installerReadGroupNames(
-  char        names[][INSTALLER_GROUP_NAME_CAPACITY],
-  size_t     *count
-) {
-  gid_t       groupIdentifiers[INSTALLER_GROUP_CAPACITY];
-  const int32_t groupTotal = getgroups((int)INSTALLER_GROUP_CAPACITY, groupIdentifiers);
-  if (groupTotal < 0) {
-    fprintf(stderr, "[error] cannot read the user's groups: %s\n", strerror(errno));
-    return INSTALLER_ERROR_GROUPS_UNREADABLE;
-  }
-  size_t found = 0;
-  for (int32_t index = 0; index < groupTotal; index++) {
-    const struct group *entry = getgrgid(groupIdentifiers[index]);
-    if (entry == NULL
-        || !installerFits(
-             snprintf(names[found], INSTALLER_GROUP_NAME_CAPACITY, "%s", entry->gr_name),
-             INSTALLER_GROUP_NAME_CAPACITY
-           )) {
-      continue;
-    }
-    found++;
-  }
-  *count = found;
-  return INSTALLER_RESULT_OK;
-}
-
-/** Become root the way this user can: `sudo` in an administrative group, else `su`. */
-static InstallerResultCode installerElevate(const char *executablePath) {
-  char   groupNames[INSTALLER_GROUP_CAPACITY][INSTALLER_GROUP_NAME_CAPACITY];
-  const char *groupPointers[INSTALLER_GROUP_CAPACITY];
-  size_t groupCount = 0;
-  const InstallerResultCode groupsCode = installerReadGroupNames(groupNames, &groupCount);
-  if (groupsCode != INSTALLER_RESULT_OK) {
-    return groupsCode;
-  }
-  for (size_t index = 0; index < groupCount; index++) {
-    groupPointers[index] = groupNames[index];
-  }
-
-  if (InstallationI.chooseElevation(groupPointers, groupCount)
-      == INSTALLATION_ELEVATION_SUDO) {
-    printf("installing needs root: using sudo (type your password)\n");
-    fflush(stdout);
-    return installerElevateWithSudo(executablePath);
-  }
-
-  const struct passwd *user = getpwuid(getuid());
-  if (user == NULL) {
-    fprintf(stderr, "[error] cannot find the name of the user running the Puppet\n");
-    return INSTALLER_ERROR_USER_UNKNOWN;
-  }
-  printf("installing needs root: you are not in the sudo or wheel group, using su (type the root password)\n");
+/**
+ * Become root: through `sudo` when it accepts this user (their own
+ * password), otherwise through `su` (the root password). Both are said on
+ * the terminal before anyone is asked for a password.
+ */
+static InstallerResultCode installerElevate(const InstallerContext *context) {
+  printf("installing needs root: asking sudo (type your password)\n");
   fflush(stdout);
-  return installerElevateWithSu(executablePath, user->pw_name);
+  bool                      available = false;
+  bool                      allowed   = false;
+  const InstallerResultCode asked     = installerAskSudo(&available, &allowed);
+  if (asked != INSTALLER_RESULT_OK) {
+    return asked;
+  }
+  if (allowed) {
+    return installerElevateWithSudo(context);
+  }
+  printf(
+    available ? "sudo did not accept this user or password\n"
+              : "sudo is not installed\n"
+  );
+  return installerElevateWithSu(context);
 }
 
 static bool installerRunSystemctl(const char *verb, const char *argument) {
@@ -731,7 +750,7 @@ static InstallerResultCode installerRun(const InstallerContext *context) {
   }
 
   if (geteuid() != 0) {
-    return installerElevate(context->executablePath);
+    return installerElevate(context);
   }
 
   const bool bySudo = context->sudoUser != NULL && context->sudoUser[0] != '\0';

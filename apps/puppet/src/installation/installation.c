@@ -25,22 +25,21 @@ static const char INSTALLATION_UNIT_TEMPLATE[] =
   "[Install]\n"
   "WantedBy=multi-user.target\n";
 
-/** Groups that Debian (`sudo`) and Fedora (`wheel`) allow to use `sudo`. */
-static const char *const INSTALLATION_SUDO_GROUPS[] = {"sudo", "wheel"};
+/** Starts the `su` command: the shell assigns `SUDO_USER` for the Puppet. */
+#define INSTALLATION_SUDO_USER_ASSIGNMENT INSTALLATION_SUDO_USER_VARIABLE "="
 
-#define INSTALLATION_SUDO_GROUP_COUNT \
-  (sizeof(INSTALLATION_SUDO_GROUPS) / sizeof(INSTALLATION_SUDO_GROUPS[0]))
+/** Separates the words of the `su` command. */
+#define INSTALLATION_SHELL_WORD_SEPARATOR ' '
 
-#define INSTALLATION_SU_ENVIRONMENT_NAME "SUDO_USER="
-#define INSTALLATION_SHELL_QUOTE         '\''
+#define INSTALLATION_SHELL_QUOTE '\''
 
 /** Closes the quote, adds an escaped quote and reopens: `'` inside `'...'`. */
 static const char INSTALLATION_SHELL_ESCAPED_QUOTE[] = "'\\''";
 
 static InstallationEnvironment installationReadEnvironment(void) {
   return (InstallationEnvironment){
-    .invocationIdentifier = getenv("INVOCATION_ID"),
-    .sudoUser             = getenv("SUDO_USER"),
+    .invocationIdentifier = getenv(INSTALLATION_INVOCATION_VARIABLE),
+    .sudoUser             = getenv(INSTALLATION_SUDO_USER_VARIABLE),
   };
 }
 
@@ -81,19 +80,6 @@ static bool installationIsExpectedUnit(const char *content, const size_t length)
       && memcmp(content, INSTALLATION_UNIT_TEMPLATE, length) == 0;
 }
 
-static InstallationElevation installationChooseElevation(
-  const char *const *groupNames, const size_t groupCount
-) {
-  for (size_t index = 0; index < groupCount; index++) {
-    for (size_t sudoIndex = 0; sudoIndex < INSTALLATION_SUDO_GROUP_COUNT; sudoIndex++) {
-      if (strcmp(groupNames[index], INSTALLATION_SUDO_GROUPS[sudoIndex]) == 0) {
-        return INSTALLATION_ELEVATION_SUDO;
-      }
-    }
-  }
-  return INSTALLATION_ELEVATION_SU;
-}
-
 /** Append `text` single-quoted; false when it does not fit. */
 static bool installationAppendQuoted(
   char *buffer, const size_t capacity, size_t *length, const char *text
@@ -121,25 +107,37 @@ static bool installationAppendQuoted(
   return true;
 }
 
-static InstallationResultCode installationFormatSuCommand(
-  char       *buffer,
-  const size_t capacity,
-  const char *executablePath,
-  const char *userName
+/** Append a separator and `word` single-quoted; false when it does not fit. */
+static bool installationAppendWord(
+  char *buffer, const size_t capacity, size_t *length, const char *word
 ) {
-  const size_t prefixLength = sizeof(INSTALLATION_SU_ENVIRONMENT_NAME) - 1;
-  if (prefixLength + 1 >= capacity) {
+  if (*length + 1 >= capacity) {
+    return false;
+  }
+  buffer[(*length)++] = INSTALLATION_SHELL_WORD_SEPARATOR;
+  return installationAppendQuoted(buffer, capacity, length, word);
+}
+
+static InstallationResultCode installationFormatSuCommand(
+  char              *buffer,
+  const size_t       capacity,
+  const char        *userName,
+  const char *const *arguments,
+  const size_t       argumentCount
+) {
+  const size_t prefixLength = sizeof(INSTALLATION_SUDO_USER_ASSIGNMENT) - 1;
+  if (prefixLength >= capacity) {
     return INSTALLATION_ERROR_SU_COMMAND_TOO_LONG;
   }
-  memcpy(buffer, INSTALLATION_SU_ENVIRONMENT_NAME, prefixLength);
+  memcpy(buffer, INSTALLATION_SUDO_USER_ASSIGNMENT, prefixLength);
   size_t length = prefixLength;
-  if (!installationAppendQuoted(buffer, capacity, &length, userName)
-      || length + 2 >= capacity) {
+  if (!installationAppendQuoted(buffer, capacity, &length, userName)) {
     return INSTALLATION_ERROR_SU_COMMAND_TOO_LONG;
   }
-  buffer[length++] = ' ';
-  if (!installationAppendQuoted(buffer, capacity, &length, executablePath)) {
-    return INSTALLATION_ERROR_SU_COMMAND_TOO_LONG;
+  for (size_t index = 0; index < argumentCount; index++) {
+    if (!installationAppendWord(buffer, capacity, &length, arguments[index])) {
+      return INSTALLATION_ERROR_SU_COMMAND_TOO_LONG;
+    }
   }
   buffer[length] = '\0';
   return INSTALLATION_RESULT_OK;
@@ -152,6 +150,5 @@ const struct InstallationType InstallationI = {
   .needsRepair     = installationNeedsRepair,
   .isExpectedUnit  = installationIsExpectedUnit,
   .formatUnit      = installationFormatUnit,
-  .chooseElevation = installationChooseElevation,
   .formatSuCommand = installationFormatSuCommand,
 };

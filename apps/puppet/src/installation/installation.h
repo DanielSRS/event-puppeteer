@@ -38,14 +38,6 @@ typedef enum {
   INSTALLATION_ERROR_SU_COMMAND_TOO_LONG = 7002,
 } InstallationResultCode;
 
-/** How a technician becomes root to install. */
-typedef enum {
-  /** The technician's own password, through `sudo`. */
-  INSTALLATION_ELEVATION_SUDO = 1,
-  /** The root password, through `su`. */
-  INSTALLATION_ELEVATION_SU,
-} InstallationElevation;
-
 typedef enum {
   /** Started by systemd from the installed binary. */
   INSTALLATION_ROLE_AGENT = 1,
@@ -80,6 +72,12 @@ typedef struct {
   /** Absolute path of the running executable. */
   const char *executablePath;
 } InstallationInputs;
+
+/** Set by systemd for every process it starts. */
+#define INSTALLATION_INVOCATION_VARIABLE "INVOCATION_ID"
+
+/** Set by `sudo` (and by the `su` command below) to the technician's name. */
+#define INSTALLATION_SUDO_USER_VARIABLE "SUDO_USER"
 
 /** The environment variables the Installation reads. NULL when unset. */
 typedef struct {
@@ -123,27 +121,22 @@ struct InstallationType {
   InstallationResultCode (*const formatUnit)(char *buffer, size_t capacity);
 
   /**
-   * `sudo` for a user in the `sudo` or `wheel` group (the groups Debian and
-   * Fedora grant it to), `su` for anyone else.
-   *
-   * @param groupNames  Names of the groups the user belongs to.
-   */
-  InstallationElevation (*const chooseElevation)(
-    const char *const *groupNames, size_t groupCount
-  );
-
-  /**
    * Write the shell command `su -c` runs as root: it sets `SUDO_USER` to
    * `userName`, so the Audit Trail names the technician as it does under
-   * `sudo`, and runs `executablePath`. Both are single-quoted for the shell.
+   * `sudo`, and runs the Puppet again with the same arguments. Every word is
+   * single-quoted for the shell.
    *
-   * @param capacity  At least `INSTALLATION_SU_COMMAND_CAPACITY`.
+   * @param capacity       At least `INSTALLATION_SU_COMMAND_CAPACITY`.
+   * @param arguments      The process's arguments; the first is the path of
+   *                       the executable.
+   * @param argumentCount  At least one.
    */
   InstallationResultCode (*const formatSuCommand)(
-    char       *buffer,
-    size_t      capacity,
-    const char *executablePath,
-    const char *userName
+    char              *buffer,
+    size_t             capacity,
+    const char        *userName,
+    const char *const *arguments,
+    size_t             argumentCount
   );
 };
 

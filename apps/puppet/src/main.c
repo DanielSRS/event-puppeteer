@@ -73,7 +73,7 @@ typedef enum {
   /** The running executable's path could not be determined. */
   PUPPET_EXIT_EXECUTABLE_UNKNOWN      = 8,
   /** Installing needs root and `sudo` or `su` could not be started. */
-  PUPPET_EXIT_SUDO_UNAVAILABLE        = 9,
+  PUPPET_EXIT_ELEVATION_UNAVAILABLE   = 9,
   /** An installation step failed; the steps already done are in the trail. */
   PUPPET_EXIT_INSTALLATION_FAILED     = 10,
   /** The agent did not report the Device pending within 60 seconds. */
@@ -105,8 +105,9 @@ static PuppetExitStatus installerExitStatus(const InstallerResultCode code) {
   case INSTALLER_ERROR_WATCH_TIMED_OUT:
     return PUPPET_EXIT_AGENT_NOT_PENDING;
   case INSTALLER_ERROR_SUDO_UNAVAILABLE:
+  case INSTALLER_ERROR_SUDO_EXEC_FAILED:
   case INSTALLER_ERROR_SU_UNAVAILABLE:
-    return PUPPET_EXIT_SUDO_UNAVAILABLE;
+    return PUPPET_EXIT_ELEVATION_UNAVAILABLE;
   default:
     break;
   }
@@ -146,6 +147,8 @@ int main(const int argumentCount, char *argumentValues[]) {
   if (InstallationI.decideRole(&installationInputs) == INSTALLATION_ROLE_TERMINAL) {
     const InstallerContext installerContext = {
       .executablePath = updatePaths.executablePath,
+      .arguments      = argumentValues,
+      .argumentCount  = (size_t)argumentCount,
       .sudoUser       = installationEnvironment.sudoUser,
       .puppetVersion  = PUPPET_VERSION,
     };
