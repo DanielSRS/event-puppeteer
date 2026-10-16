@@ -35,10 +35,14 @@
  * Log lines go to standard error (picked up by journald) and are queued for
  * Puppeteer, flushed after each successful heartbeat. Errors are also listed
  * in the heartbeat itself.
+ *
+ * The shape of the lines is in `agent-log.h`: the terminal watching the
+ * agent reads them.
  */
 #ifndef PUPPET_AGENT_H_
 #define PUPPET_AGENT_H_
 
+#include "agent/agent-log.h"
 #include "audit-trail/audit-trail.h"
 #include "config/config.h"
 #include "http/http-client.h"

@@ -3,9 +3,9 @@
 
 static void watchClassifiesTheAgentsLines(TestContext *context) {
   EXPECT(context, WatchI.classifyLine("[error] connect failed: network error (curl code 60)") == WATCH_LINE_ERROR);
-  EXPECT(context, WatchI.classifyLine("[info] waiting for approval") == WATCH_LINE_PENDING);
-  EXPECT(context, WatchI.classifyLine("[info] approved as \"lobby\" in organization north") == WATCH_LINE_APPROVED);
-  EXPECT(context, WatchI.classifyLine("[info] connected as device d-42; waiting for approval") == WATCH_LINE_OTHER);
+  EXPECT(context, WatchI.classifyLine("[info] enrollment: pending as device d-42") == WATCH_LINE_PENDING);
+  EXPECT(context, WatchI.classifyLine("[info] enrollment: approved as \"lobby\" in organization north") == WATCH_LINE_APPROVED);
+  EXPECT(context, WatchI.classifyLine("[info] Puppet 0.0.1 started (identifier m-1, resuming stored enrollment)") == WATCH_LINE_OTHER);
   EXPECT(context, WatchI.classifyLine("[warning] enrollment was rejected") == WATCH_LINE_OTHER);
   EXPECT(context, WatchI.classifyLine("an [error] in the middle") == WATCH_LINE_OTHER);
   EXPECT(context, WatchI.classifyLine("") == WATCH_LINE_OTHER);

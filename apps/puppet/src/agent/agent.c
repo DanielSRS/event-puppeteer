@@ -113,6 +113,18 @@ static const char *agentLogLevelName(const AgentLogLevel level) {
   return "error";
 }
 
+static const char *agentLogLevelPrefix(const AgentLogLevel level) {
+  switch (level) {
+  case AGENT_LOG_LEVEL_INFO:
+    return AGENT_LOG_INFO_PREFIX;
+  case AGENT_LOG_LEVEL_WARNING:
+    return AGENT_LOG_WARNING_PREFIX;
+  case AGENT_LOG_LEVEL_ERROR:
+    break;
+  }
+  return AGENT_LOG_ERROR_PREFIX;
+}
+
 static void agentQueueLog(
   AgentLogQueue *queue, const AgentLogLevel level, const char *message
 ) {
@@ -137,7 +149,7 @@ __attribute__((format(printf, 3, 4))) static void agentLog(
   vsnprintf(message, sizeof(message), format, arguments);
   va_end(arguments);
 
-  fprintf(stderr, "[%s] %s\n", agentLogLevelName(level), message);
+  fprintf(stderr, "%s%s\n", agentLogLevelPrefix(level), message);
   agentQueueLog(&runtime->logs, level, message);
 }
 
@@ -340,21 +352,26 @@ static void agentConnect(AgentRuntime *runtime, const uint64_t now) {
   agentLog(
     runtime,
     AGENT_LOG_LEVEL_INFO,
-    "connected as device %s; waiting for approval",
+    AGENT_LOG_ENROLLMENT_PENDING " as device %s",
     credentials.deviceId
   );
 }
 
-static void agentLogPhaseChange(AgentRuntime *runtime, const DeviceState *state) {
+static void agentLogPhase(AgentRuntime *runtime, const DeviceState *state) {
   switch (runtime->schedule.phase) {
   case AGENT_PHASE_PENDING:
-    agentLog(runtime, AGENT_LOG_LEVEL_INFO, "waiting for approval");
+    agentLog(
+      runtime,
+      AGENT_LOG_LEVEL_INFO,
+      AGENT_LOG_ENROLLMENT_PENDING " as device %s",
+      runtime->credentials.deviceId
+    );
     break;
   case AGENT_PHASE_ACTIVE:
     agentLog(
       runtime,
       AGENT_LOG_LEVEL_INFO,
-      "approved as \"%s\" in organization %s",
+      AGENT_LOG_ENROLLMENT_APPROVED " as \"%s\" in organization %s",
       state->name,
       state->hasOrganization ? state->organizationId : "(none)"
     );
@@ -389,8 +406,12 @@ static void agentCheckStatus(AgentRuntime *runtime, const uint64_t now) {
   const AgentPhase previousPhase = runtime->schedule.phase;
   runtime->schedule =
     AgentScheduleI.deviceStateReceived(&runtime->schedule, &state, now);
-  if (runtime->schedule.phase != previousPhase) {
-    agentLogPhaseChange(runtime, &state);
+  const bool changed = runtime->schedule.phase != previousPhase;
+  /** Also on the first check after starting: see the logging contract. */
+  if (changed || !runtime->phaseConfirmed) {
+    agentLogPhase(runtime, &state);
+  }
+  if (changed) {
     if (runtime->phaseConfirmed) {
       char after[AGENT_AUDIT_TEXT_CAPACITY];
       snprintf(
@@ -854,7 +875,7 @@ static AgentExitReason agentRun(const AgentEnvironment *environment) {
       break;
     }
   }
-  fprintf(stderr, "[info] termination requested; shutting down\n");
+  fprintf(stderr, AGENT_LOG_INFO_PREFIX "termination requested; shutting down\n");
   return AGENT_EXIT_TERMINATION_REQUESTED;
 }
 

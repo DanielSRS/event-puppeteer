@@ -1,15 +1,17 @@
 #include "watch.h"
 
+#include "agent/agent-log.h"
+
 #include <string.h>
 
 /**
- * The lines `agent.c` logs when the Device's Enrollment phase changes, and
- * the prefix it gives errors. They are the agent's own report of what
- * Puppeteer said.
+ * The lines the agent logs about its Enrollment, and the prefix it gives
+ * errors (`agent-log.h`). They are the agent's own report of what Puppeteer
+ * said.
  */
-#define WATCH_ERROR_PREFIX    "[error]"
-#define WATCH_PENDING_LINE    "[info] waiting for approval"
-#define WATCH_APPROVED_PREFIX "[info] approved as"
+#define WATCH_ERROR_PREFIX    AGENT_LOG_ERROR_PREFIX
+#define WATCH_PENDING_PREFIX  AGENT_LOG_INFO_PREFIX AGENT_LOG_ENROLLMENT_PENDING
+#define WATCH_APPROVED_PREFIX AGENT_LOG_INFO_PREFIX AGENT_LOG_ENROLLMENT_APPROVED
 
 static bool watchStartsWith(const char *text, const char *prefix) {
   return strncmp(text, prefix, strlen(prefix)) == 0;
@@ -19,7 +21,7 @@ static WatchLineKind watchClassifyLine(const char *line) {
   if (watchStartsWith(line, WATCH_ERROR_PREFIX)) {
     return WATCH_LINE_ERROR;
   }
-  if (watchStartsWith(line, WATCH_PENDING_LINE)) {
+  if (watchStartsWith(line, WATCH_PENDING_PREFIX)) {
     return WATCH_LINE_PENDING;
   }
   if (watchStartsWith(line, WATCH_APPROVED_PREFIX)) {
