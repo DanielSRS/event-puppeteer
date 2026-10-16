@@ -26,6 +26,9 @@
 #define PUPPET_AUDIT_TRAIL_IMPLEMENTATION
 #include "audit-trail/audit-trail.h"
 
+#define PUPPET_WATCH_IMPLEMENTATION
+#include "watch/watch.h"
+
 #define PUPPET_AGENT_LOCK_IMPLEMENTATION
 #include "agent-lock/agent-lock.h"
 
@@ -43,6 +46,7 @@
 #include "installation/installation.test.c"
 #include "crypto/sha256.test.c"
 #include "update/self-update.test.c"
+#include "watch/watch.test.c"
 
 #include <stdio.h>
 
@@ -59,6 +63,7 @@ static const TestSuite *const TEST_SUITES[] = {
   &InstallationTestSuite,
   &Sha256TestSuite,
   &SelfUpdateTestSuite,
+  &WatchTestSuite,
 };
 
 int main(void) {
