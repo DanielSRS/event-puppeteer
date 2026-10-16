@@ -18,13 +18,25 @@ static bool agentLockIsOpen(const int32_t descriptor) {
 }
 
 /** Whether `descriptor` and `path` name the same file. */
-static bool agentLockRefersTo(const int32_t descriptor, const char *path) {
+static AgentLockResultCode agentLockRefersTo(
+  const int32_t descriptor, const char *path, bool *same
+) {
   struct stat opened;
   struct stat named;
-  if (fstat(descriptor, &opened) != 0 || stat(path, &named) != 0) {
-    return false;
+  if (fstat(descriptor, &opened) != 0) {
+    return AGENT_LOCK_ERROR_INHERITED_UNREADABLE;
   }
-  return opened.st_dev == named.st_dev && opened.st_ino == named.st_ino;
+  const int32_t examined = stat(path, &named);
+  if (examined != 0 && errno == ENOENT) {
+    /** No lock file at all: whatever the descriptor is, it is not the lock. */
+    *same = false;
+    return AGENT_LOCK_RESULT_OK;
+  }
+  if (examined != 0) {
+    return AGENT_LOCK_ERROR_PATH_UNREADABLE;
+  }
+  *same = opened.st_dev == named.st_dev && opened.st_ino == named.st_ino;
+  return AGENT_LOCK_RESULT_OK;
 }
 
 static AgentLockResultCode agentLockTake(const int32_t descriptor) {
@@ -38,7 +50,12 @@ static AgentLockResultCode agentLockTake(const int32_t descriptor) {
 static AgentLockResultCode agentLockAcquire(const char *path) {
   /** Set by the previous image of a self-update restart. */
   if (agentLockIsOpen(AGENT_LOCK_DESCRIPTOR)) {
-    if (!agentLockRefersTo(AGENT_LOCK_DESCRIPTOR, path)) {
+    bool                      same     = false;
+    const AgentLockResultCode compared = agentLockRefersTo(AGENT_LOCK_DESCRIPTOR, path, &same);
+    if (compared != AGENT_LOCK_RESULT_OK) {
+      return compared;
+    }
+    if (!same) {
       return AGENT_LOCK_ERROR_DESCRIPTOR_OCCUPIED;
     }
     /**
@@ -46,7 +63,7 @@ static AgentLockResultCode agentLockAcquire(const char *path) {
      * Commands must not keep the lock alive after the agent dies.
      */
     if (fcntl(AGENT_LOCK_DESCRIPTOR, F_SETFD, FD_CLOEXEC) != 0) {
-      return AGENT_LOCK_ERROR_PLACEMENT_FAILED;
+      return AGENT_LOCK_ERROR_INHERITED_CLOSE_ON_EXEC_FAILED;
     }
     return agentLockTake(AGENT_LOCK_DESCRIPTOR);
   }
@@ -68,9 +85,11 @@ static AgentLockResultCode agentLockAcquire(const char *path) {
    */
   const int32_t placed = dup2(opened, AGENT_LOCK_DESCRIPTOR);
   close(opened);
-  if (placed != AGENT_LOCK_DESCRIPTOR
-      || fcntl(AGENT_LOCK_DESCRIPTOR, F_SETFD, FD_CLOEXEC) != 0) {
+  if (placed != AGENT_LOCK_DESCRIPTOR) {
     return AGENT_LOCK_ERROR_PLACEMENT_FAILED;
+  }
+  if (fcntl(AGENT_LOCK_DESCRIPTOR, F_SETFD, FD_CLOEXEC) != 0) {
+    return AGENT_LOCK_ERROR_PLACED_CLOSE_ON_EXEC_FAILED;
   }
   return AGENT_LOCK_RESULT_OK;
 }

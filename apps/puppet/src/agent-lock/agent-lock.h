@@ -46,12 +46,20 @@ typedef enum {
   AGENT_LOCK_ERROR_OPEN_FAILED = 5002,
   /** `flock` failed for a reason other than another holder. */
   AGENT_LOCK_ERROR_LOCK_FAILED = 5003,
-  /** The lock could not be moved to `AGENT_LOCK_DESCRIPTOR`. */
+  /** `dup2` could not move the lock to `AGENT_LOCK_DESCRIPTOR`. */
   AGENT_LOCK_ERROR_PLACEMENT_FAILED = 5004,
   /** `AGENT_LOCK_DESCRIPTOR` is open but is not the lock file. */
   AGENT_LOCK_ERROR_DESCRIPTOR_OCCUPIED = 5005,
   /** Close-on-exec could not be cleared before a restart. */
   AGENT_LOCK_ERROR_RESTART_PREPARATION_FAILED = 5006,
+  /** The lock inherited across a restart could not be made close-on-exec. */
+  AGENT_LOCK_ERROR_INHERITED_CLOSE_ON_EXEC_FAILED = 5007,
+  /** The lock moved to `AGENT_LOCK_DESCRIPTOR` could not be made close-on-exec. */
+  AGENT_LOCK_ERROR_PLACED_CLOSE_ON_EXEC_FAILED = 5008,
+  /** The inherited descriptor could not be examined. */
+  AGENT_LOCK_ERROR_INHERITED_UNREADABLE = 5009,
+  /** The lock file could not be examined to compare it with the inherited one. */
+  AGENT_LOCK_ERROR_PATH_UNREADABLE = 5010,
 } AgentLockResultCode;
 
 struct AgentLockType {
