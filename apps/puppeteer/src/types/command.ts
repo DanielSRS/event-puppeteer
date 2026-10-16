@@ -98,3 +98,8 @@ export const UpdateUploadGrantSchema = t.Object({
   maxBytes: t.Integer({ description: 'Largest size the credential allows' })
 });
 export type UpdateUploadGrantView = Static<typeof UpdateUploadGrantSchema>;
+
+/** Path on Puppeteer where a Device downloads the binary of its update Command; short because Puppet keeps the address in 512 bytes. */
+export function UpdateBinaryDownloadPath(deviceId: string, commandId: string): string {
+  return `/devices/${deviceId}/commands/${commandId}/binary`;
+}

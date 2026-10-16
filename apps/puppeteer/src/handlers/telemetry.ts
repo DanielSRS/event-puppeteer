@@ -3,10 +3,11 @@ import type { DeviceTelemetry, PostLogInput } from '../types/telemetry.ts';
 import type { Command, CreateCommandInput, RequestUpdateUploadInput, UpdateUploadGrantView } from '../types/command.ts';
 import { UPDATE_BINARY_CONTENT_TYPE, UPDATE_BINARY_MAX_BYTES, UpdateBinaryPrefix } from '../types/command.ts';
 
-/** How long the download URL handed to a Device lives: enough for 64 MiB over a slow link. */
-const DOWNLOAD_URL_LIFETIME_MS = 60 * 60 * 1000;
+/** How long a signed download URL lives. The download starts as soon as it is answered, and a started download is not cut off. */
+const DOWNLOAD_URL_LIFETIME_MS = 10 * 60 * 1000;
 import { requireDeviceAuth } from './devices.ts';
 import { requireAuth, assertCanManageOrg } from './users.ts';
+import { UpdateBinaryDownloadPath } from '../types/command.ts';
 import { randomUUID } from 'node:crypto';
 
 // DEVICE HANDLERS
@@ -88,31 +89,41 @@ export async function pullPendingCommandsHandler(request: Request, deviceId: str
   for (const command of undelivered) {
     const updated = command.status === 'pending' ? await io.commandRepo.updateStatus(command.id, 'sent') : command;
     if (!updated) continue;
-    const delivered = await withDownloadUrl(updated, io);
-    if (delivered === null) continue;
-    sent.push(delivered);
+    sent.push(withDownloadPath(updated));
   }
   return sent;
 }
 
 /**
  * The Command as the Device must see it. An update Command of an uploaded binary stores a
- * pathname; here it becomes `{ url, sha256, version }` with a URL signed for the next hour,
- * so a Device that was offline for days still finds a valid link. When the store cannot
- * sign, the Command is marked failed (and left out) instead of blocking the rest of the queue.
- * @returns null when the Command was marked failed.
+ * pathname; the Device receives `{ url, sha256, version }` where `url` is a short path on
+ * Puppeteer (Puppet keeps the address in 512 bytes, far less than a signed Blob URL) that
+ * {@link downloadUpdateBinaryHandler} answers with a redirect to a freshly signed URL.
  */
-async function withDownloadUrl(command: Command, io: AppIO): Promise<Command | null> {
+function withDownloadPath(command: Command): Command {
   const payload = command.payload;
   if (command.type !== 'update' || payload === undefined || typeof payload.blobPathname !== 'string') return command;
 
-  const signed = await io.updateBinaryStore.signedDownloadUrl(payload.blobPathname, Date.now() + DOWNLOAD_URL_LIFETIME_MS);
-  if (!signed.ok) {
-    await io.commandRepo.updateStatus(command.id, 'failed');
-    return null;
-  }
   const { blobPathname: _stored, ...rest } = payload;
-  return { ...command, payload: { url: signed.value, ...rest } };
+  return { ...command, payload: { url: UpdateBinaryDownloadPath(command.deviceId, command.id), ...rest } };
+}
+
+/**
+ * Where a Device downloads the binary of an uploaded update: answers the URL to redirect to,
+ * signed for a few minutes at the moment of the download, so a Device that was offline for
+ * days still finds a valid link. Only the Device the Command was sent to may ask.
+ * @throws UPDATE_STORE_FAILED:<reason> when the store cannot sign.
+ */
+export async function downloadUpdateBinaryHandler(request: Request, deviceId: string, commandId: string, io: AppIO): Promise<string> {
+  const device = await requireDeviceAuth(request, io);
+  if (device.id !== deviceId) throw new Error('FORBIDDEN');
+  const command = await requireDeviceCommand(deviceId, commandId, io);
+  const pathname = command.payload?.blobPathname;
+  if (command.type !== 'update' || typeof pathname !== 'string' || (command.status !== 'sent' && command.status !== 'acknowledged')) throw new Error('NOT_FOUND');
+
+  const signed = await io.updateBinaryStore.signedDownloadUrl(pathname, Date.now() + DOWNLOAD_URL_LIFETIME_MS);
+  if (!signed.ok) throw new Error(`UPDATE_STORE_FAILED: ${signed.error}`);
+  return signed.value;
 }
 
 async function requireDeviceCommand(deviceId: string, commandId: string, io: AppIO) {
