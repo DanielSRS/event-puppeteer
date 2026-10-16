@@ -19,10 +19,12 @@
  * Device identifier come from the system. Otherwise it repairs each diverging
  * piece on its own:
  *
- * 1. re-runs the Puppet as root, with the same arguments, when it is not:
- *    through `sudo` when `sudo -v` accepts the user (their own password),
- *    otherwise through `su` (the root password), saying which on the
- *    terminal. It fails explicitly when neither can run it;
+ * 1. re-runs the Puppet as root, with the same arguments, when it is not,
+ *    saying which way on the terminal: through `sudo` when `sudo -v`
+ *    accepts the user (their own password); otherwise through `pkexec`,
+ *    where the user authenticates as an administrator (that
+ *    administrator's password); otherwise through `su` (the root
+ *    password). It fails explicitly when none can run it;
  * 2. creates the data and binary directories when missing;
  * 3. copies the running executable to `CONFIG_BINARY_PATH` when the binary
  *    is missing or invalid. A valid installed binary is never replaced, even
@@ -38,7 +40,8 @@
  *    agent's last error. The service keeps retrying on its own.
  *
  * Every change appends one entry to the Device Audit Trail, with the local
- * user from `SUDO_USER` as "who", plus before and after. Nothing that was
+ * user who ran it as "who" (`SUDO_USER`, or the user `PKEXEC_UID` names),
+ * plus before and after. Nothing that was
  * already right is recorded. A failure partway leaves the steps already
  * done in the trail and nothing else is attempted.
  *
@@ -51,9 +54,15 @@
 #define PUPPET_INSTALLER_H_
 
 #include <stddef.h>
+#include <stdint.h>
 
 typedef enum {
   INSTALLER_RESULT_OK = 0,
+  /**
+   * Not a failure: the Puppet ran again as root through `pkexec` and did
+   * the work there. The process must exit with that run's exit status.
+   */
+  INSTALLER_RESULT_FINISHED_AS_ROOT = 1,
 
   /** `sudo` is installed but could not be started to ask about this user. */
   INSTALLER_ERROR_SUDO_UNAVAILABLE = 8001,
@@ -187,6 +196,22 @@ typedef enum {
   INSTALLER_ERROR_UNRECORDED_VERSION_TEXT_TOO_LONG = 8068,
   /** The wall clock could not be read to mark the start of the watch. */
   INSTALLER_ERROR_CLOCK_UNAVAILABLE = 8069,
+  /** `pkexec` is installed but could not be started. */
+  INSTALLER_ERROR_PKEXEC_SPAWN_FAILED = 8070,
+  /** Waiting for `pkexec` failed. */
+  INSTALLER_ERROR_PKEXEC_WAIT_FAILED = 8071,
+  /** `pkexec` was killed before it finished. */
+  INSTALLER_ERROR_PKEXEC_KILLED = 8072,
+  /** More arguments than can be handed on through `pkexec`. */
+  INSTALLER_ERROR_PKEXEC_TOO_MANY_ARGUMENTS = 8073,
+  /** The executable path does not fit the argument handed to `pkexec`. */
+  INSTALLER_ERROR_PKEXEC_PATH_TOO_LONG = 8074,
+  /** `PKEXEC_UID` is not a user id. */
+  INSTALLER_ERROR_PKEXEC_USER_INVALID = 8075,
+  /** No user has the id in `PKEXEC_UID`. */
+  INSTALLER_ERROR_PKEXEC_USER_UNKNOWN = 8076,
+  /** The technician's name does not fit its buffer. */
+  INSTALLER_ERROR_TECHNICIAN_NAME_TOO_LONG = 8077,
 } InstallerResultCode;
 
 /** Everything the Installation needs from the outside. Borrowed. */
@@ -204,6 +229,9 @@ typedef struct {
   /** `SUDO_USER` (also set by the `su` command), or NULL when unset. */
   const char *sudoUser;
 
+  /** `PKEXEC_UID`, the caller's user id under `pkexec`, or NULL when unset. */
+  const char *pkexecUserIdentifier;
+
   /** Version of this build, recorded with the binary. */
   const char *puppetVersion;
 } InstallerContext;
@@ -213,13 +241,19 @@ struct InstallerType {
    * Repair the Installation, or report its status when nothing diverges.
    *
    * Messages go to the terminal: what was changed on success, the reason on
-   * failure. When not root this does not return on success: the process
-   * is replaced by `sudo` or `su`, which runs the Puppet again as root.
+   * failure. When not root it runs the Puppet again as root: through `sudo`
+   * or `su` the process is replaced, so this does not return on success;
+   * through `pkexec` it waits for that run.
    *
+   * @param elevatedStatus  Set with `INSTALLER_RESULT_FINISHED_AS_ROOT`: the
+   *                        exit status of the run as root, to exit with.
    * @return `INSTALLER_RESULT_OK` when the Installation is intact (repaired
-   *         now or before), otherwise the code of the step that failed.
+   *         now or before), `INSTALLER_RESULT_FINISHED_AS_ROOT`, otherwise
+   *         the code of the step that failed.
    */
-  InstallerResultCode (*const run)(const InstallerContext *context);
+  InstallerResultCode (*const run)(
+    const InstallerContext *context, int32_t *elevatedStatus
+  );
 };
 
 extern const struct InstallerType InstallerI;

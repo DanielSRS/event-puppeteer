@@ -72,7 +72,7 @@ typedef enum {
   PUPPET_EXIT_AGENT_LOCK_UNAVAILABLE  = 7,
   /** The running executable's path could not be determined. */
   PUPPET_EXIT_EXECUTABLE_UNKNOWN      = 8,
-  /** Installing needs root and `sudo` or `su` could not be started. */
+  /** Installing needs root and `sudo`, `pkexec` or `su` could not be started. */
   PUPPET_EXIT_ELEVATION_UNAVAILABLE   = 9,
   /** An installation step failed; the steps already done are in the trail. */
   PUPPET_EXIT_INSTALLATION_FAILED     = 10,
@@ -106,6 +106,7 @@ static PuppetExitStatus installerExitStatus(const InstallerResultCode code) {
     return PUPPET_EXIT_AGENT_NOT_PENDING;
   case INSTALLER_ERROR_SUDO_UNAVAILABLE:
   case INSTALLER_ERROR_SUDO_EXEC_FAILED:
+  case INSTALLER_ERROR_PKEXEC_SPAWN_FAILED:
   case INSTALLER_ERROR_SU_UNAVAILABLE:
     return PUPPET_EXIT_ELEVATION_UNAVAILABLE;
   default:
@@ -143,10 +144,17 @@ int main(const int argumentCount, char *argumentValues[]) {
       .executablePath = updatePaths.executablePath,
       .arguments      = argumentValues,
       .argumentCount  = (size_t)argumentCount,
-      .sudoUser       = installationEnvironment.sudoUser,
+      .sudoUser             = installationEnvironment.sudoUser,
+      .pkexecUserIdentifier = installationEnvironment.pkexecUserIdentifier,
       .puppetVersion  = PUPPET_VERSION,
     };
-    return installerExitStatus(InstallerI.run(&installerContext));
+    int32_t                   elevatedStatus = PUPPET_EXIT_SUCCESS;
+    const InstallerResultCode installed =
+      InstallerI.run(&installerContext, &elevatedStatus);
+    /** The run as root through pkexec did the work and set the outcome. */
+    return installed == INSTALLER_RESULT_FINISHED_AS_ROOT
+             ? elevatedStatus
+             : (int32_t)installerExitStatus(installed);
   }
 
   /** Block termination signals before anything else (see lifecycle.h). */

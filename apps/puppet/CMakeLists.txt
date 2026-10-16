@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.19)
 
 # Define the project name and set the languages to C and CXX
-project(puppet VERSION 0.0.1 LANGUAGES C CXX)
+project(puppet VERSION 0.0.2 LANGUAGES C CXX)
 
 # The Puppet is configured only at build time (ADR-0001): Puppeteer's URL is
 # baked into the binary, and configuring fails without a valid one.

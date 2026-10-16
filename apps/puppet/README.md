@@ -25,11 +25,11 @@ At startup the agent takes an exclusive, non-blocking `flock` on `/run/dsrs-pupp
 | 6           | Another agent already holds the lock                       |
 | 7           | The lock could not be opened or locked at all              |
 | 8           | The running executable's path could not be determined      |
-| 9           | Installing needs root and `sudo` or `su` could not be started |
+| 9           | Installing needs root and `sudo`, `pkexec` or `su` could not be started |
 | 10          | An installation step failed; completed steps are in the trail |
 | 11          | The Device was not pending 60 s after the install or repair   |
 
-When `sudo` or `su` itself fails (wrong password, user not allowed) its own message and exit status (1) are what the technician sees.
+When `sudo` or `pkexec` refuses, the Puppet says so and tries the next way. When `su` itself fails (wrong password) its own message and exit status (1) are what the technician sees. Through `pkexec` the terminal exits with the status of the Puppet run as root.
 
 ### Device Audit Trail
 
@@ -135,7 +135,12 @@ Whether the Puppet is installed is never stored. Every run checks three pieces a
 
 When all three hold, `./puppet` prints a status summary (installed version, service state, the last Enrollment state recorded in the Audit Trail, Device identifier), writes nothing and asks for no password. Otherwise it repairs each diverging piece on its own, so a Device with nothing installed gets all of them:
 
-1. re-runs itself as root, with the same arguments, only because a repair is needed, saying which way: it first asks `sudo -v` (your own password), and when `sudo` is missing or does not accept your user or password, it uses `su` (the root password), so a user without sudo rights can install too. It fails with a clear error, changing nothing, when neither works. A Device whose root account is locked has no root password, so `su` cannot work there: install from a user `sudo` accepts;
+1. re-runs itself as root, with the same arguments, only because a repair is needed, saying each way before it asks for a password:
+   1. `sudo`, when `sudo -v` accepts your user (your own password);
+   2. otherwise `pkexec`, when installed: polkit lets you authenticate as any administrator (a member of the `sudo` group), with that administrator's password, so a user without sudo rights can install with an administrator's help;
+   3. otherwise `su`, the last resort, which needs the root password (Debian locks root when its installer created a sudo user).
+
+   It fails with a clear error, changing nothing, when none works;
 2. creates `/var/lib/dsrs-puppet` and `/opt/dsrs-puppet` when missing;
 3. copies the running executable to `/opt/dsrs-puppet/puppet` when the binary is missing, not an ELF or for another architecture. **A valid installed binary is never replaced by a terminal run**, even when it differs from the running one: only self-update changes it, so an old copy on a USB stick cannot downgrade a Device;
 4. writes the unit when it is missing or differs, and reloads systemd;
@@ -143,7 +148,7 @@ When all three hold, `./puppet` prints a status summary (installed version, serv
 6. prints what it changed;
 7. watches the agent (below).
 
-Every change is appended to the Device Audit Trail with the technician (`SUDO_USER`, which the Puppet also sets for `su`) as "who", and before and after. Pieces that were already right are not recorded. A failure partway leaves the steps already done in the trail and attempts nothing more. From then on systemd runs the agent at boot, restarts it if it crashes and keeps it independent of any terminal.
+Every change is appended to the Device Audit Trail with the technician as "who" (`SUDO_USER`, which the Puppet also sets for `su`, or the user `PKEXEC_UID` names), and before and after. Pieces that were already right are not recorded. A failure partway leaves the steps already done in the trail and attempts nothing more. From then on systemd runs the agent at boot, restarts it if it crashes and keeps it independent of any terminal.
 
 After a repair or install the terminal stays on as a read-only observer so the technician sees on site whether the Device works. It streams the `dsrs-puppet` service's journal lines live and finishes:
 

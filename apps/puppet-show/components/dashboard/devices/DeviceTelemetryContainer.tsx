@@ -19,6 +19,7 @@ import { ErrorAlert, LoadingMessage, StatusMessage } from "@/components/ui/Feedb
 import { SectionDenialFor, SelectOrgNotice, useDashboard } from "../DashboardContext";
 import { AccessNotice } from "../global/AccessNotice";
 import { COMMAND_LABELS, DeviceTelemetry, type DeviceDetails } from "./DeviceTelemetry";
+import { SendUpdateFile, UpdateStepText } from "./updateUpload";
 
 /** How often the page reloads the device. */
 const REFRESH_INTERVAL_MS = 10_000;
@@ -72,6 +73,7 @@ function DevicePage({ orgId, deviceId }: { orgId: string; deviceId: string }) {
   const [reloadKey, setReloadKey] = useState(0);
   const [sending, setSending] = useState<CommandType | null>(null);
   const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null);
+  const [updateProgress, setUpdateProgress] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -107,6 +109,23 @@ function DevicePage({ orgId, deviceId }: { orgId: string; deviceId: string }) {
     return null;
   };
 
+  const handleUpdateFile = async (file: File, version: string | undefined): Promise<string | null> => {
+    setSending("update");
+    setFeedback(null);
+    const sent = await SendUpdateFile(orgId, deviceId, file, version, (step) => setUpdateProgress(UpdateStepText(step)));
+    setSending(null);
+    setUpdateProgress("");
+
+    if (!sent.ok) {
+      const text = `Não foi possível enviar “${COMMAND_LABELS.update}”. ${sent.error}`;
+      setFeedback({ ok: false, text });
+      return text;
+    }
+    setFeedback({ ok: true, text: `Comando “${COMMAND_LABELS.update}” enviado. O dispositivo o executa na próxima sincronização.` });
+    setReloadKey((key) => key + 1);
+    return null;
+  };
+
   if (loaded === null) {
     if (loadError === "") return <LoadingMessage>Carregando dispositivo...</LoadingMessage>;
     return (
@@ -128,6 +147,8 @@ function DevicePage({ orgId, deviceId }: { orgId: string; deviceId: string }) {
         refreshError={loadError === "" ? "" : `Falha ao atualizar; os dados abaixo são os últimos recebidos. ${loadError}`}
         sending={sending}
         onCommand={handleCommand}
+        onUpdateFile={handleUpdateFile}
+        updateProgress={updateProgress}
         onRefresh={() => setReloadKey((key) => key + 1)}
       />
     </div>

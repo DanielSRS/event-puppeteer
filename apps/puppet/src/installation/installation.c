@@ -40,6 +40,7 @@ static InstallationEnvironment installationReadEnvironment(void) {
   return (InstallationEnvironment){
     .invocationIdentifier = getenv(INSTALLATION_INVOCATION_VARIABLE),
     .sudoUser             = getenv(INSTALLATION_SUDO_USER_VARIABLE),
+    .pkexecUserIdentifier = getenv(INSTALLATION_PKEXEC_UID_VARIABLE),
   };
 }
 
@@ -125,6 +126,29 @@ static InstallationResultCode installationReadBinaryDescription(
   return INSTALLATION_RESULT_OK;
 }
 
+/** Decimal digits are read one by one in this base. */
+#define INSTALLATION_DECIMAL_BASE ((uint64_t)10)
+
+static InstallationResultCode installationReadUserIdentifier(
+  const char *text, uint32_t *identifier
+) {
+  if (text[0] == '\0') {
+    return INSTALLATION_ERROR_USER_IDENTIFIER_INVALID;
+  }
+  uint64_t value = 0;
+  for (const char *character = text; *character != '\0'; character++) {
+    if (*character < '0' || *character > '9') {
+      return INSTALLATION_ERROR_USER_IDENTIFIER_INVALID;
+    }
+    value = value * INSTALLATION_DECIMAL_BASE + (uint64_t)(*character - '0');
+    if (value > UINT32_MAX) {
+      return INSTALLATION_ERROR_USER_IDENTIFIER_INVALID;
+    }
+  }
+  *identifier = (uint32_t)value;
+  return INSTALLATION_RESULT_OK;
+}
+
 /** Append a separator and `word` single-quoted; false when it does not fit. */
 static bool installationAppendWord(
   char *buffer, const size_t capacity, size_t *length, const char *word
@@ -169,5 +193,6 @@ const struct InstallationType InstallationI = {
   .isExpectedUnit  = installationIsExpectedUnit,
   .formatUnit      = installationFormatUnit,
   .readBinaryDescription = installationReadBinaryDescription,
+  .readUserIdentifier    = installationReadUserIdentifier,
   .formatSuCommand       = installationFormatSuCommand,
 };

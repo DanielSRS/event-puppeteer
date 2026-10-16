@@ -34,9 +34,9 @@ import { TagSchema, CreateTagBody, LinkLabelSchema, CreateLinkLabelBody } from '
 import { EventSchema, EventViewSchema, CreateEventBody, FeedEventSchema, EventWithVotesSchema } from './types/event.ts';
 import { connectDeviceHandler, getCurrentDeviceHandler, listPendingDevicesGlobalHandler, listPendingDevicesOrgHandler, listActiveDevicesOrgHandler, getDeviceHandler, approveDeviceHandler, rejectDeviceHandler } from './handlers/devices.ts';
 import { PublicDeviceSchema, ConnectDeviceBody, ApproveDeviceBody } from './types/device.ts';
-import { heartbeatHandler, postLogHandler, postTelemetryHandler, pullPendingCommandsHandler, ackCommandHandler, completeCommandHandler, getDeviceStatusHandler, getDeviceLogsHandler, getDetailedTelemetryHandler, sendCommandHandler, requestTelemetryHandler, listCommandsHandler } from './handlers/telemetry.ts';
+import { heartbeatHandler, postLogHandler, postTelemetryHandler, pullPendingCommandsHandler, ackCommandHandler, completeCommandHandler, getDeviceStatusHandler, getDeviceLogsHandler, getDetailedTelemetryHandler, sendCommandHandler, requestTelemetryHandler, listCommandsHandler, requestUpdateUploadHandler } from './handlers/telemetry.ts';
 import { PostLogBody, DeviceTelemetrySchema, DeviceLogSchema, HeartbeatSchema } from './types/telemetry.ts';
-import { CreateCommandBody, CommandSchema } from './types/command.ts';
+import { CreateCommandBody, CommandSchema, RequestUpdateUploadBody, UpdateUploadGrantSchema } from './types/command.ts';
 import { createTagHandler, listTagsHandler, createLinkLabelHandler, listLinkLabelsHandler } from './handlers/system.ts';
 import { createEventHandler, listEventsHandler, listMyEventsHandler, getEventHandler, deleteEventHandler } from './handlers/events.ts';
 import { voteHandler, getVoteStatusHandler } from './handlers/votes.ts';
@@ -142,6 +142,10 @@ export function createServer(io: AppIO, { adapter, appUrl = 'http://localhost:30
       if (message.startsWith('SIGNUP_FAILED')) {
         set.status = 400;
         return { error: 'Sign-up failed' };
+      }
+      if (message.startsWith('UPDATE_STORE_FAILED')) {
+        set.status = 502;
+        return { error: 'The update binary store could not issue an upload; try again' };
       }
       if (message.startsWith('EMAIL_DELIVERY_FAILED')) {
         set.status = 502;
@@ -716,6 +720,19 @@ export function createServer(io: AppIO, { adapter, appUrl = 'http://localhost:30
                 security: asUser
               }
             })
+            .post('/update-uploads', async ({ request, params: { id }, body, io }) => {
+              return await requestUpdateUploadHandler(request, id, body, io);
+            }, {
+              params: t.Object({ id: t.String() }),
+              body: RequestUpdateUploadBody,
+              response: UpdateUploadGrantSchema,
+              detail: {
+                tags: ['Device Management'],
+                summary: 'Authorize the upload of a Puppet update binary',
+                description: 'Admin of the Organization, or Superadmin. Answers a credential the browser uses to upload one binary of at most 64 MiB straight to the private store (Vercel Blob), under the returned `pathname` and `contentType`. Then send an update Command with payload { blobPathname, sha256, version? }: the Device receives { url, sha256, version? } with a freshly signed URL valid for one hour each time it pulls the Command.',
+                security: asUser
+              }
+            })
             .get('/:deviceId/logs', async ({ request, params: { id, deviceId }, io }) => {
               return await getDeviceLogsHandler(request, id, deviceId, io);
             }, {
@@ -763,7 +780,7 @@ export function createServer(io: AppIO, { adapter, appUrl = 'http://localhost:30
               detail: {
                 tags: ['Device Management'],
                 summary: 'Send a Command to a Device',
-                description: 'An update Command requires payload { url, sha256, version? }; Puppet verifies the digest and architecture before installing. Other types take an optional free-form payload.',
+                description: 'An update Command requires payload { url, sha256, version? } or, for a binary uploaded through update-uploads, { blobPathname, sha256, version? }; Puppet verifies the digest and architecture before installing. Other types take an optional free-form payload.',
                 security: asUser
               }
             })

@@ -22,6 +22,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
 /** Room for the unit file's content. */
 #define INSTALLATION_UNIT_CAPACITY ((size_t)1024)
@@ -34,6 +35,8 @@ typedef enum {
 
   /** A binary's description in the trail has no digest. */
   INSTALLATION_ERROR_DESCRIPTION_WITHOUT_DIGEST = 7003,
+  /** A user id is empty, not a decimal number, or too large. */
+  INSTALLATION_ERROR_USER_IDENTIFIER_INVALID = 7004,
 
   /** The unit does not fit the buffer. */
   INSTALLATION_ERROR_UNIT_BUFFER_TOO_SMALL = 7001,
@@ -95,6 +98,9 @@ typedef struct {
 /** Set by `sudo` (and by the `su` command below) to the technician's name. */
 #define INSTALLATION_SUDO_USER_VARIABLE "SUDO_USER"
 
+/** Set by `pkexec` to the user id of whoever called it. */
+#define INSTALLATION_PKEXEC_UID_VARIABLE "PKEXEC_UID"
+
 /** The environment variables the Installation reads. NULL when unset. */
 typedef struct {
   /** `INVOCATION_ID`: set by systemd for every process it starts. */
@@ -102,10 +108,13 @@ typedef struct {
 
   /** `SUDO_USER`: the user who ran `sudo`. */
   const char *sudoUser;
+
+  /** `PKEXEC_UID`: the user id of whoever ran `pkexec`. */
+  const char *pkexecUserIdentifier;
 } InstallationEnvironment;
 
 struct InstallationType {
-  /** Read `INVOCATION_ID` and `SUDO_USER`. Never fails. */
+  /** Read `INVOCATION_ID`, `SUDO_USER` and `PKEXEC_UID`. Never fails. */
   InstallationEnvironment (*const readEnvironment)(void);
 
   /**
@@ -146,6 +155,18 @@ struct InstallationType {
    */
   InstallationResultCode (*const readBinaryDescription)(
     const char *text, InstallationBinaryDescription *description
+  );
+
+  /**
+   * Read a user id written in decimal, as `pkexec` writes `PKEXEC_UID`.
+   * Anything else (empty, a sign, other characters, beyond 32 bits) is
+   * rejected rather than read in part.
+   *
+   * @return `INSTALLATION_RESULT_OK`, or
+   *         `INSTALLATION_ERROR_USER_IDENTIFIER_INVALID`.
+   */
+  InstallationResultCode (*const readUserIdentifier)(
+    const char *text, uint32_t *identifier
   );
 
   /**
