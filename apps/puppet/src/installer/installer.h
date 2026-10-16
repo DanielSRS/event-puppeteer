@@ -29,7 +29,9 @@
  *    when it differs from the running one: only self-update changes it, so
  *    an old copy cannot downgrade a Device;
  * 4. writes the unit when it is missing or differs, and reloads systemd;
- * 5. enables the service when it is not, and starts it when it is stopped;
+ * 5. enables the service when it is not, and starts it when it is stopped,
+ *    or restarts it when it was running: the running agent predates the
+ *    repair, and a restarted one says again where its Enrollment stands;
  * 6. prints what it changed;
  * 7. watches the agent (see `watcher.h`): streams its journal until the
  *    Device is pending in Enrollment, or fails after 60 seconds with the
@@ -133,6 +135,10 @@ typedef enum {
   INSTALLER_ERROR_BINARY_RECORD_WITHOUT_DIGEST = 8042,
   /** The installed version's description does not fit its text. */
   INSTALLER_ERROR_VERSION_TEXT_TOO_LONG = 8043,
+  /** `systemctl restart` of an agent that predates the repair failed. */
+  INSTALLER_ERROR_RESTART_FAILED = 8044,
+  /** The restart's Audit Trail entry could not be written. */
+  INSTALLER_ERROR_RESTART_AUDIT_FAILED = 8045,
 } InstallerResultCode;
 
 /** Everything the Installation needs from the outside. Borrowed. */

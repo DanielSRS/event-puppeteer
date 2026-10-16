@@ -552,9 +552,24 @@ static InstallerResultCode installerRepair(
     }
   }
 
-  /** A running service is left alone: only a stopped one is started. */
+  /**
+   * A running agent predates the repair, so it is restarted: it then runs
+   * the repaired binary and unit, and says again where its Enrollment
+   * stands, which the terminal watches for.
+   */
   if (installerRunSystemctl("is-active", CONFIG_SERVICE_NAME)) {
-    return INSTALLER_RESULT_OK;
+    if (!installerRunSystemctl("restart", CONFIG_SERVICE_NAME)) {
+      fprintf(stderr, "[error] systemctl restart %s failed\n", CONFIG_SERVICE_NAME);
+      return INSTALLER_ERROR_RESTART_FAILED;
+    }
+    printf("restarted %s\n", CONFIG_SERVICE_NAME);
+    return installerRecord(
+      session,
+      AUDIT_TRAIL_WHAT_SERVICE_STATE,
+      AUDIT_TRAIL_STATE_ACTIVE,
+      AUDIT_TRAIL_STATE_RESTARTED,
+      INSTALLER_ERROR_RESTART_AUDIT_FAILED
+    );
   }
   if (!installerRunSystemctl("start", CONFIG_SERVICE_NAME)) {
     fprintf(stderr, "[error] systemctl start %s failed\n", CONFIG_SERVICE_NAME);

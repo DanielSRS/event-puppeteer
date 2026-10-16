@@ -139,7 +139,7 @@ When all three hold, `./puppet` prints a status summary (installed version, serv
 2. creates `/var/lib/dsrs-puppet` and `/opt/dsrs-puppet` when missing;
 3. copies the running executable to `/opt/dsrs-puppet/puppet` when the binary is missing, not an ELF or for another architecture. **A valid installed binary is never replaced by a terminal run**, even when it differs from the running one: only self-update changes it, so an old copy on a USB stick cannot downgrade a Device;
 4. writes the unit when it is missing or differs, and reloads systemd;
-5. enables the service when it is not (checked again after the unit is restored, which usually restores it too), and starts it when it is stopped;
+5. enables the service when it is not (checked again after the unit is restored, which usually restores it too), starts it when it is stopped, and restarts it when it was running: that agent predates the repair, and a restarted agent logs again where its Enrollment stands;
 6. prints what it changed;
 7. watches the agent (below).
 
@@ -147,7 +147,7 @@ Every change is appended to the Device Audit Trail with the technician (`SUDO_US
 
 After a repair or install the terminal stays on as a read-only observer so the technician sees on site whether the Device works. It streams the `dsrs-puppet` service's journal lines live and finishes:
 
-- with a summary (connected to Puppeteer, waiting for approval, Device identifier) once the agent logs that the Device is pending (or already approved). The evidence is the agent's own log from the start of the watch: the store has no read-only mode, and a record in the Audit Trail could predate this run;
+- with a summary (connected to Puppeteer, waiting for approval, Device identifier) once the agent logs that the Device is pending (or already approved). The agent logs where its Enrollment stands when it connects and on its first status check after starting, and the repair always (re)starts it, so this line always comes. The evidence is the agent's own log from the start of the watch: a stored record (credentials in the store, an entry in the Audit Trail) could predate this run and says nothing about whether the agent reaches Puppeteer now;
 - or after 60 seconds with the agent's last error (network, TLS, HTTP) and exit status 11. The service keeps retrying on its own.
 
 The terminal never takes the agent lock and never opens the agent's storage: the token, the feed and the Command queue are out of its reach. It only reads the journal. Closing the terminal while it streams ends the watch and nothing else, because the agent belongs to systemd. An intact Installation is not watched; it only prints the status summary.
