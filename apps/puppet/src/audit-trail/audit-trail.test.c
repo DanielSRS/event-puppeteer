@@ -238,7 +238,7 @@ static void auditTrailExtractsTheAfterOfAMatchingEntry(TestContext *context) {
   EXPECT(context, strcmp(after, "active in organization \"north\"") == 0);
 }
 
-static void auditTrailIgnoresOtherEntriesAndMalformedLines(TestContext *context) {
+static void auditTrailTellsMalformedLinesFromOtherChanges(TestContext *context) {
   char line[AUDIT_TRAIL_ENTRY_CAPACITY];
   const AuditTrailEntry entry =
     auditTrailTestEntry(AUDIT_TRAIL_TEST_AGENT, "before", "after");
@@ -265,6 +265,49 @@ static void auditTrailIgnoresOtherEntriesAndMalformedLines(TestContext *context)
     AuditTrailI.extractAfter(line, strlen(line), "enrollment", after, 3)
       == AUDIT_TRAIL_ERROR_AFTER_TOO_LONG
   );
+  const char missingAfter[] = "{\"what\":\"enrollment\"}";
+  EXPECT(
+    context,
+    AuditTrailI.extractAfter(missingAfter, strlen(missingAfter), "enrollment", after, sizeof(after))
+      == AUDIT_TRAIL_ERROR_LINE_NOT_AN_ENTRY
+  );
+}
+
+static void auditTrailReportsAMalformedLineWhenReading(TestContext *context) {
+  char path[AUDIT_TRAIL_TEST_PATH_CAPACITY];
+  auditTrailTestPath(path);
+  const AuditTrailEntry first =
+    auditTrailTestEntry(AUDIT_TRAIL_TEST_AGENT, "not enrolled", "pending");
+  AuditTrailI.append(path, &first);
+  const int32_t descriptor = open(path, O_WRONLY | O_APPEND);
+  const char    torn[]     = "{\"when\":\"2026\n";
+  EXPECT(context, descriptor >= 0);
+  EXPECT(context, write(descriptor, torn, strlen(torn)) == (ssize_t)strlen(torn));
+  close(descriptor);
+
+  char after[64];
+  EXPECT(
+    context,
+    AuditTrailI.readLatestAfter(path, "enrollment", after, sizeof(after))
+      == AUDIT_TRAIL_ERROR_LINE_MALFORMED
+  );
+  unlink(path);
+}
+
+static void auditTrailRecordsAChangeMadeNow(TestContext *context) {
+  char path[AUDIT_TRAIL_TEST_PATH_CAPACITY];
+  auditTrailTestPath(path);
+  EXPECT(
+    context,
+    AuditTrailI.record(path, AUDIT_TRAIL_TEST_AGENT, AUDIT_TRAIL_WHAT_ENROLLMENT, "pending", "active")
+      == AUDIT_TRAIL_RESULT_OK
+  );
+  char contents[AUDIT_TRAIL_TEST_FILE_CAPACITY];
+  auditTrailTestRead(path, contents);
+  /** The time is now, so only its shape is checked. */
+  EXPECT(context, strncmp(contents, "{\"when\":\"20", strlen("{\"when\":\"20")) == 0);
+  EXPECT(context, strstr(contents, "\"what\":\"enrollment\",\"before\":\"pending\",\"after\":\"active\"}\n") != NULL);
+  unlink(path);
 }
 
 static void auditTrailReadsTheLatestEntryAbout(TestContext *context) {
@@ -307,8 +350,10 @@ static const TestCase AUDIT_TRAIL_TEST_CASES[] = {
   {"reports a trail that cannot be opened", auditTrailReportsAWriteThatCannotHappen},
   {"keeps entries from concurrent writers intact", auditTrailKeepsConcurrentEntriesIntact},
   {"extracts the after of a matching entry", auditTrailExtractsTheAfterOfAMatchingEntry},
-  {"ignores other entries and malformed lines", auditTrailIgnoresOtherEntriesAndMalformedLines},
+  {"tells malformed lines from other changes", auditTrailTellsMalformedLinesFromOtherChanges},
   {"reads the latest entry about a change", auditTrailReadsTheLatestEntryAbout},
+  {"reports a malformed line when reading", auditTrailReportsAMalformedLineWhenReading},
+  {"records a change made now", auditTrailRecordsAChangeMadeNow},
 };
 
 static const TestSuite AuditTrailTestSuite = {

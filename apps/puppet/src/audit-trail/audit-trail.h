@@ -4,8 +4,8 @@
  *        made to the Device.
  *
  * Each entry says when the change happened, who made it, what changed and
- * the state before and after. The agent writes it today; the Installation
- * will write to the same file, so "who" is not only the agent:
+ * the state before and after. The agent and the Installation both write it,
+ * so "who" is not only the agent:
  *
  * | Kind      | Identifier                                   |
  * |-----------|----------------------------------------------|
@@ -18,7 +18,7 @@
  * JSON Lines: one JSON object per line, for example
  *
  * ```json
- * {"when":"2026-01-02T03:04:05Z","who":{"kind":"command","identifier":"c1"},"what":"self-update","before":"0.0.1","after":"0.0.2"}
+ * {"when":"2026-01-02T03:04:05Z","who":{"kind":"command","identifier":"c1"},"what":"binary","before":"0.0.1","after":"0.0.2 sha256:..."}
  * ```
  *
  * Strings are escaped, so an entry is always exactly one line.
@@ -48,6 +48,46 @@
 /** Room for one formatted entry, newline and terminator included. */
 #define AUDIT_TRAIL_ENTRY_CAPACITY ((size_t)1024)
 
+/**
+ * What changed: the `what` of every entry the Puppet writes. Shared by the
+ * writers and by whoever reads the trail back, so a name never drifts.
+ */
+#define AUDIT_TRAIL_WHAT_ENROLLMENT         "enrollment"
+#define AUDIT_TRAIL_WHAT_BINARY             "binary"
+#define AUDIT_TRAIL_WHAT_UNIT               "unit"
+#define AUDIT_TRAIL_WHAT_DATA_DIRECTORY     "data directory"
+#define AUDIT_TRAIL_WHAT_BINARY_DIRECTORY   "binary directory"
+#define AUDIT_TRAIL_WHAT_SERVICE_ENABLEMENT "service enablement"
+#define AUDIT_TRAIL_WHAT_SERVICE_STATE      "service state"
+#define AUDIT_TRAIL_WHAT_REBOOT             "reboot"
+#define AUDIT_TRAIL_WHAT_POWEROFF           "poweroff"
+/** Followed by the Command's type, e.g. "command restart". */
+#define AUDIT_TRAIL_WHAT_COMMAND_PREFIX "command "
+
+/** States written as `before` or `after`. */
+#define AUDIT_TRAIL_STATE_ABSENT               "absent"
+#define AUDIT_TRAIL_STATE_PRESENT              "present"
+#define AUDIT_TRAIL_STATE_ENABLED              "enabled"
+#define AUDIT_TRAIL_STATE_NOT_ENABLED          "not enabled"
+#define AUDIT_TRAIL_STATE_ACTIVE               "active"
+#define AUDIT_TRAIL_STATE_INACTIVE             "inactive"
+#define AUDIT_TRAIL_STATE_RESTARTED            "restarted"
+#define AUDIT_TRAIL_STATE_STARTED_NOT_ACTIVE   "started, not active"
+#define AUDIT_TRAIL_STATE_RUNNING              "running"
+#define AUDIT_TRAIL_STATE_REBOOT_REQUESTED     "reboot requested"
+#define AUDIT_TRAIL_STATE_POWEROFF_REQUESTED   "power-off requested"
+#define AUDIT_TRAIL_STATE_ACKNOWLEDGED         "acknowledged"
+#define AUDIT_TRAIL_STATE_SUCCEEDED            "succeeded"
+#define AUDIT_TRAIL_STATE_FAILED               "failed"
+#define AUDIT_TRAIL_STATE_NOT_ENROLLED         "not enrolled"
+#define AUDIT_TRAIL_STATE_CREDENTIALS_REVOKED  "credentials revoked; enrolling again"
+
+/**
+ * Starts the text of a file's content: `sha256:<hex digest>`, after the
+ * version for a binary ("0.0.2 sha256:...").
+ */
+#define AUDIT_TRAIL_DIGEST_PREFIX "sha256:"
+
 typedef enum {
   AUDIT_TRAIL_RESULT_OK = 0,
 
@@ -69,12 +109,14 @@ typedef enum {
   AUDIT_TRAIL_ERROR_NO_ENTRY = 6008,
   /** The trail exists but could not be read. */
   AUDIT_TRAIL_ERROR_READ_FAILED = 6009,
-  /** The line is JSON, but not an object. */
+  /** The line is JSON, but not an object with `what` and `after`. */
   AUDIT_TRAIL_ERROR_LINE_NOT_AN_ENTRY = 6010,
-  /** The entry lacks `what` or `after`, or is about another change. */
+  /** The entry is about another change. */
   AUDIT_TRAIL_ERROR_OTHER_CHANGE = 6011,
   /** The `after` text does not fit the destination. */
   AUDIT_TRAIL_ERROR_AFTER_TOO_LONG = 6012,
+  /** A line of the trail is longer than any entry can be. */
+  AUDIT_TRAIL_ERROR_LINE_TOO_LONG = 6013,
 } AuditTrailResultCode;
 
 typedef enum {
@@ -100,7 +142,7 @@ typedef struct {
 
   AuditTrailActor actor;
 
-  /** What changed, e.g. "enrollment" or "self-update". */
+  /** What changed: one of the `AUDIT_TRAIL_WHAT_` names. */
   const char *what;
 
   /** The state before and after the change, in words. */
@@ -129,6 +171,20 @@ struct AuditTrailType {
    */
   AuditTrailResultCode (*const append)(
     const char *path, const AuditTrailEntry *entry
+  );
+
+  /**
+   * Append an entry about a change made now: `append` with `when` set to the
+   * current UTC time. Every writer of the trail records through this.
+   *
+   * @return As `append`.
+   */
+  AuditTrailResultCode (*const record)(
+    const char           *path,
+    const AuditTrailActor actor,
+    const char           *what,
+    const char           *before,
+    const char           *after
   );
 
   /**
@@ -163,8 +219,14 @@ struct AuditTrailType {
    * @param what           The change to look for, e.g. "enrollment".
    * @param after          Destination, null-terminated on success.
    * @param afterCapacity  Size of `after`.
+   * Every line is checked: a line that is not a well-formed entry is
+   * reported, never skipped, since the trail must never silently lose a
+   * change.
+   *
    * @return `AUDIT_TRAIL_RESULT_OK`, `AUDIT_TRAIL_ERROR_NO_ENTRY` (also when
-   *         the trail does not exist yet) or `AUDIT_TRAIL_ERROR_READ_FAILED`.
+   *         the trail does not exist yet), `AUDIT_TRAIL_ERROR_READ_FAILED`,
+   *         `AUDIT_TRAIL_ERROR_LINE_TOO_LONG`, or the code `extractAfter`
+   *         gave the first line that is not a well-formed entry.
    */
   AuditTrailResultCode (*const readLatestAfter)(
     const char *path, const char *what, char *after, size_t afterCapacity

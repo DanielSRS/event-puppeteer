@@ -23,6 +23,9 @@
 #define PUPPET_INSTALLATION_IMPLEMENTATION
 #include "installation/installation.h"
 
+#define PUPPET_LIFECYCLE_IMPLEMENTATION
+#include "lifecycle/lifecycle.h"
+
 #define PUPPET_AUDIT_TRAIL_IMPLEMENTATION
 #include "audit-trail/audit-trail.h"
 
