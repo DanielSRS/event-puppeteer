@@ -2,7 +2,9 @@
 
 #include "json/json.h"
 
+#include <errno.h>
 #include <fcntl.h>
+#include <stdio.h>
 #include <stdbool.h>
 #include <string.h>
 #include <sys/file.h>
@@ -15,6 +17,14 @@
 
 /** The terminator and the null character that follow the JSON object. */
 #define AUDIT_TRAIL_SUFFIX_LENGTH ((size_t)2)
+
+/** An entry has a root object, six members and the actor's own two. */
+#define AUDIT_TRAIL_PARSE_TOKEN_CAPACITY ((uint32_t)32)
+#define AUDIT_TRAIL_ROOT_TOKEN           ((int32_t)0)
+
+/** Member names of an entry, shared by writing and reading it. */
+#define AUDIT_TRAIL_WHAT_KEY  "what"
+#define AUDIT_TRAIL_AFTER_KEY "after"
 
 static const char *auditTrailActorKindName(const AuditTrailActorKind kind) {
   switch (kind) {
@@ -44,11 +54,11 @@ static AuditTrailResultCode auditTrailFormat(
     JsonWriterI.string(&writer, entry->actor.identifier);
   }
   JsonWriterI.endObject(&writer);
-  JsonWriterI.key(&writer, "what");
+  JsonWriterI.key(&writer, AUDIT_TRAIL_WHAT_KEY);
   JsonWriterI.string(&writer, entry->what);
   JsonWriterI.key(&writer, "before");
   JsonWriterI.string(&writer, entry->before);
-  JsonWriterI.key(&writer, "after");
+  JsonWriterI.key(&writer, AUDIT_TRAIL_AFTER_KEY);
   JsonWriterI.string(&writer, entry->after);
   JsonWriterI.endObject(&writer);
   if (JsonWriterI.finish(&writer) != JSON_RESULT_OK
@@ -105,7 +115,63 @@ static AuditTrailResultCode auditTrailAppend(
   return written;
 }
 
+static AuditTrailResultCode auditTrailExtractAfter(
+  const char   *line,
+  const size_t  lineLength,
+  const char   *what,
+  char         *after,
+  const size_t  afterCapacity
+) {
+  JsonToken             tokens[AUDIT_TRAIL_PARSE_TOKEN_CAPACITY];
+  const JsonParseResult parsed =
+    JsonI.parse(line, lineLength, tokens, AUDIT_TRAIL_PARSE_TOKEN_CAPACITY);
+  if (parsed.code != JSON_RESULT_OK) {
+    return AUDIT_TRAIL_ERROR_LINE_MALFORMED;
+  }
+  if (tokens[AUDIT_TRAIL_ROOT_TOKEN].kind != JSON_TOKEN_OBJECT) {
+    return AUDIT_TRAIL_ERROR_LINE_NOT_AN_ENTRY;
+  }
+  const int32_t whatIndex = JsonI.findMember(
+    line, tokens, parsed.tokenCount, AUDIT_TRAIL_ROOT_TOKEN, AUDIT_TRAIL_WHAT_KEY
+  );
+  const int32_t afterIndex = JsonI.findMember(
+    line, tokens, parsed.tokenCount, AUDIT_TRAIL_ROOT_TOKEN, AUDIT_TRAIL_AFTER_KEY
+  );
+  if (whatIndex == JSON_NOT_FOUND || afterIndex == JSON_NOT_FOUND
+      || !JsonI.equals(line, tokens, parsed.tokenCount, whatIndex, what)) {
+    return AUDIT_TRAIL_ERROR_OTHER_CHANGE;
+  }
+  return JsonI.copyString(
+           line, tokens, parsed.tokenCount, afterIndex, after, afterCapacity
+         ) == JSON_RESULT_OK
+         ? AUDIT_TRAIL_RESULT_OK
+         : AUDIT_TRAIL_ERROR_AFTER_TOO_LONG;
+}
+
+static AuditTrailResultCode auditTrailReadLatestAfter(
+  const char *path, const char *what, char *after, const size_t afterCapacity
+) {
+  FILE *trail = fopen(path, "r");
+  if (trail == NULL) {
+    return errno == ENOENT ? AUDIT_TRAIL_ERROR_NO_ENTRY
+                           : AUDIT_TRAIL_ERROR_READ_FAILED;
+  }
+  char                 line[AUDIT_TRAIL_ENTRY_CAPACITY];
+  AuditTrailResultCode latest = AUDIT_TRAIL_ERROR_NO_ENTRY;
+  while (fgets(line, sizeof(line), trail) != NULL) {
+    if (auditTrailExtractAfter(line, strlen(line), what, after, afterCapacity)
+        == AUDIT_TRAIL_RESULT_OK) {
+      latest = AUDIT_TRAIL_RESULT_OK;
+    }
+  }
+  const bool failed = ferror(trail) != 0;
+  fclose(trail);
+  return failed ? AUDIT_TRAIL_ERROR_READ_FAILED : latest;
+}
+
 const struct AuditTrailType AuditTrailI = {
-  .format = auditTrailFormat,
-  .append = auditTrailAppend,
+  .format            = auditTrailFormat,
+  .append            = auditTrailAppend,
+  .extractAfter      = auditTrailExtractAfter,
+  .readLatestAfter   = auditTrailReadLatestAfter,
 };

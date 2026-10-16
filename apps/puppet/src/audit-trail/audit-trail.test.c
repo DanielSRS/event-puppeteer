@@ -219,6 +219,85 @@ static void auditTrailKeepsConcurrentEntriesIntact(TestContext *context) {
   unlink(path);
 }
 
+#define AUDIT_TRAIL_TEST_TRUNCATED "{\"what\":\"enrollment\""
+#define AUDIT_TRAIL_TEST_ARRAY     "[\"enrollment\"]"
+
+static void auditTrailExtractsTheAfterOfAMatchingEntry(TestContext *context) {
+  char line[AUDIT_TRAIL_ENTRY_CAPACITY];
+  const AuditTrailEntry entry = auditTrailTestEntry(
+    AUDIT_TRAIL_TEST_AGENT, "pending", "active in organization \"north\""
+  );
+  AuditTrailI.format(&entry, line, sizeof(line));
+
+  char after[64];
+  EXPECT(
+    context,
+    AuditTrailI.extractAfter(line, strlen(line), "enrollment", after, sizeof(after))
+      == AUDIT_TRAIL_RESULT_OK
+  );
+  EXPECT(context, strcmp(after, "active in organization \"north\"") == 0);
+}
+
+static void auditTrailIgnoresOtherEntriesAndMalformedLines(TestContext *context) {
+  char line[AUDIT_TRAIL_ENTRY_CAPACITY];
+  const AuditTrailEntry entry =
+    auditTrailTestEntry(AUDIT_TRAIL_TEST_AGENT, "before", "after");
+  AuditTrailI.format(&entry, line, sizeof(line));
+  char after[64];
+
+  EXPECT(
+    context,
+    AuditTrailI.extractAfter(line, strlen(line), "self-update", after, sizeof(after))
+      == AUDIT_TRAIL_ERROR_OTHER_CHANGE
+  );
+  EXPECT(
+    context,
+    AuditTrailI.extractAfter(AUDIT_TRAIL_TEST_TRUNCATED, strlen(AUDIT_TRAIL_TEST_TRUNCATED), "enrollment", after, sizeof(after))
+      == AUDIT_TRAIL_ERROR_LINE_MALFORMED
+  );
+  EXPECT(
+    context,
+    AuditTrailI.extractAfter(AUDIT_TRAIL_TEST_ARRAY, strlen(AUDIT_TRAIL_TEST_ARRAY), "enrollment", after, sizeof(after))
+      == AUDIT_TRAIL_ERROR_LINE_NOT_AN_ENTRY
+  );
+  EXPECT(
+    context,
+    AuditTrailI.extractAfter(line, strlen(line), "enrollment", after, 3)
+      == AUDIT_TRAIL_ERROR_AFTER_TOO_LONG
+  );
+}
+
+static void auditTrailReadsTheLatestEntryAbout(TestContext *context) {
+  char path[AUDIT_TRAIL_TEST_PATH_CAPACITY];
+  auditTrailTestPath(path);
+  const AuditTrailEntry first  = auditTrailTestEntry(AUDIT_TRAIL_TEST_AGENT, "not enrolled", "pending");
+  AuditTrailEntry other  = auditTrailTestEntry(AUDIT_TRAIL_TEST_AGENT, "x", "y");
+  other.what             = "self-update";
+  const AuditTrailEntry latest = auditTrailTestEntry(AUDIT_TRAIL_TEST_AGENT, "pending", "active");
+  AuditTrailI.append(path, &first);
+  AuditTrailI.append(path, &latest);
+  AuditTrailI.append(path, &other);
+
+  char after[64];
+  EXPECT(
+    context,
+    AuditTrailI.readLatestAfter(path, "enrollment", after, sizeof(after))
+      == AUDIT_TRAIL_RESULT_OK
+  );
+  EXPECT(context, strcmp(after, "active") == 0);
+  EXPECT(
+    context,
+    AuditTrailI.readLatestAfter(path, "reboot", after, sizeof(after))
+      == AUDIT_TRAIL_ERROR_NO_ENTRY
+  );
+  unlink(path);
+  EXPECT(
+    context,
+    AuditTrailI.readLatestAfter(path, "enrollment", after, sizeof(after))
+      == AUDIT_TRAIL_ERROR_NO_ENTRY
+  );
+}
+
 static const TestCase AUDIT_TRAIL_TEST_CASES[] = {
   {"formats an agent entry as one JSON line", auditTrailFormatsAgentEntries},
   {"names the Command or user who made the change", auditTrailNamesCommandsAndUsers},
@@ -227,6 +306,9 @@ static const TestCase AUDIT_TRAIL_TEST_CASES[] = {
   {"appends without rewriting existing entries", auditTrailAppendsWithoutRewriting},
   {"reports a trail that cannot be opened", auditTrailReportsAWriteThatCannotHappen},
   {"keeps entries from concurrent writers intact", auditTrailKeepsConcurrentEntriesIntact},
+  {"extracts the after of a matching entry", auditTrailExtractsTheAfterOfAMatchingEntry},
+  {"ignores other entries and malformed lines", auditTrailIgnoresOtherEntriesAndMalformedLines},
+  {"reads the latest entry about a change", auditTrailReadsTheLatestEntryAbout},
 };
 
 static const TestSuite AuditTrailTestSuite = {

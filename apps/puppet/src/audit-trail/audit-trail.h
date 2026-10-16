@@ -63,6 +63,18 @@ typedef enum {
   AUDIT_TRAIL_ERROR_WRITE_INCOMPLETE = 6005,
   /** The entry was written but could not be flushed to disk. */
   AUDIT_TRAIL_ERROR_SYNC_FAILED = 6006,
+  /** The line is not valid JSON. */
+  AUDIT_TRAIL_ERROR_LINE_MALFORMED = 6007,
+  /** The trail has no entry about the requested change. */
+  AUDIT_TRAIL_ERROR_NO_ENTRY = 6008,
+  /** The trail exists but could not be read. */
+  AUDIT_TRAIL_ERROR_READ_FAILED = 6009,
+  /** The line is JSON, but not an object. */
+  AUDIT_TRAIL_ERROR_LINE_NOT_AN_ENTRY = 6010,
+  /** The entry lacks `what` or `after`, or is about another change. */
+  AUDIT_TRAIL_ERROR_OTHER_CHANGE = 6011,
+  /** The `after` text does not fit the destination. */
+  AUDIT_TRAIL_ERROR_AFTER_TOO_LONG = 6012,
 } AuditTrailResultCode;
 
 typedef enum {
@@ -117,6 +129,45 @@ struct AuditTrailType {
    */
   AuditTrailResultCode (*const append)(
     const char *path, const AuditTrailEntry *entry
+  );
+
+  /**
+   * Read the `after` of one line of the trail, when its `what` is `what`.
+   * Pure.
+   *
+   * @param line           The entry as one JSON line, not necessarily
+   *                       null-terminated.
+   * @param what           The change to look for, e.g. "enrollment".
+   * @param after          Destination, null-terminated on success.
+   * @param afterCapacity  Size of `after`.
+   * @return `AUDIT_TRAIL_RESULT_OK`, or why the line gave nothing:
+   *         `AUDIT_TRAIL_ERROR_LINE_MALFORMED`,
+   *         `AUDIT_TRAIL_ERROR_LINE_NOT_AN_ENTRY`,
+   *         `AUDIT_TRAIL_ERROR_OTHER_CHANGE` or
+   *         `AUDIT_TRAIL_ERROR_AFTER_TOO_LONG`.
+   */
+  AuditTrailResultCode (*const extractAfter)(
+    const char *line,
+    size_t      lineLength,
+    const char *what,
+    char       *after,
+    size_t      afterCapacity
+  );
+
+  /**
+   * The `after` of the latest entry about `what`, e.g. the Enrollment state
+   * last recorded. It is only as current as the trail: a change nobody
+   * recorded is not in it.
+   *
+   * @param path           The trail's file.
+   * @param what           The change to look for, e.g. "enrollment".
+   * @param after          Destination, null-terminated on success.
+   * @param afterCapacity  Size of `after`.
+   * @return `AUDIT_TRAIL_RESULT_OK`, `AUDIT_TRAIL_ERROR_NO_ENTRY` (also when
+   *         the trail does not exist yet) or `AUDIT_TRAIL_ERROR_READ_FAILED`.
+   */
+  AuditTrailResultCode (*const readLatestAfter)(
+    const char *path, const char *what, char *after, size_t afterCapacity
   );
 };
 
