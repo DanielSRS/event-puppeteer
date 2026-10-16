@@ -53,14 +53,16 @@ static InstallationRole installationDecideRole(const InstallationInputs *inputs)
                                                  : INSTALLATION_ROLE_TERMINAL;
 }
 
-static InstallationState installationClassify(
-  const bool binaryPresent, const bool unitPresent
-) {
-  if (binaryPresent && unitPresent) {
-    return INSTALLATION_STATE_PRESENT;
-  }
-  return binaryPresent || unitPresent ? INSTALLATION_STATE_PARTIAL
-                                      : INSTALLATION_STATE_ABSENT;
+static InstallationRepairs installationDiagnose(const InstallationFacts *facts) {
+  return (InstallationRepairs){
+    .binary     = !facts->binaryValid,
+    .unit       = !facts->unitMatches,
+    .enablement = facts->unitMatches && !facts->serviceEnabled,
+  };
+}
+
+static bool installationNeedsRepair(const InstallationRepairs *repairs) {
+  return repairs->binary || repairs->unit || repairs->enablement;
 }
 
 static InstallationResultCode installationFormatUnit(
@@ -72,6 +74,11 @@ static InstallationResultCode installationFormatUnit(
   }
   memcpy(buffer, INSTALLATION_UNIT_TEMPLATE, length + 1);
   return INSTALLATION_RESULT_OK;
+}
+
+static bool installationIsExpectedUnit(const char *content, const size_t length) {
+  return length == sizeof(INSTALLATION_UNIT_TEMPLATE) - 1
+      && memcmp(content, INSTALLATION_UNIT_TEMPLATE, length) == 0;
 }
 
 static InstallationElevation installationChooseElevation(
@@ -141,7 +148,9 @@ static InstallationResultCode installationFormatSuCommand(
 const struct InstallationType InstallationI = {
   .readEnvironment = installationReadEnvironment,
   .decideRole      = installationDecideRole,
-  .classify        = installationClassify,
+  .diagnose        = installationDiagnose,
+  .needsRepair     = installationNeedsRepair,
+  .isExpectedUnit  = installationIsExpectedUnit,
   .formatUnit      = installationFormatUnit,
   .chooseElevation = installationChooseElevation,
   .formatSuCommand = installationFormatSuCommand,

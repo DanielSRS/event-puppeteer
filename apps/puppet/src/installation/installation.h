@@ -53,14 +53,24 @@ typedef enum {
   INSTALLATION_ROLE_TERMINAL,
 } InstallationRole;
 
-typedef enum {
-  /** Neither the binary nor the unit exists. */
-  INSTALLATION_STATE_ABSENT = 1,
-  /** Both the binary and the unit exist. */
-  INSTALLATION_STATE_PRESENT,
-  /** Only one of them exists: a diverging Installation. */
-  INSTALLATION_STATE_PARTIAL,
-} InstallationState;
+/** What the system says about the three pieces of the Installation. */
+typedef struct {
+  /** The installed binary is an ELF for this architecture. */
+  bool binaryValid;
+
+  /** The unit exists with exactly the expected content. */
+  bool unitMatches;
+
+  /** `systemctl is-enabled` says the service is enabled. */
+  bool serviceEnabled;
+} InstallationFacts;
+
+/** Which pieces to put right. Never stored: derived from the facts. */
+typedef struct {
+  bool binary;
+  bool unit;
+  bool enablement;
+} InstallationRepairs;
 
 /** What the process knows about how it was started. Strings are borrowed. */
 typedef struct {
@@ -90,8 +100,19 @@ struct InstallationType {
    */
   InstallationRole (*const decideRole)(const InstallationInputs *inputs);
 
-  /** What `binaryPresent` and `unitPresent` say about the Installation. */
-  InstallationState (*const classify)(bool binaryPresent, bool unitPresent);
+  /**
+   * Which pieces diverge. Each is repaired on its own. Enablement is only
+   * decided while the unit matches: without the right unit systemd cannot
+   * tell whether the service is enabled, so it is checked again once the
+   * unit has been repaired.
+   */
+  InstallationRepairs (*const diagnose)(const InstallationFacts *facts);
+
+  /** Whether any piece needs repair, i.e. whether root is needed. */
+  bool (*const needsRepair)(const InstallationRepairs *repairs);
+
+  /** Whether `content` is exactly the unit `formatUnit` writes. */
+  bool (*const isExpectedUnit)(const char *content, size_t length);
 
   /**
    * Write the content of the systemd unit: it waits for

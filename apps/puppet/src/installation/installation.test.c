@@ -49,20 +49,87 @@ static void installationNeverMakesATerminalTheAgent(TestContext *context) {
   );
 }
 
-static void installationClassifiesWhatIsInstalled(TestContext *context) {
-  EXPECT(
-    context,
-    InstallationI.classify(false, false) == INSTALLATION_STATE_ABSENT
-  );
-  EXPECT(
-    context, InstallationI.classify(true, true) == INSTALLATION_STATE_PRESENT
-  );
-  EXPECT(
-    context, InstallationI.classify(true, false) == INSTALLATION_STATE_PARTIAL
-  );
-  EXPECT(
-    context, InstallationI.classify(false, true) == INSTALLATION_STATE_PARTIAL
-  );
+static InstallationRepairs installationTestDiagnose(
+  const bool binaryValid, const bool unitMatches, const bool serviceEnabled
+) {
+  const InstallationFacts facts = {
+    .binaryValid    = binaryValid,
+    .unitMatches    = unitMatches,
+    .serviceEnabled = serviceEnabled,
+  };
+  return InstallationI.diagnose(&facts);
+}
+
+static void installationRepairsNothingWhenAllThreePiecesMatch(TestContext *context) {
+  const InstallationRepairs repairs = installationTestDiagnose(true, true, true);
+
+  EXPECT(context, !repairs.binary && !repairs.unit && !repairs.enablement);
+  EXPECT(context, !InstallationI.needsRepair(&repairs));
+}
+
+static void installationRepairsEachPieceOnItsOwn(TestContext *context) {
+  const InstallationRepairs binary = installationTestDiagnose(false, true, true);
+  EXPECT(context, binary.binary && !binary.unit && !binary.enablement);
+
+  const InstallationRepairs unit = installationTestDiagnose(true, false, true);
+  EXPECT(context, !unit.binary && unit.unit && !unit.enablement);
+
+  const InstallationRepairs enablement = installationTestDiagnose(true, true, false);
+  EXPECT(context, !enablement.binary && !enablement.unit && enablement.enablement);
+}
+
+static void installationDecidesEnablementOnlyOnceTheUnitIsRight(TestContext *context) {
+  /** Without the unit systemd cannot say whether it is enabled. */
+  const InstallationRepairs unitAndService = installationTestDiagnose(true, false, false);
+  EXPECT(context, unitAndService.unit && !unitAndService.enablement);
+
+  const InstallationRepairs everything = installationTestDiagnose(false, false, false);
+  EXPECT(context, everything.binary && everything.unit && !everything.enablement);
+
+  const InstallationRepairs binaryAndUnit = installationTestDiagnose(false, false, true);
+  EXPECT(context, binaryAndUnit.binary && binaryAndUnit.unit && !binaryAndUnit.enablement);
+
+  const InstallationRepairs binaryAndService = installationTestDiagnose(false, true, false);
+  EXPECT(context, binaryAndService.binary && !binaryAndService.unit && binaryAndService.enablement);
+}
+
+/** One bit per piece: the eight combinations of valid and diverging. */
+#define INSTALLATION_TEST_BINARY_BIT   ((uint32_t)1)
+#define INSTALLATION_TEST_UNIT_BIT     ((uint32_t)2)
+#define INSTALLATION_TEST_SERVICE_BIT  ((uint32_t)4)
+#define INSTALLATION_TEST_COMBINATIONS ((uint32_t)8)
+
+static void installationNeedsRepairForEveryDivergence(TestContext *context) {
+  for (uint32_t combination = 0; combination < INSTALLATION_TEST_COMBINATIONS; combination++) {
+    const bool binaryValid    = (combination & INSTALLATION_TEST_BINARY_BIT) != 0;
+    const bool unitMatches    = (combination & INSTALLATION_TEST_UNIT_BIT) != 0;
+    const bool serviceEnabled = (combination & INSTALLATION_TEST_SERVICE_BIT) != 0;
+    const InstallationRepairs repairs =
+      installationTestDiagnose(binaryValid, unitMatches, serviceEnabled);
+    const bool intact = binaryValid && unitMatches && serviceEnabled;
+
+    EXPECT(context, InstallationI.needsRepair(&repairs) == !intact);
+  }
+}
+
+static void installationRecognizesOnlyTheExpectedUnit(TestContext *context) {
+  char unit[INSTALLATION_UNIT_CAPACITY];
+  InstallationI.formatUnit(unit, sizeof(unit));
+  const size_t length = strlen(unit);
+
+  EXPECT(context, InstallationI.isExpectedUnit(unit, length));
+  EXPECT(context, !InstallationI.isExpectedUnit(unit, length - 1));
+  EXPECT(context, !InstallationI.isExpectedUnit(unit, 0));
+
+  char edited[INSTALLATION_UNIT_CAPACITY];
+  memcpy(edited, unit, length + 1);
+  edited[length - 2] = 'X';
+  EXPECT(context, !InstallationI.isExpectedUnit(edited, length));
+
+  char longer[INSTALLATION_UNIT_CAPACITY];
+  memcpy(longer, unit, length);
+  longer[length] = '\n';
+  EXPECT(context, !InstallationI.isExpectedUnit(longer, length + 1));
 }
 
 static void installationWritesTheExpectedUnit(TestContext *context) {
@@ -157,7 +224,11 @@ static void installationRejectsASuCommandThatDoesNotFit(TestContext *context) {
 static const TestCase INSTALLATION_TEST_CASES[] = {
   {"runs the agent when systemd starts the installed binary", installationRunsTheAgentUnderSystemd},
   {"never makes a terminal run the agent", installationNeverMakesATerminalTheAgent},
-  {"classifies what is installed", installationClassifiesWhatIsInstalled},
+  {"repairs nothing when all three pieces match", installationRepairsNothingWhenAllThreePiecesMatch},
+  {"repairs each diverging piece on its own", installationRepairsEachPieceOnItsOwn},
+  {"decides enablement only once the unit is right", installationDecidesEnablementOnlyOnceTheUnitIsRight},
+  {"needs repair for every divergence and only then", installationNeedsRepairForEveryDivergence},
+  {"recognizes only the expected unit", installationRecognizesOnlyTheExpectedUnit},
   {"writes the expected unit", installationWritesTheExpectedUnit},
   {"rejects a unit that does not fit instead of truncating", installationRejectsAUnitThatDoesNotFit},
   {"uses sudo for members of an administrative group", installationUsesSudoForAnAdministrativeGroupMember},
