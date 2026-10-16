@@ -44,21 +44,22 @@ extern char **environ;
 #define INSTALLER_EXECUTABLE_MODE ((mode_t)0755)
 #define INSTALLER_UNIT_MODE       ((mode_t)0644)
 
+/** One repair: what the terminal was given, and who the trail names. */
 typedef struct {
   const InstallerContext *context;
   AuditTrailActor         actor;
-} InstallerRun;
+} InstallerSession;
 
 /** Append one change to the Device Audit Trail, or stop the Installation. */
 static InstallerResultCode installerRecord(
-  const InstallerRun *run,
+  const InstallerSession *session,
   const char         *what,
   const char         *before,
   const char         *after,
   const InstallerResultCode failureCode
 ) {
   const AuditTrailResultCode code =
-    AuditTrailI.record(CONFIG_AUDIT_TRAIL_PATH, run->actor, what, before, after);
+    AuditTrailI.record(CONFIG_AUDIT_TRAIL_PATH, session->actor, what, before, after);
   if (code != AUDIT_TRAIL_RESULT_OK) {
     fprintf(
       stderr,
@@ -74,6 +75,50 @@ static InstallerResultCode installerRecord(
 
 static bool installerFits(const int32_t written, const size_t capacity) {
   return written >= 0 && (size_t)written < capacity;
+}
+
+/** `read`, retried when a signal interrupts it before any byte arrives. */
+static ssize_t installerRead(
+  const int32_t descriptor, void *buffer, const size_t length
+) {
+  for (;;) {
+    const ssize_t count = read(descriptor, buffer, length);
+    if (count >= 0 || errno != EINTR) {
+      return count;
+    }
+  }
+}
+
+/**
+ * Read until `capacity` bytes or the end of the file, whichever comes first.
+ * False on a read error; `total` then holds what was read before it.
+ */
+static bool installerReadUpTo(
+  const int32_t descriptor, uint8_t *buffer, const size_t capacity, size_t *total
+) {
+  *total = 0;
+  while (*total < capacity) {
+    const ssize_t count = installerRead(descriptor, buffer + *total, capacity - *total);
+    if (count < 0) {
+      return false;
+    }
+    if (count == 0) {
+      return true;
+    }
+    *total += (size_t)count;
+  }
+  return true;
+}
+
+/** `sha256:<hex>`: how the trail writes a file's content. */
+static bool installerFormatDigest(
+  const uint8_t *digest, char *text, const size_t capacity
+) {
+  char hex[SHA256_HEX_DIGEST_CAPACITY];
+  Sha256I.formatHexDigest(digest, hex);
+  return installerFits(
+    snprintf(text, capacity, AUDIT_TRAIL_DIGEST_PREFIX "%s", hex), capacity
+  );
 }
 
 /** `sudo <this executable>`: replaces the process, so only failure returns. */
@@ -274,10 +319,7 @@ static InstallerResultCode installerCopyExecutable(
   uint8_t       chunk[INSTALLER_COPY_CHUNK_LENGTH];
   bool          copied = true;
   for (;;) {
-    const ssize_t count = read(source, chunk, sizeof(chunk));
-    if (count < 0 && errno == EINTR) {
-      continue;
-    }
+    const ssize_t count = installerRead(source, chunk, sizeof(chunk));
     if (count < 0) {
       copied = false;
       break;
@@ -305,7 +347,7 @@ static InstallerResultCode installerCopyExecutable(
 }
 
 static InstallerResultCode installerInstallBinary(
-  const InstallerRun *run, const char *before
+  const InstallerSession *session, const char *before
 ) {
   char temporaryPath[INSTALLER_PATH_CAPACITY];
   if (!installerTemporaryPath(CONFIG_BINARY_PATH, temporaryPath)) {
@@ -313,7 +355,7 @@ static InstallerResultCode installerInstallBinary(
   }
   uint8_t                   digest[SHA256_DIGEST_LENGTH];
   const InstallerResultCode copied = installerCopyExecutable(
-    run->context->executablePath, temporaryPath, digest
+    session->context->executablePath, temporaryPath, digest
   );
   if (copied != INSTALLER_RESULT_OK) {
     return copied;
@@ -324,23 +366,21 @@ static InstallerResultCode installerInstallBinary(
     return INSTALLER_ERROR_BINARY_REPLACE_FAILED;
   }
 
-  char hex[SHA256_HEX_DIGEST_CAPACITY];
-  Sha256I.formatHexDigest(digest, hex);
+  char digestText[INSTALLER_TEXT_CAPACITY];
   char after[INSTALLER_TEXT_CAPACITY];
-  if (!installerFits(
-        snprintf(
-          after, sizeof(after), "%s " AUDIT_TRAIL_DIGEST_PREFIX "%s", run->context->puppetVersion, hex
-        ),
-        sizeof(after)
-      )) {
+  if (!installerFormatDigest(digest, digestText, sizeof(digestText))
+      || !installerFits(
+           snprintf(after, sizeof(after), "%s %s", session->context->puppetVersion, digestText),
+           sizeof(after)
+         )) {
     return INSTALLER_ERROR_BINARY_DESCRIPTION_TOO_LONG;
   }
   printf("installed %s (%s)\n", CONFIG_BINARY_PATH, after);
-  return installerRecord(run, AUDIT_TRAIL_WHAT_BINARY, before, after, INSTALLER_ERROR_BINARY_AUDIT_FAILED);
+  return installerRecord(session, AUDIT_TRAIL_WHAT_BINARY, before, after, INSTALLER_ERROR_BINARY_AUDIT_FAILED);
 }
 
 static InstallerResultCode installerInstallUnit(
-  const InstallerRun *run, const char *before
+  const InstallerSession *session, const char *before
 ) {
   char unit[INSTALLATION_UNIT_CAPACITY];
   if (InstallationI.formatUnit(unit, sizeof(unit)) != INSTALLATION_RESULT_OK) {
@@ -372,20 +412,16 @@ static InstallerResultCode installerInstallUnit(
   Sha256I.update(&hash, unit, length);
   uint8_t digest[SHA256_DIGEST_LENGTH];
   Sha256I.finish(&hash, digest);
-  char hex[SHA256_HEX_DIGEST_CAPACITY];
-  Sha256I.formatHexDigest(digest, hex);
   char after[INSTALLER_TEXT_CAPACITY];
-  if (!installerFits(
-        snprintf(after, sizeof(after), AUDIT_TRAIL_DIGEST_PREFIX "%s", hex), sizeof(after)
-      )) {
+  if (!installerFormatDigest(digest, after, sizeof(after))) {
     return INSTALLER_ERROR_UNIT_DESCRIPTION_TOO_LONG;
   }
   printf("wrote %s (%s)\n", CONFIG_UNIT_PATH, after);
-  return installerRecord(run, AUDIT_TRAIL_WHAT_UNIT, before, after, INSTALLER_ERROR_UNIT_AUDIT_FAILED);
+  return installerRecord(session, AUDIT_TRAIL_WHAT_UNIT, before, after, INSTALLER_ERROR_UNIT_AUDIT_FAILED);
 }
 
 /** Create the directories the repairs and the Audit Trail live in. */
-static InstallerResultCode installerEnsureDirectories(const InstallerRun *run) {
+static InstallerResultCode installerEnsureDirectories(const InstallerSession *session) {
   /** First, so every later change has a place in the Audit Trail. */
   bool created = false;
   if (!installerMakeDirectory(CONFIG_DATA_DIRECTORY, &created)) {
@@ -395,7 +431,7 @@ static InstallerResultCode installerEnsureDirectories(const InstallerRun *run) {
   if (created) {
     printf("created %s\n", CONFIG_DATA_DIRECTORY);
     const InstallerResultCode recorded =
-      installerRecord(run, AUDIT_TRAIL_WHAT_DATA_DIRECTORY, AUDIT_TRAIL_STATE_ABSENT, AUDIT_TRAIL_STATE_PRESENT, INSTALLER_ERROR_DATA_DIRECTORY_AUDIT_FAILED);
+      installerRecord(session, AUDIT_TRAIL_WHAT_DATA_DIRECTORY, AUDIT_TRAIL_STATE_ABSENT, AUDIT_TRAIL_STATE_PRESENT, INSTALLER_ERROR_DATA_DIRECTORY_AUDIT_FAILED);
     if (recorded != INSTALLER_RESULT_OK) {
       return recorded;
     }
@@ -407,7 +443,7 @@ static InstallerResultCode installerEnsureDirectories(const InstallerRun *run) {
   }
   if (created) {
     printf("created %s\n", CONFIG_BINARY_DIRECTORY);
-    return installerRecord(run, AUDIT_TRAIL_WHAT_BINARY_DIRECTORY, AUDIT_TRAIL_STATE_ABSENT, AUDIT_TRAIL_STATE_PRESENT, INSTALLER_ERROR_BINARY_DIRECTORY_AUDIT_FAILED);
+    return installerRecord(session, AUDIT_TRAIL_WHAT_BINARY_DIRECTORY, AUDIT_TRAIL_STATE_ABSENT, AUDIT_TRAIL_STATE_PRESENT, INSTALLER_ERROR_BINARY_DIRECTORY_AUDIT_FAILED);
   }
   return INSTALLER_RESULT_OK;
 }
@@ -428,10 +464,7 @@ static InstallerResultCode installerDescribeFile(
   Sha256Context hash = Sha256I.create();
   uint8_t       chunk[INSTALLER_COPY_CHUNK_LENGTH];
   for (;;) {
-    const ssize_t count = read(descriptor, chunk, sizeof(chunk));
-    if (count < 0 && errno == EINTR) {
-      continue;
-    }
+    const ssize_t count = installerRead(descriptor, chunk, sizeof(chunk));
     if (count < 0) {
       fprintf(stderr, "[error] cannot read %s: %s\n", path, strerror(errno));
       close(descriptor);
@@ -445,17 +478,15 @@ static InstallerResultCode installerDescribeFile(
   close(descriptor);
   uint8_t digest[SHA256_DIGEST_LENGTH];
   Sha256I.finish(&hash, digest);
-  char hex[SHA256_HEX_DIGEST_CAPACITY];
-  Sha256I.formatHexDigest(digest, hex);
-  return installerFits(snprintf(text, capacity, AUDIT_TRAIL_DIGEST_PREFIX "%s", hex), capacity)
+  return installerFormatDigest(digest, text, capacity)
          ? INSTALLER_RESULT_OK
          : INSTALLER_ERROR_PREVIOUS_CONTENT_TEXT_TOO_LONG;
 }
 
 static InstallerResultCode installerRepair(
-  const InstallerRun *run, const InstallationRepairs *repairs
+  const InstallerSession *session, const InstallationRepairs *repairs
 ) {
-  InstallerResultCode code = installerEnsureDirectories(run);
+  InstallerResultCode code = installerEnsureDirectories(session);
   if (code != INSTALLER_RESULT_OK) {
     return code;
   }
@@ -463,7 +494,7 @@ static InstallerResultCode installerRepair(
     char before[INSTALLER_TEXT_CAPACITY];
     code = installerDescribeFile(CONFIG_BINARY_PATH, before, sizeof(before));
     if (code == INSTALLER_RESULT_OK) {
-      code = installerInstallBinary(run, before);
+      code = installerInstallBinary(session, before);
     }
     if (code != INSTALLER_RESULT_OK) {
       return code;
@@ -473,7 +504,7 @@ static InstallerResultCode installerRepair(
     char before[INSTALLER_TEXT_CAPACITY];
     code = installerDescribeFile(CONFIG_UNIT_PATH, before, sizeof(before));
     if (code == INSTALLER_RESULT_OK) {
-      code = installerInstallUnit(run, before);
+      code = installerInstallUnit(session, before);
     }
     if (code != INSTALLER_RESULT_OK) {
       return code;
@@ -495,7 +526,7 @@ static InstallerResultCode installerRepair(
       return INSTALLER_ERROR_ENABLE_FAILED;
     }
     printf("enabled %s\n", CONFIG_SERVICE_NAME);
-    code = installerRecord(run, AUDIT_TRAIL_WHAT_SERVICE_ENABLEMENT, AUDIT_TRAIL_STATE_NOT_ENABLED, AUDIT_TRAIL_STATE_ENABLED, INSTALLER_ERROR_ENABLE_AUDIT_FAILED);
+    code = installerRecord(session, AUDIT_TRAIL_WHAT_SERVICE_ENABLEMENT, AUDIT_TRAIL_STATE_NOT_ENABLED, AUDIT_TRAIL_STATE_ENABLED, INSTALLER_ERROR_ENABLE_AUDIT_FAILED);
     if (code != INSTALLER_RESULT_OK) {
       return code;
     }
@@ -512,7 +543,7 @@ static InstallerResultCode installerRepair(
   /** Recorded either way: the service was started, whatever it did next. */
   const bool active = installerRunSystemctl("is-active", CONFIG_SERVICE_NAME);
   code = installerRecord(
-    run,
+    session,
     AUDIT_TRAIL_WHAT_SERVICE_STATE,
     AUDIT_TRAIL_STATE_INACTIVE,
     active ? AUDIT_TRAIL_STATE_ACTIVE : AUDIT_TRAIL_STATE_STARTED_NOT_ACTIVE,
@@ -535,20 +566,11 @@ static bool installerReadElfHeader(const char *path, uint8_t *header) {
   if (descriptor < 0) {
     return false;
   }
-  size_t totalRead = 0;
-  while (totalRead < SELF_UPDATE_ELF_HEADER_LENGTH) {
-    const ssize_t count =
-      read(descriptor, header + totalRead, SELF_UPDATE_ELF_HEADER_LENGTH - totalRead);
-    if (count < 0 && errno == EINTR) {
-      continue;
-    }
-    if (count <= 0) {
-      break;
-    }
-    totalRead += (size_t)count;
-  }
+  size_t     totalRead = 0;
+  const bool read      =
+    installerReadUpTo(descriptor, header, SELF_UPDATE_ELF_HEADER_LENGTH, &totalRead);
   close(descriptor);
-  return totalRead == SELF_UPDATE_ELF_HEADER_LENGTH;
+  return read && totalRead == SELF_UPDATE_ELF_HEADER_LENGTH;
 }
 
 /** The same check self-update applies to a downloaded binary. */
@@ -572,20 +594,12 @@ static bool installerUnitMatches(void) {
   if (descriptor < 0) {
     return false;
   }
-  /** One byte more than the unit: a longer file cannot be the unit. */
-  size_t total = 0;
-  while (total < sizeof(content)) {
-    const ssize_t count = read(descriptor, content + total, sizeof(content) - total);
-    if (count < 0 && errno == EINTR) {
-      continue;
-    }
-    if (count <= 0) {
-      break;
-    }
-    total += (size_t)count;
-  }
+  /** Up to the whole buffer: a file longer than the unit cannot be the unit. */
+  size_t     total = 0;
+  const bool read  =
+    installerReadUpTo(descriptor, (uint8_t *)content, sizeof(content), &total);
   close(descriptor);
-  return InstallationI.isExpectedUnit(content, total);
+  return read && InstallationI.isExpectedUnit(content, total);
 }
 
 /** Run the installed binary with `--version` and keep its first line. */
@@ -611,15 +625,7 @@ static InstallerResultCode installerReadInstalledVersion(char *version, const si
     return INSTALLER_ERROR_VERSION_UNKNOWN;
   }
   size_t length = 0;
-  for (;;) {
-    const ssize_t count = read(pipeEnds[0], version + length, capacity - 1 - length);
-    if (count < 0 && errno == EINTR) {
-      continue;
-    }
-    if (count <= 0 || (length += (size_t)count) >= capacity - 1) {
-      break;
-    }
-  }
+  installerReadUpTo(pipeEnds[0], (uint8_t *)version, capacity - 1, &length);
   close(pipeEnds[0]);
   int32_t exitStatus = 0;
   waitpid(child, &exitStatus, 0);
@@ -633,10 +639,6 @@ static InstallerResultCode installerReadInstalledVersion(char *version, const si
     return INSTALLER_ERROR_VERSION_REPORT_INVALID;
   }
   return INSTALLER_RESULT_OK;
-}
-
-static bool installerServiceIsActive(void) {
-  return installerRunSystemctl("is-active", CONFIG_SERVICE_NAME);
 }
 
 /** The Device identifier this build resolves, as the agent would. */
@@ -700,7 +702,7 @@ static InstallerResultCode installerReportStatus(void) {
     return INSTALLER_ERROR_ENROLLMENT_UNREADABLE;
   }
 
-  const bool active = installerServiceIsActive();
+  const bool active = installerRunSystemctl("is-active", CONFIG_SERVICE_NAME);
   printf("the Puppet is installed and intact; nothing was changed\n");
   printf("  installed version:  %s\n", version);
   printf("  service:            enabled, %s\n", active ? "active" : "not active");
@@ -733,7 +735,7 @@ static InstallerResultCode installerRun(const InstallerContext *context) {
   }
 
   const bool bySudo = context->sudoUser != NULL && context->sudoUser[0] != '\0';
-  const InstallerRun run = {
+  const InstallerSession session = {
     .context = context,
     .actor   = {
       .kind       = AUDIT_TRAIL_ACTOR_USER,
@@ -742,7 +744,7 @@ static InstallerResultCode installerRun(const InstallerContext *context) {
   };
   char since[LIFECYCLE_TIMESTAMP_CAPACITY];
   LifecycleI.formatUtcNow(since);
-  const InstallerResultCode repaired = installerRepair(&run, &repairs);
+  const InstallerResultCode repaired = installerRepair(&session, &repairs);
   return repaired == INSTALLER_RESULT_OK ? installerWatchAgent(since) : repaired;
 }
 
