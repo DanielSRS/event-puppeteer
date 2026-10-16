@@ -36,9 +36,6 @@ extern char **environ;
 #define INSTALLER_VERSION_CAPACITY   ((size_t)64)
 #define INSTALLER_ENROLLMENT_CAPACITY ((size_t)256)
 
-/** `Audit Trail` text for a file that is not there. */
-#define INSTALLER_ABSENT_TEXT "absent"
-
 /** Whoever runs the Puppet as root without sudo is, truthfully, root. */
 #define INSTALLER_ROOT_USER "root"
 
@@ -60,13 +57,8 @@ static InstallerResultCode installerRecord(
   const char         *after,
   const InstallerResultCode failureCode
 ) {
-  char when[LIFECYCLE_TIMESTAMP_CAPACITY];
-  LifecycleI.formatUtcNow(when);
-  const AuditTrailEntry entry = {
-    .when = when, .actor = run->actor, .what = what, .before = before, .after = after
-  };
   const AuditTrailResultCode code =
-    AuditTrailI.append(CONFIG_AUDIT_TRAIL_PATH, &entry);
+    AuditTrailI.record(CONFIG_AUDIT_TRAIL_PATH, run->actor, what, before, after);
   if (code != AUDIT_TRAIL_RESULT_OK) {
     fprintf(
       stderr,
@@ -337,14 +329,14 @@ static InstallerResultCode installerInstallBinary(
   char after[INSTALLER_TEXT_CAPACITY];
   if (!installerFits(
         snprintf(
-          after, sizeof(after), "%s sha256:%s", run->context->puppetVersion, hex
+          after, sizeof(after), "%s " AUDIT_TRAIL_DIGEST_PREFIX "%s", run->context->puppetVersion, hex
         ),
         sizeof(after)
       )) {
     return INSTALLER_ERROR_BINARY_DESCRIPTION_TOO_LONG;
   }
   printf("installed %s (%s)\n", CONFIG_BINARY_PATH, after);
-  return installerRecord(run, "binary", before, after, INSTALLER_ERROR_BINARY_AUDIT_FAILED);
+  return installerRecord(run, AUDIT_TRAIL_WHAT_BINARY, before, after, INSTALLER_ERROR_BINARY_AUDIT_FAILED);
 }
 
 static InstallerResultCode installerInstallUnit(
@@ -384,12 +376,12 @@ static InstallerResultCode installerInstallUnit(
   Sha256I.formatHexDigest(digest, hex);
   char after[INSTALLER_TEXT_CAPACITY];
   if (!installerFits(
-        snprintf(after, sizeof(after), "sha256:%s", hex), sizeof(after)
+        snprintf(after, sizeof(after), AUDIT_TRAIL_DIGEST_PREFIX "%s", hex), sizeof(after)
       )) {
     return INSTALLER_ERROR_UNIT_DESCRIPTION_TOO_LONG;
   }
   printf("wrote %s (%s)\n", CONFIG_UNIT_PATH, after);
-  return installerRecord(run, "unit", before, after, INSTALLER_ERROR_UNIT_AUDIT_FAILED);
+  return installerRecord(run, AUDIT_TRAIL_WHAT_UNIT, before, after, INSTALLER_ERROR_UNIT_AUDIT_FAILED);
 }
 
 /** Create the directories the repairs and the Audit Trail live in. */
@@ -403,7 +395,7 @@ static InstallerResultCode installerEnsureDirectories(const InstallerRun *run) {
   if (created) {
     printf("created %s\n", CONFIG_DATA_DIRECTORY);
     const InstallerResultCode recorded =
-      installerRecord(run, "data directory", INSTALLER_ABSENT_TEXT, "present", INSTALLER_ERROR_DATA_DIRECTORY_AUDIT_FAILED);
+      installerRecord(run, AUDIT_TRAIL_WHAT_DATA_DIRECTORY, AUDIT_TRAIL_STATE_ABSENT, AUDIT_TRAIL_STATE_PRESENT, INSTALLER_ERROR_DATA_DIRECTORY_AUDIT_FAILED);
     if (recorded != INSTALLER_RESULT_OK) {
       return recorded;
     }
@@ -415,7 +407,7 @@ static InstallerResultCode installerEnsureDirectories(const InstallerRun *run) {
   }
   if (created) {
     printf("created %s\n", CONFIG_BINARY_DIRECTORY);
-    return installerRecord(run, "binary directory", INSTALLER_ABSENT_TEXT, "present", INSTALLER_ERROR_BINARY_DIRECTORY_AUDIT_FAILED);
+    return installerRecord(run, AUDIT_TRAIL_WHAT_BINARY_DIRECTORY, AUDIT_TRAIL_STATE_ABSENT, AUDIT_TRAIL_STATE_PRESENT, INSTALLER_ERROR_BINARY_DIRECTORY_AUDIT_FAILED);
   }
   return INSTALLER_RESULT_OK;
 }
@@ -426,7 +418,7 @@ static InstallerResultCode installerDescribeFile(
 ) {
   const int32_t descriptor = open(path, O_RDONLY | O_CLOEXEC);
   if (descriptor < 0 && errno == ENOENT) {
-    snprintf(text, capacity, "%s", INSTALLER_ABSENT_TEXT);
+    snprintf(text, capacity, "%s", AUDIT_TRAIL_STATE_ABSENT);
     return INSTALLER_RESULT_OK;
   }
   if (descriptor < 0) {
@@ -455,7 +447,7 @@ static InstallerResultCode installerDescribeFile(
   Sha256I.finish(&hash, digest);
   char hex[SHA256_HEX_DIGEST_CAPACITY];
   Sha256I.formatHexDigest(digest, hex);
-  return installerFits(snprintf(text, capacity, "sha256:%s", hex), capacity)
+  return installerFits(snprintf(text, capacity, AUDIT_TRAIL_DIGEST_PREFIX "%s", hex), capacity)
          ? INSTALLER_RESULT_OK
          : INSTALLER_ERROR_PREVIOUS_CONTENT_TEXT_TOO_LONG;
 }
@@ -503,7 +495,7 @@ static InstallerResultCode installerRepair(
       return INSTALLER_ERROR_ENABLE_FAILED;
     }
     printf("enabled %s\n", CONFIG_SERVICE_NAME);
-    code = installerRecord(run, "service enablement", "not enabled", "enabled", INSTALLER_ERROR_ENABLE_AUDIT_FAILED);
+    code = installerRecord(run, AUDIT_TRAIL_WHAT_SERVICE_ENABLEMENT, AUDIT_TRAIL_STATE_NOT_ENABLED, AUDIT_TRAIL_STATE_ENABLED, INSTALLER_ERROR_ENABLE_AUDIT_FAILED);
     if (code != INSTALLER_RESULT_OK) {
       return code;
     }
@@ -521,9 +513,9 @@ static InstallerResultCode installerRepair(
   const bool active = installerRunSystemctl("is-active", CONFIG_SERVICE_NAME);
   code = installerRecord(
     run,
-    "service state",
-    "inactive",
-    active ? "active" : "started, not active",
+    AUDIT_TRAIL_WHAT_SERVICE_STATE,
+    AUDIT_TRAIL_STATE_INACTIVE,
+    active ? AUDIT_TRAIL_STATE_ACTIVE : AUDIT_TRAIL_STATE_STARTED_NOT_ACTIVE,
     INSTALLER_ERROR_STATE_AUDIT_FAILED
   );
   if (code != INSTALLER_RESULT_OK) {
@@ -701,7 +693,7 @@ static InstallerResultCode installerReportStatus(void) {
 
   char enrollment[INSTALLER_ENROLLMENT_CAPACITY];
   const AuditTrailResultCode trailCode = AuditTrailI.readLatestAfter(
-    CONFIG_AUDIT_TRAIL_PATH, "enrollment", enrollment, sizeof(enrollment)
+    CONFIG_AUDIT_TRAIL_PATH, AUDIT_TRAIL_WHAT_ENROLLMENT, enrollment, sizeof(enrollment)
   );
   if (trailCode != AUDIT_TRAIL_RESULT_OK && trailCode != AUDIT_TRAIL_ERROR_NO_ENTRY) {
     fprintf(stderr, "[error] cannot read %s (%d)\n", CONFIG_AUDIT_TRAIL_PATH, trailCode);
