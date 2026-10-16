@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
-import { IsUpdateUrl, ValidateApproval, ValidateUpdate } from "./deviceForms";
+import { IsUpdateUrl, UPDATE_BINARY_MAX_BYTES, ValidateApproval, ValidateUpdate, type UpdateValues } from "./deviceForms";
+import { Sha256Hex, UpdateStepText } from "./updateUpload";
 import { FormatBytes, FormatDuration, FormatPercent, FormatTemperature, NOT_REPORTED, TelemetryGroups } from "./telemetryFormat";
 
 const SHA = "a".repeat(64);
@@ -30,21 +31,48 @@ describe("IsUpdateUrl", () => {
 });
 
 describe("ValidateUpdate", () => {
-  test("valid payload, version optional", () => {
-    expect(ValidateUpdate({ url: "/u/puppet", sha256: SHA, version: "" })).toEqual({ ok: true, value: { url: "/u/puppet", sha256: SHA } });
-    expect(ValidateUpdate({ url: " /u/puppet ", sha256: ` ${SHA} `, version: " 1.1.0 " }))
-      .toEqual({ ok: true, value: { url: "/u/puppet", sha256: SHA, version: "1.1.0" } });
+  const from = (values: Partial<UpdateValues>): UpdateValues => ({ source: "url", url: "", sha256: "", version: "", file: null, ...values });
+
+  test("from an address: valid payload, version optional", () => {
+    expect(ValidateUpdate(from({ url: "/u/puppet", sha256: SHA }))).toEqual({ ok: true, value: { kind: "url", payload: { url: "/u/puppet", sha256: SHA } } });
+    expect(ValidateUpdate(from({ url: " /u/puppet ", sha256: ` ${SHA} `, version: " 1.1.0 " })))
+      .toEqual({ ok: true, value: { kind: "url", payload: { url: "/u/puppet", sha256: SHA, version: "1.1.0" } } });
   });
 
-  test("errors per field", () => {
-    expect(ValidateUpdate({ url: "", sha256: "", version: "" })).toEqual({
+  test("from an address: errors per field", () => {
+    expect(ValidateUpdate(from({}))).toEqual({
       ok: false, error: { url: "Informe de onde baixar o Puppet.", sha256: "Informe o SHA-256 do arquivo." },
     });
-    const bad = ValidateUpdate({ url: "puppet.bin", sha256: "xyz", version: "" });
+    const bad = ValidateUpdate(from({ url: "puppet.bin", sha256: "xyz" }));
     expect(bad.ok).toBe(false);
     if (bad.ok) return;
     expect(bad.error.url).toMatch(/endereço completo/);
     expect(bad.error.sha256).toBe("O SHA-256 tem 64 caracteres hexadecimais (0-9, a-f); este tem 3.");
+  });
+
+  test("from a file: needs a non-empty file of at most 64 MiB; the address fields are ignored", () => {
+    const file = new File(["ELF"], "puppet");
+    expect(ValidateUpdate(from({ source: "file", file, url: "ignored", sha256: "ignored" }))).toEqual({ ok: true, value: { kind: "file", file } });
+    expect(ValidateUpdate(from({ source: "file", file, version: " 2.0 " }))).toEqual({ ok: true, value: { kind: "file", file, version: "2.0" } });
+    expect(ValidateUpdate(from({ source: "file" }))).toEqual({ ok: false, error: { file: "Escolha o arquivo do Puppet." } });
+    expect(ValidateUpdate(from({ source: "file", file: new File([], "puppet") }))).toEqual({ ok: false, error: { file: "O arquivo está vazio." } });
+    const huge = new File(["x"], "puppet");
+    Object.defineProperty(huge, "size", { value: UPDATE_BINARY_MAX_BYTES + 1 });
+    expect(ValidateUpdate(from({ source: "file", file: huge }))).toEqual({ ok: false, error: { file: "O arquivo passa de 64 MB, o máximo que o Puppet aceita." } });
+  });
+});
+
+describe("Sha256Hex", () => {
+  test("matches the standard test vectors", async () => {
+    expect(await Sha256Hex(new Blob(["abc"]))).toEqual({ ok: true, value: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad" });
+    expect(await Sha256Hex(new Blob([]))).toEqual({ ok: true, value: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" });
+  });
+});
+
+describe("UpdateStepText", () => {
+  test("every step says what is happening", () => {
+    expect(UpdateStepText({ step: "hashing" })).toMatch(/SHA-256/);
+    expect(UpdateStepText({ step: "uploading", percentage: 41.6 })).toBe("Enviando o arquivo... 42%");
   });
 });
 

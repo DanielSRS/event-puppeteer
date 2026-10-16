@@ -1,6 +1,6 @@
 /**
  * Validation of the device forms: approving a device (name and location) and
- * the "update Puppet" command (where to download the binary and its SHA-256).
+ * the "update Puppet" command (where to download the binary, or the file itself, and its SHA-256).
  *
  * @module
  */
@@ -26,11 +26,22 @@ export function ValidateApproval(values: ApprovalValues): Result<Approval, Field
   return Object.keys(errors).length > 0 ? Err(errors) : Ok({ name, location });
 }
 
-/** The update form as typed. */
-export type UpdateValues = { url: string; sha256: string; version: string };
+/** Where the new Puppet comes from: an address the device downloads from, or a file sent from this page. */
+export type UpdateSource = "url" | "file";
 
-/** Payload of the `update` command. */
+/** The update form as typed. `file` only counts when `source` is `"file"`; `url` and `sha256` only when it is `"url"`. */
+export type UpdateValues = { source: UpdateSource; url: string; sha256: string; version: string; file: File | null };
+
+/** Payload of the `update` command when the device downloads from an address. */
 export type UpdatePayload = { url: string; sha256: string; version?: string };
+
+/** What the update form asks for, once valid. */
+export type UpdateRequest =
+  | { kind: "url"; payload: UpdatePayload }
+  | { kind: "file"; file: File; version?: string };
+
+/** Largest binary Puppet accepts (64 MiB); Puppeteer refuses to authorize more. */
+export const UPDATE_BINARY_MAX_BYTES = 64 * 1024 * 1024;
 
 /**
  * Whether `text` is where Puppet can download the binary: an absolute http(s)
@@ -49,12 +60,24 @@ export function IsUpdateUrl(text: string): boolean {
 /** 64 hexadecimal characters. */
 const SHA256_PATTERN = /^[0-9a-fA-F]{64}$/;
 
-/** URL and SHA-256 are required; the version is optional and informational. */
-export function ValidateUpdate(values: UpdateValues): Result<UpdatePayload, FieldErrors<keyof UpdateValues>> {
+/**
+ * From an address: URL and SHA-256 are required. From a file: the file is required, non-empty
+ * and at most 64 MiB (its SHA-256 is computed from it). The version is optional and informational.
+ */
+export function ValidateUpdate(values: UpdateValues): Result<UpdateRequest, FieldErrors<"url" | "sha256" | "file">> {
+  const version = values.version.trim();
+  const errors: FieldErrors<"url" | "sha256" | "file"> = {};
+
+  if (values.source === "file") {
+    if (values.file === null) errors.file = "Escolha o arquivo do Puppet.";
+    else if (values.file.size === 0) errors.file = "O arquivo está vazio.";
+    else if (values.file.size > UPDATE_BINARY_MAX_BYTES) errors.file = "O arquivo passa de 64 MB, o máximo que o Puppet aceita.";
+    if (Object.keys(errors).length > 0 || values.file === null) return Err(errors);
+    return Ok(version === "" ? { kind: "file", file: values.file } : { kind: "file", file: values.file, version });
+  }
+
   const url = values.url.trim();
   const sha256 = values.sha256.trim();
-  const version = values.version.trim();
-  const errors: FieldErrors<keyof UpdateValues> = {};
 
   if (url === "") errors.url = "Informe de onde baixar o Puppet.";
   else if (!IsUpdateUrl(url)) errors.url = "Use um endereço completo (http:// ou https://) ou um caminho no Puppeteer começando com “/”.";
@@ -63,5 +86,5 @@ export function ValidateUpdate(values: UpdateValues): Result<UpdatePayload, Fiel
   else if (!SHA256_PATTERN.test(sha256)) errors.sha256 = `O SHA-256 tem 64 caracteres hexadecimais (0-9, a-f); este tem ${sha256.length}.`;
 
   if (Object.keys(errors).length > 0) return Err(errors);
-  return Ok(version === "" ? { url, sha256 } : { url, sha256, version });
+  return Ok({ kind: "url", payload: version === "" ? { url, sha256 } : { url, sha256, version } });
 }

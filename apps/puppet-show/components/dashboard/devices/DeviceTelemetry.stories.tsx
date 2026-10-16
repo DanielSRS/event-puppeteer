@@ -36,6 +36,8 @@ const meta = {
     refreshError: "",
     sending: null,
     onCommand: fn(async () => null),
+    onUpdateFile: fn(async () => null),
+    updateProgress: "",
     onRefresh: fn(),
   },
 } satisfies Meta<typeof DeviceTelemetry>;
@@ -89,6 +91,7 @@ export const UpdateWithValidation: Story = {
     const canvas = within(canvasElement.ownerDocument.body);
     await userEvent.click(canvas.getByRole("button", { name: "Atualizar Puppet" }));
     const dialog = within(canvas.getByRole("dialog", { name: "Atualizar o Puppet" }));
+    await userEvent.click(dialog.getByLabelText("Informar um endereço"));
     await userEvent.type(dialog.getByLabelText("Endereço do Puppet"), "puppet.bin");
     await userEvent.type(dialog.getByLabelText("SHA-256"), "abc");
     await userEvent.click(dialog.getByRole("button", { name: "Enviar atualização" }));
@@ -106,6 +109,26 @@ export const UpdateWithValidation: Story = {
   },
 };
 
+/** A file is sent through its own handler, with the version typed on the form. */
+export const UpdateFromFile: Story = {
+  args: { onUpdateFile: fn(async () => null) },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement.ownerDocument.body);
+    await userEvent.click(canvas.getByRole("button", { name: "Atualizar Puppet" }));
+    const dialog = within(canvas.getByRole("dialog", { name: "Atualizar o Puppet" }));
+    await userEvent.click(dialog.getByRole("button", { name: "Enviar atualização" }));
+    await expect(args.onUpdateFile).not.toHaveBeenCalled();
+    await expect(dialog.getByText("Escolha o arquivo do Puppet.")).toBeInTheDocument();
+
+    const file = new File(["ELF"], "puppet", { type: "application/octet-stream" });
+    await userEvent.upload(dialog.getByLabelText("Arquivo do Puppet"), file);
+    await userEvent.type(dialog.getByLabelText("Versão (opcional)"), "1.2.0");
+    await userEvent.click(dialog.getByRole("button", { name: "Enviar atualização" }));
+    await expect(args.onUpdateFile).toHaveBeenCalledWith(file, "1.2.0");
+    await waitFor(() => expect(canvas.queryByRole("dialog", { name: "Atualizar o Puppet" })).not.toBeInTheDocument());
+  },
+};
+
 /** A refused update stays open with the reason. */
 export const UpdateRefused: Story = {
   args: { onCommand: fn(async (): Promise<string | null> => "Não foi possível enviar “Atualizar Puppet”. Os dados enviados foram recusados pelo servidor.") },
@@ -113,6 +136,7 @@ export const UpdateRefused: Story = {
     const canvas = within(canvasElement.ownerDocument.body);
     await userEvent.click(canvas.getByRole("button", { name: "Atualizar Puppet" }));
     const dialog = within(canvas.getByRole("dialog", { name: "Atualizar o Puppet" }));
+    await userEvent.click(dialog.getByLabelText("Informar um endereço"));
     await userEvent.type(dialog.getByLabelText("Endereço do Puppet"), "https://cdn.example.org/puppet");
     await userEvent.type(dialog.getByLabelText("SHA-256"), "c".repeat(64));
     await userEvent.click(dialog.getByRole("button", { name: "Enviar atualização" }));

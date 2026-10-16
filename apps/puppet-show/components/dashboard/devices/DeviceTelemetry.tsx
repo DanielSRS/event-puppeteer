@@ -25,7 +25,7 @@ import {
   DeviceDisplayName, DeviceIdentifierText, FormatBytes, NOT_REPORTED, TelemetryGroups, type TelemetryGroup,
 } from "./telemetryFormat";
 import { UpdateCommandForm } from "./UpdateCommandForm";
-import type { UpdatePayload } from "./deviceForms";
+import type { UpdateRequest } from "./deviceForms";
 
 /** Everything the page shows about a device. */
 export type DeviceDetails = {
@@ -47,6 +47,10 @@ export type DeviceTelemetryProps = {
   sending: CommandType | null;
   /** Sends a command; resolves to an error message, or `null` when it worked. */
   onCommand: (command: CreateCommandInput) => Promise<string | null>;
+  /** Uploads a Puppet binary and sends the update command for it; resolves like `onCommand`. */
+  onUpdateFile: (file: File, version: string | undefined) => Promise<string | null>;
+  /** What the upload is doing right now; empty when it is not running. */
+  updateProgress: string;
   onRefresh: () => void;
 };
 
@@ -162,7 +166,7 @@ function HardwareTiles(t: Telemetry, items: TelemetryGroup["items"], loadedAt: s
 }
 
 /** The device page. */
-export function DeviceTelemetry({ details, loadedAt, refreshError, sending, onCommand, onRefresh }: DeviceTelemetryProps) {
+export function DeviceTelemetry({ details, loadedAt, refreshError, sending, onCommand, onUpdateFile, updateProgress, onRefresh }: DeviceTelemetryProps) {
   const { device, status, telemetry, commands, logs } = details;
   const [confirming, setConfirming] = useState<ConfirmedCommand | null>(null);
   const [updateOpen, setUpdateOpen] = useState(false);
@@ -180,9 +184,11 @@ export function DeviceTelemetry({ details, loadedAt, refreshError, sending, onCo
     await onCommand({ type });
   };
 
-  const sendUpdate = async (payload: UpdatePayload) => {
+  const sendUpdate = async (request: UpdateRequest) => {
     setUpdateError("");
-    const error = await onCommand({ type: "update", payload });
+    const error = request.kind === "url"
+      ? await onCommand({ type: "update", payload: request.payload })
+      : await onUpdateFile(request.file, request.version);
     if (error === null) setUpdateOpen(false);
     else setUpdateError(error);
   };
@@ -377,6 +383,7 @@ export function DeviceTelemetry({ details, loadedAt, refreshError, sending, onCo
           <UpdateCommandForm
             saving={sending === "update"}
             error={updateError}
+            progress={updateProgress}
             onSubmit={sendUpdate}
             onCancel={() => setUpdateOpen(false)}
           />
