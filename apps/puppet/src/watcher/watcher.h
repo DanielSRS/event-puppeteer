@@ -24,6 +24,8 @@
 #ifndef PUPPET_WATCHER_H_
 #define PUPPET_WATCHER_H_
 
+#include <stdint.h>
+
 typedef enum {
   WATCHER_RESULT_OK = 0,
 
@@ -55,8 +57,12 @@ typedef enum {
 
 /** Everything the watch needs from the outside. Strings are borrowed. */
 typedef struct {
-  /** Only journal lines from this time on, as `journalctl --since` reads it. */
-  const char *since;
+  /**
+   * Only journal lines from this time on, in seconds since the Unix epoch.
+   * Handed to `journalctl --since` as `@<seconds>`, the one form every
+   * systemd version reads (Debian bullseye's rejects ISO 8601).
+   */
+  int64_t sinceEpochSeconds;
 
   /** Shown in the summary. */
   const char *deviceIdentifier;

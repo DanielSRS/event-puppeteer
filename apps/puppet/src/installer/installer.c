@@ -17,6 +17,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 
 /** The process environment, required by posix_spawnp for the child. */
@@ -959,7 +960,7 @@ static InstallerResultCode installerReadDeviceIdentifier(char *identifier, const
 }
 
 /** After a repair: show the technician whether the agent comes up. */
-static InstallerResultCode installerWatchAgent(const char *since) {
+static InstallerResultCode installerWatchAgent(const int64_t sinceEpochSeconds) {
   char identifier[CONFIG_DEVICE_IDENTIFIER_CAPACITY];
   const InstallerResultCode identifierCode =
     installerReadDeviceIdentifier(identifier, sizeof(identifier));
@@ -967,7 +968,7 @@ static InstallerResultCode installerWatchAgent(const char *since) {
     return identifierCode;
   }
   const WatcherInputs inputs = {
-    .since            = since,
+    .sinceEpochSeconds = sinceEpochSeconds,
     .deviceIdentifier = identifier,
   };
   const WatcherResultCode watched = WatcherI.watch(&inputs);
@@ -1059,10 +1060,14 @@ static InstallerResultCode installerRun(const InstallerContext *context) {
       .identifier = bySudo ? context->sudoUser : INSTALLER_ROOT_USER,
     },
   };
-  char since[LIFECYCLE_TIMESTAMP_CAPACITY];
-  LifecycleI.formatUtcNow(since);
+  /** Taken before the repair, so the agent's first lines are not missed. */
+  const time_t since = time(NULL);
+  if (since == (time_t)-1) {
+    fprintf(stderr, "[error] cannot read the clock: %s\n", strerror(errno));
+    return INSTALLER_ERROR_CLOCK_UNAVAILABLE;
+  }
   const InstallerResultCode repaired = installerRepair(&session, &repairs);
-  return repaired == INSTALLER_RESULT_OK ? installerWatchAgent(since) : repaired;
+  return repaired == INSTALLER_RESULT_OK ? installerWatchAgent((int64_t)since) : repaired;
 }
 
 const struct InstallerType InstallerI = {

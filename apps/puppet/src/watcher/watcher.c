@@ -6,6 +6,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <inttypes.h>
 #include <poll.h>
 #include <signal.h>
 #include <spawn.h>
@@ -24,6 +25,12 @@ extern char **environ;
 #define WATCHER_UNIT_OPTION     "--unit"
 #define WATCHER_FOLLOW_OPTION   "--follow"
 #define WATCHER_SINCE_OPTION    "--since"
+
+/** Marks a `--since` value as seconds since the Unix epoch. */
+#define WATCHER_EPOCH_PREFIX "@"
+
+/** Room for `@` and any 64-bit count of seconds. */
+#define WATCHER_SINCE_CAPACITY ((size_t)24)
 #define WATCHER_OUTPUT_OPTION   "--output"
 
 /** Only the message, as the agent wrote it: the line rules match on it. */
@@ -87,9 +94,9 @@ static void watcherFeed(WatcherLines *lines, const char *data, const size_t leng
   }
 }
 
-/** `journalctl -u <service> -f --since <since>`, read from `pipeEnds[0]`. */
+/** `journalctl -u <service> -f --since @<seconds>`, read from `pipeEnds[0]`. */
 static WatcherResultCode watcherStartJournal(
-  const char *since, int32_t *pipeEnds, pid_t *child
+  const int64_t sinceEpochSeconds, int32_t *pipeEnds, pid_t *child
 ) {
   if (pipe(pipeEnds) != 0) {
     fprintf(stderr, "[error] cannot make the journal pipe: %s\n", strerror(errno));
@@ -128,8 +135,10 @@ static WatcherResultCode watcherStartJournal(
   char sinceOption[]  = WATCHER_SINCE_OPTION;
   char outputOption[] = WATCHER_OUTPUT_OPTION;
   char output[]       = WATCHER_MESSAGE_ONLY_FORMAT;
-  char          sinceValue[LIFECYCLE_TIMESTAMP_CAPACITY];
-  const int32_t sinceLength = snprintf(sinceValue, sizeof(sinceValue), "%s", since);
+  char          sinceValue[WATCHER_SINCE_CAPACITY];
+  const int32_t sinceLength = snprintf(
+    sinceValue, sizeof(sinceValue), WATCHER_EPOCH_PREFIX "%" PRId64, sinceEpochSeconds
+  );
   const bool    sinceFits =
     sinceLength >= 0 && (size_t)sinceLength < sizeof(sinceValue);
   char *arguments[] = {
@@ -220,7 +229,7 @@ static void watcherReportTimeout(const WatcherLines *lines) {
 static WatcherResultCode watcherWatch(const WatcherInputs *inputs) {
   int32_t           pipeEnds[2];
   pid_t             child = 0;
-  WatcherResultCode code  = watcherStartJournal(inputs->since, pipeEnds, &child);
+  WatcherResultCode code  = watcherStartJournal(inputs->sinceEpochSeconds, pipeEnds, &child);
   if (code != WATCHER_RESULT_OK) {
     return code;
   }

@@ -185,6 +185,8 @@ typedef enum {
   INSTALLER_ERROR_DEVICE_IDENTIFIER_TOO_LONG = 8067,
   /** The description of a binary nobody recorded does not fit its text. */
   INSTALLER_ERROR_UNRECORDED_VERSION_TEXT_TOO_LONG = 8068,
+  /** The wall clock could not be read to mark the start of the watch. */
+  INSTALLER_ERROR_CLOCK_UNAVAILABLE = 8069,
 } InstallerResultCode;
 
 /** Everything the Installation needs from the outside. Borrowed. */
