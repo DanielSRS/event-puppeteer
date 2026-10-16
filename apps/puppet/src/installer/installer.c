@@ -26,8 +26,18 @@ extern char **environ;
 #define INSTALLER_SUDO_PROGRAM         "sudo"
 /** Makes `sudo` only check, and cache, that the user may become root. */
 #define INSTALLER_SUDO_VALIDATE_OPTION "-v"
+#define INSTALLER_PKEXEC_PROGRAM       "pkexec"
+/**
+ * `pkexec` exits with these when it did not run the program: 126 when the
+ * authentication was dismissed, 127 when it was refused or failed.
+ */
+#define INSTALLER_PKEXEC_DISMISSED_STATUS     ((int32_t)126)
+#define INSTALLER_PKEXEC_NOT_AUTHORIZED_STATUS ((int32_t)127)
 #define INSTALLER_SU_PROGRAM           "su"
 #define INSTALLER_SU_COMMAND_OPTION    "-c"
+/** Room for a local user's name. */
+#define INSTALLER_USER_NAME_CAPACITY ((size_t)64)
+
 /** Arguments handed on to the Puppet run as root. */
 #define INSTALLER_ARGUMENT_CAPACITY ((size_t)16)
 #define INSTALLER_SYSTEMCTL_PROGRAM  "systemctl"
@@ -194,6 +204,72 @@ static InstallerResultCode installerElevateWithSudo(const InstallerContext *cont
 }
 
 /**
+ * `pkexec <this executable> <its arguments>`, waited for: unlike `sudo`,
+ * `pkexec` cannot be asked first, so whether it authorized shows only in how
+ * it ends. polkit lets the technician authenticate as any administrator (a
+ * member of the `sudo` group on Debian), with that administrator's password.
+ *
+ * @param available       False when `pkexec` is not installed at all.
+ * @param authorized      False when `pkexec` ended without running the
+ *                        Puppet: authentication dismissed, refused or failed.
+ * @param elevatedStatus  When authorized, the exit status of the Puppet run
+ *                        as root.
+ */
+static InstallerResultCode installerElevateWithPkexec(
+  const InstallerContext *context,
+  bool                   *available,
+  bool                   *authorized,
+  int32_t                *elevatedStatus
+) {
+  char  pkexec[] = INSTALLER_PKEXEC_PROGRAM;
+  char  program[INSTALLER_PATH_CAPACITY];
+  char *arguments[INSTALLER_ARGUMENT_CAPACITY + 2];
+  if (context->argumentCount > INSTALLER_ARGUMENT_CAPACITY) {
+    fprintf(stderr, "[error] too many arguments to hand to pkexec\n");
+    return INSTALLER_ERROR_PKEXEC_TOO_MANY_ARGUMENTS;
+  }
+  /** pkexec only runs absolute paths, and the first argument may be relative. */
+  if (!installerFits(snprintf(program, sizeof(program), "%s", context->executablePath), sizeof(program))) {
+    fprintf(stderr, "[error] the executable path is too long to hand to pkexec\n");
+    return INSTALLER_ERROR_PKEXEC_PATH_TOO_LONG;
+  }
+  arguments[0] = pkexec;
+  arguments[1] = program;
+  for (size_t index = 1; index < context->argumentCount; index++) {
+    arguments[index + 1] = context->arguments[index];
+  }
+  arguments[context->argumentCount + 1] = NULL;
+
+  pid_t         child   = 0;
+  const int32_t spawned =
+    posix_spawnp(&child, INSTALLER_PKEXEC_PROGRAM, NULL, NULL, arguments, environ);
+  if (spawned == ENOENT) {
+    *available  = false;
+    *authorized = false;
+    return INSTALLER_RESULT_OK;
+  }
+  if (spawned != 0) {
+    fprintf(stderr, "[error] cannot run pkexec: %s\n", strerror(spawned));
+    return INSTALLER_ERROR_PKEXEC_SPAWN_FAILED;
+  }
+  int32_t waitStatus = 0;
+  if (waitpid(child, &waitStatus, 0) != child) {
+    fprintf(stderr, "[error] cannot wait for pkexec: %s\n", strerror(errno));
+    return INSTALLER_ERROR_PKEXEC_WAIT_FAILED;
+  }
+  if (!WIFEXITED(waitStatus)) {
+    fprintf(stderr, "[error] pkexec was killed before it finished\n");
+    return INSTALLER_ERROR_PKEXEC_KILLED;
+  }
+  const int32_t exitStatus = WEXITSTATUS(waitStatus);
+  *available               = true;
+  *authorized              = exitStatus != INSTALLER_PKEXEC_DISMISSED_STATUS
+                && exitStatus != INSTALLER_PKEXEC_NOT_AUTHORIZED_STATUS;
+  *elevatedStatus = exitStatus;
+  return INSTALLER_RESULT_OK;
+}
+
+/**
  * `su -c <command> root`: replaces the process, so only failure returns. The
  * command sets `SUDO_USER` so the Audit Trail names the technician.
  */
@@ -231,11 +307,19 @@ static InstallerResultCode installerElevateWithSu(const InstallerContext *contex
 }
 
 /**
- * Become root: through `sudo` when it accepts this user (their own
- * password), otherwise through `su` (the root password). Both are said on
- * the terminal before anyone is asked for a password.
+ * Become root, trying in turn, each said on the terminal before anyone is
+ * asked for a password:
+ *
+ * 1. `sudo`, when it accepts this user (their own password);
+ * 2. `pkexec`, when installed: the user authenticates as an administrator
+ *    (that administrator's password), so someone without sudo rights can
+ *    install with an administrator's help;
+ * 3. `su`, the last resort: only for whoever knows the root password, which
+ *    Debian locks when the installer created a sudo user.
  */
-static InstallerResultCode installerElevate(const InstallerContext *context) {
+static InstallerResultCode installerElevate(
+  const InstallerContext *context, int32_t *elevatedStatus
+) {
   printf("installing needs root: asking sudo (type your password)\n");
   fflush(stdout);
   bool                      available = false;
@@ -251,7 +335,59 @@ static InstallerResultCode installerElevate(const InstallerContext *context) {
     available ? "sudo did not accept this user or password\n"
               : "sudo is not installed\n"
   );
+
+  printf("asking pkexec: choose an administrator and type their password\n");
+  fflush(stdout);
+  bool                      authorized = false;
+  const InstallerResultCode delegated =
+    installerElevateWithPkexec(context, &available, &authorized, elevatedStatus);
+  if (delegated != INSTALLER_RESULT_OK) {
+    return delegated;
+  }
+  if (authorized) {
+    return INSTALLER_RESULT_FINISHED_AS_ROOT;
+  }
+  printf(
+    available ? "pkexec did not authorize the installation\n"
+              : "pkexec is not installed\n"
+  );
   return installerElevateWithSu(context);
+}
+
+/**
+ * The local user who asked for the change: the one `sudo` or the `su`
+ * command names, or the caller `pkexec` names by user id. Run directly as
+ * root, it truthfully is root.
+ */
+static InstallerResultCode installerResolveTechnician(
+  const InstallerContext *context, char *name, const size_t capacity
+) {
+  const char *chosen = INSTALLER_ROOT_USER;
+  if (context->sudoUser != NULL && context->sudoUser[0] != '\0') {
+    chosen = context->sudoUser;
+  } else if (context->pkexecUserIdentifier != NULL) {
+    uint32_t identifier = 0;
+    if (InstallationI.readUserIdentifier(context->pkexecUserIdentifier, &identifier)
+        != INSTALLATION_RESULT_OK) {
+      fprintf(
+        stderr,
+        "[error] pkexec named the caller by an invalid user id: %s\n",
+        context->pkexecUserIdentifier
+      );
+      return INSTALLER_ERROR_PKEXEC_USER_INVALID;
+    }
+    const struct passwd *user = getpwuid((uid_t)identifier);
+    if (user == NULL) {
+      fprintf(stderr, "[error] no user has the id %u pkexec named\n", identifier);
+      return INSTALLER_ERROR_PKEXEC_USER_UNKNOWN;
+    }
+    chosen = user->pw_name;
+  }
+  if (!installerFits(snprintf(name, capacity, "%s", chosen), capacity)) {
+    fprintf(stderr, "[error] the technician's name is too long to record\n");
+    return INSTALLER_ERROR_TECHNICIAN_NAME_TOO_LONG;
+  }
+  return INSTALLER_RESULT_OK;
 }
 
 /**
@@ -1024,7 +1160,9 @@ static InstallerResultCode installerReportStatus(void) {
   return INSTALLER_RESULT_OK;
 }
 
-static InstallerResultCode installerRun(const InstallerContext *context) {
+static InstallerResultCode installerRun(
+  const InstallerContext *context, int32_t *elevatedStatus
+) {
   bool                binaryValid    = false;
   bool                unitMatches    = false;
   bool                serviceEnabled = false;
@@ -1049,16 +1187,18 @@ static InstallerResultCode installerRun(const InstallerContext *context) {
   }
 
   if (geteuid() != 0) {
-    return installerElevate(context);
+    return installerElevate(context, elevatedStatus);
   }
 
-  const bool bySudo = context->sudoUser != NULL && context->sudoUser[0] != '\0';
+  char                      technician[INSTALLER_USER_NAME_CAPACITY];
+  const InstallerResultCode resolved =
+    installerResolveTechnician(context, technician, sizeof(technician));
+  if (resolved != INSTALLER_RESULT_OK) {
+    return resolved;
+  }
   const InstallerSession session = {
     .context = context,
-    .actor   = {
-      .kind       = AUDIT_TRAIL_ACTOR_USER,
-      .identifier = bySudo ? context->sudoUser : INSTALLER_ROOT_USER,
-    },
+    .actor   = {.kind = AUDIT_TRAIL_ACTOR_USER, .identifier = technician},
   };
   /** Taken before the repair, so the agent's first lines are not missed. */
   const time_t since = time(NULL);

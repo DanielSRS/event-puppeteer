@@ -253,6 +253,27 @@ static void installationReadsTheBinaryDescription(TestContext *context) {
   );
 }
 
+static void installationReadsAUserIdentifier(TestContext *context) {
+  uint32_t identifier = 0;
+
+  EXPECT(context, InstallationI.readUserIdentifier("1000", &identifier) == INSTALLATION_RESULT_OK);
+  EXPECT(context, identifier == 1000);
+  EXPECT(context, InstallationI.readUserIdentifier("0", &identifier) == INSTALLATION_RESULT_OK);
+  EXPECT(context, identifier == 0);
+  EXPECT(context, InstallationI.readUserIdentifier("4294967295", &identifier) == INSTALLATION_RESULT_OK);
+  EXPECT(context, identifier == UINT32_MAX);
+}
+
+static void installationRejectsAnythingButAUserIdentifier(TestContext *context) {
+  uint32_t identifier = 0;
+
+  EXPECT(context, InstallationI.readUserIdentifier("", &identifier) == INSTALLATION_ERROR_USER_IDENTIFIER_INVALID);
+  EXPECT(context, InstallationI.readUserIdentifier("-1", &identifier) == INSTALLATION_ERROR_USER_IDENTIFIER_INVALID);
+  EXPECT(context, InstallationI.readUserIdentifier("10a", &identifier) == INSTALLATION_ERROR_USER_IDENTIFIER_INVALID);
+  EXPECT(context, InstallationI.readUserIdentifier(" 10", &identifier) == INSTALLATION_ERROR_USER_IDENTIFIER_INVALID);
+  EXPECT(context, InstallationI.readUserIdentifier("4294967296", &identifier) == INSTALLATION_ERROR_USER_IDENTIFIER_INVALID);
+}
+
 static const TestCase INSTALLATION_TEST_CASES[] = {
   {"runs the agent when systemd starts the installed binary", installationRunsTheAgentUnderSystemd},
   {"never makes a terminal run the agent", installationNeverMakesATerminalTheAgent},
@@ -266,6 +287,8 @@ static const TestCase INSTALLATION_TEST_CASES[] = {
   {"hands the technician's name to root through su", installationSetsTheTechnicianForRoot},
   {"keeps the arguments through su", installationKeepsTheArgumentsThroughSu},
   {"reads the binary's description from the trail", installationReadsTheBinaryDescription},
+  {"reads a user identifier", installationReadsAUserIdentifier},
+  {"rejects anything but a user identifier", installationRejectsAnythingButAUserIdentifier},
   {"quotes the path and the name for the shell", installationQuotesWhatTheShellWouldInterpret},
   {"rejects a su command that does not fit instead of truncating", installationRejectsASuCommandThatDoesNotFit},
 };
