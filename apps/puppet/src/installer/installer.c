@@ -30,6 +30,15 @@ extern char **environ;
 /** Arguments handed on to the Puppet run as root. */
 #define INSTALLER_ARGUMENT_CAPACITY ((size_t)16)
 #define INSTALLER_SYSTEMCTL_PROGRAM  "systemctl"
+#define INSTALLER_SYSTEMCTL_DAEMON_RELOAD "daemon-reload"
+#define INSTALLER_SYSTEMCTL_IS_ENABLED    "is-enabled"
+#define INSTALLER_SYSTEMCTL_IS_ACTIVE     "is-active"
+#define INSTALLER_SYSTEMCTL_ENABLE        "enable"
+#define INSTALLER_SYSTEMCTL_START         "start"
+#define INSTALLER_SYSTEMCTL_RESTART       "restart"
+
+/** A pending file's descriptor before it is opened. */
+#define INSTALLER_NO_DESCRIPTOR ((int32_t)-1)
 #define INSTALLER_TEMPORARY_SUFFIX   ".installing"
 #define INSTALLER_PATH_CAPACITY      ((size_t)512)
 #define INSTALLER_TEXT_CAPACITY      ((size_t)192)
@@ -244,33 +253,42 @@ static InstallerResultCode installerElevate(const InstallerContext *context) {
   return installerElevateWithSu(context);
 }
 
-static bool installerRunSystemctl(const char *verb, const char *argument) {
+/**
+ * Run `systemctl <verb>`, followed by the service's name when
+ * `withService`. systemctl prints its own reason when it says no.
+ *
+ * @param succeeded  Whether it exited with status 0: "yes" for `is-enabled`
+ *                   and `is-active`, "done" for the others.
+ * @return An error only when systemctl could not give an answer at all.
+ */
+static InstallerResultCode installerRunSystemctl(
+  const char *verb, const bool withService, bool *succeeded
+) {
   char  systemctl[] = INSTALLER_SYSTEMCTL_PROGRAM;
+  char  service[]   = CONFIG_SERVICE_NAME;
   char  verbCopy[INSTALLER_TEXT_CAPACITY];
-  char  argumentCopy[INSTALLER_TEXT_CAPACITY];
-  char *arguments[] = {systemctl, verbCopy, argumentCopy, NULL};
+  char *arguments[] = {systemctl, verbCopy, withService ? service : NULL, NULL};
   if (!installerFits(snprintf(verbCopy, sizeof(verbCopy), "%s", verb), sizeof(verbCopy))) {
-    return false;
+    fprintf(stderr, "[error] the systemctl verb %s is too long\n", verb);
+    return INSTALLER_ERROR_SYSTEMCTL_VERB_TOO_LONG;
   }
-  if (argument == NULL) {
-    arguments[2] = NULL;
-  } else if (!installerFits(
-               snprintf(argumentCopy, sizeof(argumentCopy), "%s", argument),
-               sizeof(argumentCopy)
-             )) {
-    return false;
-  }
-
-  pid_t         child  = 0;
-  const int32_t status = posix_spawnp(&child, systemctl, NULL, NULL, arguments, environ);
-  if (status != 0) {
-    return false;
+  pid_t         child   = 0;
+  const int32_t spawned = posix_spawnp(&child, systemctl, NULL, NULL, arguments, environ);
+  if (spawned != 0) {
+    fprintf(stderr, "[error] cannot run systemctl %s: %s\n", verb, strerror(spawned));
+    return INSTALLER_ERROR_SYSTEMCTL_SPAWN_FAILED;
   }
   int32_t exitStatus = 0;
   if (waitpid(child, &exitStatus, 0) != child) {
-    return false;
+    fprintf(stderr, "[error] cannot wait for systemctl %s: %s\n", verb, strerror(errno));
+    return INSTALLER_ERROR_SYSTEMCTL_WAIT_FAILED;
   }
-  return WIFEXITED(exitStatus) && WEXITSTATUS(exitStatus) == 0;
+  if (!WIFEXITED(exitStatus)) {
+    fprintf(stderr, "[error] systemctl %s was killed before answering\n", verb);
+    return INSTALLER_ERROR_SYSTEMCTL_KILLED;
+  }
+  *succeeded = WEXITSTATUS(exitStatus) == 0;
+  return INSTALLER_RESULT_OK;
 }
 
 /** Create `path`; false only when it could not be created or found. */
@@ -300,68 +318,158 @@ static bool installerWriteAll(
   return true;
 }
 
-/** `<path>.installing`, the sibling a file is written to before the rename. */
-static bool installerTemporaryPath(const char *path, char *temporaryPath) {
-  return installerFits(
-    snprintf(
-      temporaryPath,
-      INSTALLER_PATH_CAPACITY,
-      "%s" INSTALLER_TEMPORARY_SUFFIX,
-      path
-    ),
-    INSTALLER_PATH_CAPACITY
-  );
+/**
+ * The codes of the failures writing one file into place, so that each file
+ * and each step has its own.
+ */
+typedef struct {
+  InstallerResultCode temporaryPathTooLong;
+  InstallerResultCode leftoverRemovalFailed;
+  InstallerResultCode createFailed;
+  InstallerResultCode writeFailed;
+  InstallerResultCode permissionsFailed;
+  InstallerResultCode syncFailed;
+  InstallerResultCode closeFailed;
+  InstallerResultCode replaceFailed;
+} InstallerFileFailures;
+
+static const InstallerFileFailures INSTALLER_BINARY_FAILURES = {
+  .temporaryPathTooLong  = INSTALLER_ERROR_BINARY_TEMPORARY_PATH_TOO_LONG,
+  .leftoverRemovalFailed = INSTALLER_ERROR_BINARY_LEFTOVER_REMOVAL_FAILED,
+  .createFailed          = INSTALLER_ERROR_BINARY_CREATE_FAILED,
+  .writeFailed           = INSTALLER_ERROR_BINARY_WRITE_FAILED,
+  .permissionsFailed     = INSTALLER_ERROR_BINARY_PERMISSIONS_FAILED,
+  .syncFailed            = INSTALLER_ERROR_BINARY_SYNC_FAILED,
+  .closeFailed           = INSTALLER_ERROR_BINARY_CLOSE_FAILED,
+  .replaceFailed         = INSTALLER_ERROR_BINARY_REPLACE_FAILED,
+};
+
+static const InstallerFileFailures INSTALLER_UNIT_FAILURES = {
+  .temporaryPathTooLong  = INSTALLER_ERROR_UNIT_TEMPORARY_PATH_TOO_LONG,
+  .leftoverRemovalFailed = INSTALLER_ERROR_UNIT_LEFTOVER_REMOVAL_FAILED,
+  .createFailed          = INSTALLER_ERROR_UNIT_CREATE_FAILED,
+  .writeFailed           = INSTALLER_ERROR_UNIT_WRITE_FAILED,
+  .permissionsFailed     = INSTALLER_ERROR_UNIT_PERMISSIONS_FAILED,
+  .syncFailed            = INSTALLER_ERROR_UNIT_SYNC_FAILED,
+  .closeFailed           = INSTALLER_ERROR_UNIT_CLOSE_FAILED,
+  .replaceFailed         = INSTALLER_ERROR_UNIT_REPLACE_FAILED,
+};
+
+/** A file being written next to `path`, renamed into place once complete. */
+typedef struct {
+  const char                  *path;
+  mode_t                       mode;
+  const InstallerFileFailures *failures;
+  char                         temporaryPath[INSTALLER_PATH_CAPACITY];
+  int32_t                      descriptor;
+} InstallerPendingFile;
+
+/** Remove the temporary file after a failure, saying so if even that fails. */
+static void installerDiscardPending(const InstallerPendingFile *file) {
+  if (unlink(file->temporaryPath) != 0 && errno != ENOENT) {
+    fprintf(
+      stderr,
+      "[warning] cannot remove %s: %s\n",
+      file->temporaryPath,
+      strerror(errno)
+    );
+  }
 }
 
 /**
- * Copy `sourcePath` to `temporaryPath`, hashing what is written. The copy is
- * flushed to disk and made executable before anyone can rename it into place.
+ * Open `<path>.installing` for writing. A leftover from an earlier failed
+ * run is removed first.
  */
+static InstallerResultCode installerOpenPending(InstallerPendingFile *file) {
+  if (!installerFits(
+        snprintf(
+          file->temporaryPath,
+          sizeof(file->temporaryPath),
+          "%s" INSTALLER_TEMPORARY_SUFFIX,
+          file->path
+        ),
+        sizeof(file->temporaryPath)
+      )) {
+    fprintf(stderr, "[error] the temporary path for %s is too long\n", file->path);
+    return file->failures->temporaryPathTooLong;
+  }
+  if (unlink(file->temporaryPath) != 0 && errno != ENOENT) {
+    fprintf(stderr, "[error] cannot remove %s: %s\n", file->temporaryPath, strerror(errno));
+    return file->failures->leftoverRemovalFailed;
+  }
+  file->descriptor =
+    open(file->temporaryPath, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, file->mode);
+  if (file->descriptor < 0) {
+    fprintf(stderr, "[error] cannot create %s: %s\n", file->temporaryPath, strerror(errno));
+    return file->failures->createFailed;
+  }
+  return INSTALLER_RESULT_OK;
+}
+
+/** Give up on a pending file whose content could not be written. */
+static InstallerResultCode installerAbandonPending(
+  const InstallerPendingFile *file, const InstallerResultCode code
+) {
+  close(file->descriptor);
+  installerDiscardPending(file);
+  return code;
+}
+
+/**
+ * Flush the complete content to disk with its final mode, then rename it
+ * into place: a power cut leaves either the old file or the new one.
+ */
+static InstallerResultCode installerPlacePending(const InstallerPendingFile *file) {
+  if (fchmod(file->descriptor, file->mode) != 0) {
+    fprintf(stderr, "[error] cannot set the mode of %s: %s\n", file->temporaryPath, strerror(errno));
+    return installerAbandonPending(file, file->failures->permissionsFailed);
+  }
+  if (fsync(file->descriptor) != 0) {
+    fprintf(stderr, "[error] cannot flush %s: %s\n", file->temporaryPath, strerror(errno));
+    return installerAbandonPending(file, file->failures->syncFailed);
+  }
+  if (close(file->descriptor) != 0) {
+    fprintf(stderr, "[error] cannot close %s: %s\n", file->temporaryPath, strerror(errno));
+    installerDiscardPending(file);
+    return file->failures->closeFailed;
+  }
+  if (rename(file->temporaryPath, file->path) != 0) {
+    fprintf(stderr, "[error] cannot move %s into place: %s\n", file->path, strerror(errno));
+    installerDiscardPending(file);
+    return file->failures->replaceFailed;
+  }
+  return INSTALLER_RESULT_OK;
+}
+
+/** Copy the running executable into `file`, hashing what is written. */
 static InstallerResultCode installerCopyExecutable(
-  const char *sourcePath, const char *temporaryPath, uint8_t *digest
+  const char *sourcePath, const InstallerPendingFile *file, uint8_t *digest
 ) {
   const int32_t source = open(sourcePath, O_RDONLY | O_CLOEXEC);
   if (source < 0) {
-    fprintf(stderr, "[error] cannot read %s: %s\n", sourcePath, strerror(errno));
-    return INSTALLER_ERROR_BINARY_SOURCE_UNREADABLE;
+    fprintf(stderr, "[error] cannot open %s: %s\n", sourcePath, strerror(errno));
+    return installerAbandonPending(file, INSTALLER_ERROR_BINARY_SOURCE_UNREADABLE);
   }
-  unlink(temporaryPath);
-  const int32_t destination = open(
-    temporaryPath, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, INSTALLER_EXECUTABLE_MODE
-  );
-  if (destination < 0) {
-    fprintf(stderr, "[error] cannot create %s: %s\n", temporaryPath, strerror(errno));
-    close(source);
-    return INSTALLER_ERROR_BINARY_CREATE_FAILED;
-  }
-
   Sha256Context hash = Sha256I.create();
   uint8_t       chunk[INSTALLER_COPY_CHUNK_LENGTH];
-  bool          copied = true;
   for (;;) {
     const ssize_t count = installerRead(source, chunk, sizeof(chunk));
     if (count < 0) {
-      copied = false;
-      break;
+      fprintf(stderr, "[error] cannot read %s: %s\n", sourcePath, strerror(errno));
+      close(source);
+      return installerAbandonPending(file, INSTALLER_ERROR_BINARY_SOURCE_READ_FAILED);
     }
     if (count == 0) {
       break;
     }
     Sha256I.update(&hash, chunk, (size_t)count);
-    if (!installerWriteAll(destination, chunk, (size_t)count)) {
-      copied = false;
-      break;
+    if (!installerWriteAll(file->descriptor, chunk, (size_t)count)) {
+      fprintf(stderr, "[error] cannot write %s: %s\n", file->temporaryPath, strerror(errno));
+      close(source);
+      return installerAbandonPending(file, file->failures->writeFailed);
     }
   }
   close(source);
-  const bool flushed = copied && fchmod(destination, INSTALLER_EXECUTABLE_MODE) == 0
-                    && fsync(destination) == 0;
-  close(destination);
-  if (!flushed) {
-    fprintf(stderr, "[error] cannot write %s: %s\n", temporaryPath, strerror(errno));
-    unlink(temporaryPath);
-    return INSTALLER_ERROR_BINARY_WRITE_FAILED;
-  }
   Sha256I.finish(&hash, digest);
   return INSTALLER_RESULT_OK;
 }
@@ -369,21 +477,25 @@ static InstallerResultCode installerCopyExecutable(
 static InstallerResultCode installerInstallBinary(
   const InstallerSession *session, const char *before
 ) {
-  char temporaryPath[INSTALLER_PATH_CAPACITY];
-  if (!installerTemporaryPath(CONFIG_BINARY_PATH, temporaryPath)) {
-    return INSTALLER_ERROR_BINARY_TEMPORARY_PATH_TOO_LONG;
+  InstallerPendingFile file = {
+    .path          = CONFIG_BINARY_PATH,
+    .mode          = INSTALLER_EXECUTABLE_MODE,
+    .failures      = &INSTALLER_BINARY_FAILURES,
+    .temporaryPath = "",
+    .descriptor    = INSTALLER_NO_DESCRIPTOR,
+  };
+  InstallerResultCode code = installerOpenPending(&file);
+  if (code != INSTALLER_RESULT_OK) {
+    return code;
   }
-  uint8_t                   digest[SHA256_DIGEST_LENGTH];
-  const InstallerResultCode copied = installerCopyExecutable(
-    session->context->executablePath, temporaryPath, digest
-  );
-  if (copied != INSTALLER_RESULT_OK) {
-    return copied;
+  uint8_t digest[SHA256_DIGEST_LENGTH];
+  code = installerCopyExecutable(session->context->executablePath, &file, digest);
+  if (code != INSTALLER_RESULT_OK) {
+    return code;
   }
-  if (rename(temporaryPath, CONFIG_BINARY_PATH) != 0) {
-    fprintf(stderr, "[error] cannot install %s: %s\n", CONFIG_BINARY_PATH, strerror(errno));
-    unlink(temporaryPath);
-    return INSTALLER_ERROR_BINARY_REPLACE_FAILED;
+  code = installerPlacePending(&file);
+  if (code != INSTALLER_RESULT_OK) {
+    return code;
   }
 
   char digestText[INSTALLER_TEXT_CAPACITY];
@@ -393,6 +505,7 @@ static InstallerResultCode installerInstallBinary(
            snprintf(after, sizeof(after), "%s %s", session->context->puppetVersion, digestText),
            sizeof(after)
          )) {
+    fprintf(stderr, "[error] the description of %s is too long to record\n", CONFIG_BINARY_PATH);
     return INSTALLER_ERROR_BINARY_DESCRIPTION_TOO_LONG;
   }
   printf("installed %s (%s)\n", CONFIG_BINARY_PATH, after);
@@ -404,28 +517,28 @@ static InstallerResultCode installerInstallUnit(
 ) {
   char unit[INSTALLATION_UNIT_CAPACITY];
   if (InstallationI.formatUnit(unit, sizeof(unit)) != INSTALLATION_RESULT_OK) {
+    fprintf(stderr, "[error] the unit does not fit its buffer\n");
     return INSTALLER_ERROR_UNIT_FORMAT_FAILED;
   }
-  char temporaryPath[INSTALLER_PATH_CAPACITY];
-  if (!installerTemporaryPath(CONFIG_UNIT_PATH, temporaryPath)) {
-    return INSTALLER_ERROR_UNIT_TEMPORARY_PATH_TOO_LONG;
+  InstallerPendingFile file = {
+    .path          = CONFIG_UNIT_PATH,
+    .mode          = INSTALLER_UNIT_MODE,
+    .failures      = &INSTALLER_UNIT_FAILURES,
+    .temporaryPath = "",
+    .descriptor    = INSTALLER_NO_DESCRIPTOR,
+  };
+  InstallerResultCode code = installerOpenPending(&file);
+  if (code != INSTALLER_RESULT_OK) {
+    return code;
   }
-
-  const size_t  length = strlen(unit);
-  unlink(temporaryPath);
-  const int32_t descriptor = open(
-    temporaryPath, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, INSTALLER_UNIT_MODE
-  );
-  const bool written =
-    descriptor >= 0 && installerWriteAll(descriptor, (const uint8_t *)unit, length)
-    && fchmod(descriptor, INSTALLER_UNIT_MODE) == 0 && fsync(descriptor) == 0;
-  if (descriptor >= 0) {
-    close(descriptor);
+  const size_t length = strlen(unit);
+  if (!installerWriteAll(file.descriptor, (const uint8_t *)unit, length)) {
+    fprintf(stderr, "[error] cannot write %s: %s\n", file.temporaryPath, strerror(errno));
+    return installerAbandonPending(&file, file.failures->writeFailed);
   }
-  if (!written || rename(temporaryPath, CONFIG_UNIT_PATH) != 0) {
-    fprintf(stderr, "[error] cannot write %s: %s\n", CONFIG_UNIT_PATH, strerror(errno));
-    unlink(temporaryPath);
-    return INSTALLER_ERROR_UNIT_WRITE_FAILED;
+  code = installerPlacePending(&file);
+  if (code != INSTALLER_RESULT_OK) {
+    return code;
   }
 
   Sha256Context hash = Sha256I.create();
@@ -434,6 +547,7 @@ static InstallerResultCode installerInstallUnit(
   Sha256I.finish(&hash, digest);
   char after[INSTALLER_TEXT_CAPACITY];
   if (!installerFormatDigest(digest, after, sizeof(after))) {
+    fprintf(stderr, "[error] the description of %s is too long to record\n", CONFIG_UNIT_PATH);
     return INSTALLER_ERROR_UNIT_DESCRIPTION_TOO_LONG;
   }
   printf("wrote %s (%s)\n", CONFIG_UNIT_PATH, after);
@@ -474,7 +588,10 @@ static InstallerResultCode installerDescribeFile(
 ) {
   const int32_t descriptor = open(path, O_RDONLY | O_CLOEXEC);
   if (descriptor < 0 && errno == ENOENT) {
-    snprintf(text, capacity, "%s", AUDIT_TRAIL_STATE_ABSENT);
+    if (!installerFits(snprintf(text, capacity, "%s", AUDIT_TRAIL_STATE_ABSENT), capacity)) {
+      fprintf(stderr, "[error] the description of %s does not fit\n", path);
+      return INSTALLER_ERROR_PREVIOUS_CONTENT_TEXT_TOO_LONG;
+    }
     return INSTALLER_RESULT_OK;
   }
   if (descriptor < 0) {
@@ -498,11 +615,127 @@ static InstallerResultCode installerDescribeFile(
   close(descriptor);
   uint8_t digest[SHA256_DIGEST_LENGTH];
   Sha256I.finish(&hash, digest);
-  return installerFormatDigest(digest, text, capacity)
-         ? INSTALLER_RESULT_OK
-         : INSTALLER_ERROR_PREVIOUS_CONTENT_TEXT_TOO_LONG;
+  if (!installerFormatDigest(digest, text, capacity)) {
+    fprintf(stderr, "[error] the description of %s does not fit\n", path);
+    return INSTALLER_ERROR_PREVIOUS_CONTENT_TEXT_TOO_LONG;
+  }
+  return INSTALLER_RESULT_OK;
 }
 
+/** Ask systemctl a yes-or-no question about the service. */
+static InstallerResultCode installerAskSystemctl(const char *verb, bool *answer) {
+  return installerRunSystemctl(verb, true, answer);
+}
+
+/** Have systemctl do `verb`; `failure` when it says no. */
+static InstallerResultCode installerTellSystemctl(
+  const char *verb, const bool withService, const InstallerResultCode failure
+) {
+  bool                      done = false;
+  const InstallerResultCode code = installerRunSystemctl(verb, withService, &done);
+  if (code != INSTALLER_RESULT_OK) {
+    return code;
+  }
+  if (!done) {
+    fprintf(stderr, "[error] systemctl %s failed\n", verb);
+    return failure;
+  }
+  return INSTALLER_RESULT_OK;
+}
+
+/** Enable the service when it is not, and record it. */
+static InstallerResultCode installerRepairEnablement(
+  const InstallerSession *session, const InstallationRepairs *repairs
+) {
+  /**
+   * After a unit repair systemd is asked now, not before: while the unit
+   * was missing or wrong it could not say, and restoring the unit often
+   * restores the enablement with it.
+   */
+  bool enabled = !repairs->enablement;
+  if (repairs->unit) {
+    const InstallerResultCode asked =
+      installerAskSystemctl(INSTALLER_SYSTEMCTL_IS_ENABLED, &enabled);
+    if (asked != INSTALLER_RESULT_OK) {
+      return asked;
+    }
+  }
+  if (enabled) {
+    return INSTALLER_RESULT_OK;
+  }
+  const InstallerResultCode told = installerTellSystemctl(
+    INSTALLER_SYSTEMCTL_ENABLE, true, INSTALLER_ERROR_ENABLE_FAILED
+  );
+  if (told != INSTALLER_RESULT_OK) {
+    return told;
+  }
+  printf("enabled %s\n", CONFIG_SERVICE_NAME);
+  return installerRecord(
+    session,
+    AUDIT_TRAIL_WHAT_SERVICE_ENABLEMENT,
+    AUDIT_TRAIL_STATE_NOT_ENABLED,
+    AUDIT_TRAIL_STATE_ENABLED,
+    INSTALLER_ERROR_ENABLE_AUDIT_FAILED
+  );
+}
+
+/**
+ * Start the service, or restart it when it was running: a running agent
+ * predates the repair, and a restarted one runs the repaired binary and
+ * unit and says again where its Enrollment stands, which the terminal
+ * watches for.
+ */
+static InstallerResultCode installerRepairState(const InstallerSession *session) {
+  bool                active = false;
+  InstallerResultCode code   = installerAskSystemctl(INSTALLER_SYSTEMCTL_IS_ACTIVE, &active);
+  if (code != INSTALLER_RESULT_OK) {
+    return code;
+  }
+  if (active) {
+    code = installerTellSystemctl(
+      INSTALLER_SYSTEMCTL_RESTART, true, INSTALLER_ERROR_RESTART_FAILED
+    );
+    if (code != INSTALLER_RESULT_OK) {
+      return code;
+    }
+    printf("restarted %s\n", CONFIG_SERVICE_NAME);
+    return installerRecord(
+      session,
+      AUDIT_TRAIL_WHAT_SERVICE_STATE,
+      AUDIT_TRAIL_STATE_ACTIVE,
+      AUDIT_TRAIL_STATE_RESTARTED,
+      INSTALLER_ERROR_RESTART_AUDIT_FAILED
+    );
+  }
+
+  code = installerTellSystemctl(INSTALLER_SYSTEMCTL_START, true, INSTALLER_ERROR_START_FAILED);
+  if (code != INSTALLER_RESULT_OK) {
+    return code;
+  }
+  code = installerAskSystemctl(INSTALLER_SYSTEMCTL_IS_ACTIVE, &active);
+  if (code != INSTALLER_RESULT_OK) {
+    return code;
+  }
+  /** Recorded either way: the service was started, whatever it did next. */
+  code = installerRecord(
+    session,
+    AUDIT_TRAIL_WHAT_SERVICE_STATE,
+    AUDIT_TRAIL_STATE_INACTIVE,
+    active ? AUDIT_TRAIL_STATE_ACTIVE : AUDIT_TRAIL_STATE_STARTED_NOT_ACTIVE,
+    INSTALLER_ERROR_STATE_AUDIT_FAILED
+  );
+  if (code != INSTALLER_RESULT_OK) {
+    return code;
+  }
+  if (!active) {
+    fprintf(stderr, "[error] %s started but is not active\n", CONFIG_SERVICE_NAME);
+    return INSTALLER_ERROR_NOT_ACTIVE;
+  }
+  printf("started %s\n", CONFIG_SERVICE_NAME);
+  return INSTALLER_RESULT_OK;
+}
+
+/** Put right each diverging piece, then (re)start the service. */
 static InstallerResultCode installerRepair(
   const InstallerSession *session, const InstallationRepairs *repairs
 ) {
@@ -526,115 +759,118 @@ static InstallerResultCode installerRepair(
     if (code == INSTALLER_RESULT_OK) {
       code = installerInstallUnit(session, before);
     }
-    if (code != INSTALLER_RESULT_OK) {
-      return code;
+    if (code == INSTALLER_RESULT_OK) {
+      code = installerTellSystemctl(
+        INSTALLER_SYSTEMCTL_DAEMON_RELOAD, false, INSTALLER_ERROR_RELOAD_FAILED
+      );
     }
-    if (!installerRunSystemctl("daemon-reload", NULL)) {
-      fprintf(stderr, "[error] systemctl daemon-reload failed\n");
-      return INSTALLER_ERROR_RELOAD_FAILED;
-    }
-  }
-
-  /**
-   * Asked now, not before: while the unit was missing or wrong systemd could
-   * not say, and restoring the unit often restores the enablement with it.
-   */
-  const bool enabled = installerRunSystemctl("is-enabled", CONFIG_SERVICE_NAME);
-  if (!enabled) {
-    if (!installerRunSystemctl("enable", CONFIG_SERVICE_NAME)) {
-      fprintf(stderr, "[error] systemctl enable %s failed\n", CONFIG_SERVICE_NAME);
-      return INSTALLER_ERROR_ENABLE_FAILED;
-    }
-    printf("enabled %s\n", CONFIG_SERVICE_NAME);
-    code = installerRecord(session, AUDIT_TRAIL_WHAT_SERVICE_ENABLEMENT, AUDIT_TRAIL_STATE_NOT_ENABLED, AUDIT_TRAIL_STATE_ENABLED, INSTALLER_ERROR_ENABLE_AUDIT_FAILED);
     if (code != INSTALLER_RESULT_OK) {
       return code;
     }
   }
-
-  /**
-   * A running agent predates the repair, so it is restarted: it then runs
-   * the repaired binary and unit, and says again where its Enrollment
-   * stands, which the terminal watches for.
-   */
-  if (installerRunSystemctl("is-active", CONFIG_SERVICE_NAME)) {
-    if (!installerRunSystemctl("restart", CONFIG_SERVICE_NAME)) {
-      fprintf(stderr, "[error] systemctl restart %s failed\n", CONFIG_SERVICE_NAME);
-      return INSTALLER_ERROR_RESTART_FAILED;
-    }
-    printf("restarted %s\n", CONFIG_SERVICE_NAME);
-    return installerRecord(
-      session,
-      AUDIT_TRAIL_WHAT_SERVICE_STATE,
-      AUDIT_TRAIL_STATE_ACTIVE,
-      AUDIT_TRAIL_STATE_RESTARTED,
-      INSTALLER_ERROR_RESTART_AUDIT_FAILED
-    );
-  }
-  if (!installerRunSystemctl("start", CONFIG_SERVICE_NAME)) {
-    fprintf(stderr, "[error] systemctl start %s failed\n", CONFIG_SERVICE_NAME);
-    return INSTALLER_ERROR_START_FAILED;
-  }
-  /** Recorded either way: the service was started, whatever it did next. */
-  const bool active = installerRunSystemctl("is-active", CONFIG_SERVICE_NAME);
-  code = installerRecord(
-    session,
-    AUDIT_TRAIL_WHAT_SERVICE_STATE,
-    AUDIT_TRAIL_STATE_INACTIVE,
-    active ? AUDIT_TRAIL_STATE_ACTIVE : AUDIT_TRAIL_STATE_STARTED_NOT_ACTIVE,
-    INSTALLER_ERROR_STATE_AUDIT_FAILED
-  );
-  if (code != INSTALLER_RESULT_OK) {
-    return code;
-  }
-  if (!active) {
-    fprintf(stderr, "[error] %s started but is not active\n", CONFIG_SERVICE_NAME);
-    return INSTALLER_ERROR_NOT_ACTIVE;
-  }
-  printf("started %s\n", CONFIG_SERVICE_NAME);
-  return INSTALLER_RESULT_OK;
+  code = installerRepairEnablement(session, repairs);
+  return code == INSTALLER_RESULT_OK ? installerRepairState(session) : code;
 }
 
-/** The first bytes of the ELF header, or false when the file has fewer. */
-static bool installerReadElfHeader(const char *path, uint8_t *header) {
+/** The codes of the failures reading one file's ELF header. */
+typedef struct {
+  InstallerResultCode openFailed;
+  InstallerResultCode readFailed;
+} InstallerHeaderFailures;
+
+/**
+ * Read the first `SELF_UPDATE_ELF_HEADER_LENGTH` bytes of `path`.
+ *
+ * @param complete  False when the file does not exist or is shorter: it then
+ *                  is no binary at all.
+ */
+static InstallerResultCode installerReadElfHeader(
+  const char                    *path,
+  uint8_t                       *header,
+  bool                          *complete,
+  const InstallerHeaderFailures *failures
+) {
   const int32_t descriptor = open(path, O_RDONLY | O_CLOEXEC);
+  if (descriptor < 0 && errno == ENOENT) {
+    *complete = false;
+    return INSTALLER_RESULT_OK;
+  }
   if (descriptor < 0) {
-    return false;
+    fprintf(stderr, "[error] cannot open %s: %s\n", path, strerror(errno));
+    return failures->openFailed;
   }
   size_t     totalRead = 0;
   const bool read      =
     installerReadUpTo(descriptor, header, SELF_UPDATE_ELF_HEADER_LENGTH, &totalRead);
   close(descriptor);
-  return read && totalRead == SELF_UPDATE_ELF_HEADER_LENGTH;
+  if (!read) {
+    fprintf(stderr, "[error] cannot read %s: %s\n", path, strerror(errno));
+    return failures->readFailed;
+  }
+  *complete = totalRead == SELF_UPDATE_ELF_HEADER_LENGTH;
+  return INSTALLER_RESULT_OK;
 }
+
+static const InstallerHeaderFailures INSTALLER_RUNNING_HEADER_FAILURES = {
+  .openFailed = INSTALLER_ERROR_RUNNING_HEADER_UNREADABLE,
+  .readFailed = INSTALLER_ERROR_RUNNING_HEADER_READ_FAILED,
+};
+
+static const InstallerHeaderFailures INSTALLER_INSTALLED_HEADER_FAILURES = {
+  .openFailed = INSTALLER_ERROR_INSTALLED_BINARY_UNREADABLE,
+  .readFailed = INSTALLER_ERROR_INSTALLED_BINARY_READ_FAILED,
+};
 
 /** The same check self-update applies to a downloaded binary. */
 static InstallerResultCode installerCheckBinary(
   const char *runningPath, bool *valid
 ) {
-  uint8_t running[SELF_UPDATE_ELF_HEADER_LENGTH];
-  if (!installerReadElfHeader(runningPath, running)) {
-    fprintf(stderr, "[error] cannot read the header of %s\n", runningPath);
-    return INSTALLER_ERROR_RUNNING_HEADER_UNREADABLE;
+  uint8_t             running[SELF_UPDATE_ELF_HEADER_LENGTH];
+  bool                complete = false;
+  InstallerResultCode code     = installerReadElfHeader(
+    runningPath, running, &complete, &INSTALLER_RUNNING_HEADER_FAILURES
+  );
+  if (code != INSTALLER_RESULT_OK) {
+    return code;
+  }
+  if (!complete) {
+    fprintf(stderr, "[error] %s is not a whole ELF binary\n", runningPath);
+    return INSTALLER_ERROR_RUNNING_HEADER_SHORT;
   }
   uint8_t installed[SELF_UPDATE_ELF_HEADER_LENGTH];
-  *valid = installerReadElfHeader(CONFIG_BINARY_PATH, installed)
+  code = installerReadElfHeader(
+    CONFIG_BINARY_PATH, installed, &complete, &INSTALLER_INSTALLED_HEADER_FAILURES
+  );
+  if (code != INSTALLER_RESULT_OK) {
+    return code;
+  }
+  *valid = complete
         && SelfUpdateI.checkCompatibility(installed, running) == SELF_UPDATE_RESULT_OK;
   return INSTALLER_RESULT_OK;
 }
 
-static bool installerUnitMatches(void) {
-  char          content[INSTALLATION_UNIT_CAPACITY];
+static InstallerResultCode installerCheckUnit(bool *matches) {
   const int32_t descriptor = open(CONFIG_UNIT_PATH, O_RDONLY | O_CLOEXEC);
+  if (descriptor < 0 && errno == ENOENT) {
+    *matches = false;
+    return INSTALLER_RESULT_OK;
+  }
   if (descriptor < 0) {
-    return false;
+    fprintf(stderr, "[error] cannot open %s: %s\n", CONFIG_UNIT_PATH, strerror(errno));
+    return INSTALLER_ERROR_UNIT_UNREADABLE;
   }
   /** Up to the whole buffer: a file longer than the unit cannot be the unit. */
+  char       content[INSTALLATION_UNIT_CAPACITY];
   size_t     total = 0;
   const bool read  =
     installerReadUpTo(descriptor, (uint8_t *)content, sizeof(content), &total);
   close(descriptor);
-  return read && InstallationI.isExpectedUnit(content, total);
+  if (!read) {
+    fprintf(stderr, "[error] cannot read %s: %s\n", CONFIG_UNIT_PATH, strerror(errno));
+    return INSTALLER_ERROR_UNIT_READ_FAILED;
+  }
+  *matches = InstallationI.isExpectedUnit(content, total);
+  return INSTALLER_RESULT_OK;
 }
 
 /**
@@ -661,12 +897,14 @@ static InstallerResultCode installerDescribeInstalledVersion(
     return described;
   }
   if (trailCode == AUDIT_TRAIL_ERROR_NO_ENTRY) {
-    return installerFits(
-             snprintf(text, capacity, "not recorded in the Device Audit Trail (%s)", actual),
-             capacity
-           )
-           ? INSTALLER_RESULT_OK
-           : INSTALLER_ERROR_VERSION_TEXT_TOO_LONG;
+    if (!installerFits(
+          snprintf(text, capacity, "not recorded in the Device Audit Trail (%s)", actual),
+          capacity
+        )) {
+      fprintf(stderr, "[error] the installed version does not fit its text\n");
+      return INSTALLER_ERROR_UNRECORDED_VERSION_TEXT_TOO_LONG;
+    }
+    return INSTALLER_RESULT_OK;
   }
 
   InstallationBinaryDescription description;
@@ -696,8 +934,11 @@ static InstallerResultCode installerDescribeInstalledVersion(
           actual
         )
       : snprintf(text, capacity, "not recorded with the update (%s)", actual);
-  return installerFits(written, capacity) ? INSTALLER_RESULT_OK
-                                          : INSTALLER_ERROR_VERSION_TEXT_TOO_LONG;
+  if (!installerFits(written, capacity)) {
+    fprintf(stderr, "[error] the installed version does not fit its text\n");
+    return INSTALLER_ERROR_VERSION_TEXT_TOO_LONG;
+  }
+  return INSTALLER_RESULT_OK;
 }
 
 /** The Device identifier this build resolves, as the agent would. */
@@ -710,7 +951,10 @@ static InstallerResultCode installerReadDeviceIdentifier(char *identifier, const
     fprintf(stderr, "[error] cannot determine the Device identifier (%d)\n", configCode);
     return INSTALLER_ERROR_DEVICE_IDENTIFIER_UNKNOWN;
   }
-  snprintf(identifier, capacity, "%s", config.deviceIdentifier);
+  if (!installerFits(snprintf(identifier, capacity, "%s", config.deviceIdentifier), capacity)) {
+    fprintf(stderr, "[error] the Device identifier does not fit its buffer\n");
+    return INSTALLER_ERROR_DEVICE_IDENTIFIER_TOO_LONG;
+  }
   return INSTALLER_RESULT_OK;
 }
 
@@ -762,7 +1006,12 @@ static InstallerResultCode installerReportStatus(void) {
     return INSTALLER_ERROR_ENROLLMENT_UNREADABLE;
   }
 
-  const bool active = installerRunSystemctl("is-active", CONFIG_SERVICE_NAME);
+  bool                      active    = false;
+  const InstallerResultCode stateCode =
+    installerAskSystemctl(INSTALLER_SYSTEMCTL_IS_ACTIVE, &active);
+  if (stateCode != INSTALLER_RESULT_OK) {
+    return stateCode;
+  }
   printf("the Puppet is installed and intact; nothing was changed\n");
   printf("  installed version:  %s\n", version);
   printf("  service:            enabled, %s\n", active ? "active" : "not active");
@@ -775,15 +1024,23 @@ static InstallerResultCode installerReportStatus(void) {
 }
 
 static InstallerResultCode installerRun(const InstallerContext *context) {
-  bool binaryValid = false;
-  const InstallerResultCode checked = installerCheckBinary(context->executablePath, &binaryValid);
+  bool                binaryValid    = false;
+  bool                unitMatches    = false;
+  bool                serviceEnabled = false;
+  InstallerResultCode checked = installerCheckBinary(context->executablePath, &binaryValid);
+  if (checked == INSTALLER_RESULT_OK) {
+    checked = installerCheckUnit(&unitMatches);
+  }
+  if (checked == INSTALLER_RESULT_OK) {
+    checked = installerAskSystemctl(INSTALLER_SYSTEMCTL_IS_ENABLED, &serviceEnabled);
+  }
   if (checked != INSTALLER_RESULT_OK) {
     return checked;
   }
   const InstallationFacts facts = {
     .binaryValid    = binaryValid,
-    .unitMatches    = installerUnitMatches(),
-    .serviceEnabled = installerRunSystemctl("is-enabled", CONFIG_SERVICE_NAME),
+    .unitMatches    = unitMatches,
+    .serviceEnabled = serviceEnabled,
   };
   const InstallationRepairs repairs = InstallationI.diagnose(&facts);
   if (!InstallationI.needsRepair(&repairs)) {

@@ -63,7 +63,7 @@ typedef enum {
   INSTALLER_ERROR_DATA_DIRECTORY_FAILED = 8003,
   /** The binary's directory could not be created. */
   INSTALLER_ERROR_BINARY_DIRECTORY_FAILED = 8004,
-  /** The running executable could not be read. */
+  /** The running executable could not be opened to copy it. */
   INSTALLER_ERROR_BINARY_SOURCE_UNREADABLE = 8005,
   /** The copy of the binary could not be written. */
   INSTALLER_ERROR_BINARY_WRITE_FAILED = 8006,
@@ -113,7 +113,7 @@ typedef enum {
   INSTALLER_ERROR_USER_UNKNOWN = 8028,
   /** The arguments or the user name do not fit the command for `su`. */
   INSTALLER_ERROR_SU_COMMAND_TOO_LONG = 8029,
-  /** The running executable's header could not be read. */
+  /** The running executable could not be opened to read its header. */
   INSTALLER_ERROR_RUNNING_HEADER_UNREADABLE = 8030,
   /** The Device identifier could not be determined. */
   INSTALLER_ERROR_DEVICE_IDENTIFIER_UNKNOWN = 8032,
@@ -139,6 +139,52 @@ typedef enum {
   INSTALLER_ERROR_RESTART_FAILED = 8044,
   /** The restart's Audit Trail entry could not be written. */
   INSTALLER_ERROR_RESTART_AUDIT_FAILED = 8045,
+  /** A systemctl verb does not fit its argument buffer. */
+  INSTALLER_ERROR_SYSTEMCTL_VERB_TOO_LONG = 8046,
+  /** systemctl could not be started. */
+  INSTALLER_ERROR_SYSTEMCTL_SPAWN_FAILED = 8047,
+  /** Waiting for systemctl failed. */
+  INSTALLER_ERROR_SYSTEMCTL_WAIT_FAILED = 8048,
+  /** systemctl was killed before it answered. */
+  INSTALLER_ERROR_SYSTEMCTL_KILLED = 8049,
+  /** The running executable could not be read for its header. */
+  INSTALLER_ERROR_RUNNING_HEADER_READ_FAILED = 8050,
+  /** The running executable is shorter than an ELF header. */
+  INSTALLER_ERROR_RUNNING_HEADER_SHORT = 8051,
+  /** The installed binary exists but could not be opened. */
+  INSTALLER_ERROR_INSTALLED_BINARY_UNREADABLE = 8052,
+  /** The installed binary could not be read. */
+  INSTALLER_ERROR_INSTALLED_BINARY_READ_FAILED = 8053,
+  /** The unit exists but could not be opened. */
+  INSTALLER_ERROR_UNIT_UNREADABLE = 8054,
+  /** The unit could not be read. */
+  INSTALLER_ERROR_UNIT_READ_FAILED = 8055,
+  /** A leftover temporary binary could not be removed. */
+  INSTALLER_ERROR_BINARY_LEFTOVER_REMOVAL_FAILED = 8056,
+  /** The copy of the binary could not be made executable. */
+  INSTALLER_ERROR_BINARY_PERMISSIONS_FAILED = 8057,
+  /** The copy of the binary could not be flushed to disk. */
+  INSTALLER_ERROR_BINARY_SYNC_FAILED = 8058,
+  /** The copy of the binary could not be closed. */
+  INSTALLER_ERROR_BINARY_CLOSE_FAILED = 8059,
+  /** Reading the running executable failed partway through the copy. */
+  INSTALLER_ERROR_BINARY_SOURCE_READ_FAILED = 8060,
+  /** A leftover temporary unit could not be removed. */
+  INSTALLER_ERROR_UNIT_LEFTOVER_REMOVAL_FAILED = 8061,
+  /** The unit's temporary file could not be created. */
+  INSTALLER_ERROR_UNIT_CREATE_FAILED = 8062,
+  /** The unit could not be given its mode. */
+  INSTALLER_ERROR_UNIT_PERMISSIONS_FAILED = 8063,
+  /** The unit could not be flushed to disk. */
+  INSTALLER_ERROR_UNIT_SYNC_FAILED = 8064,
+  /** The unit's temporary file could not be closed. */
+  INSTALLER_ERROR_UNIT_CLOSE_FAILED = 8065,
+  /** The unit could not be moved into place. */
+  INSTALLER_ERROR_UNIT_REPLACE_FAILED = 8066,
+  /** The Device identifier does not fit its buffer. */
+  INSTALLER_ERROR_DEVICE_IDENTIFIER_TOO_LONG = 8067,
+  /** The description of a binary nobody recorded does not fit its text. */
+  INSTALLER_ERROR_UNRECORDED_VERSION_TEXT_TOO_LONG = 8068,
 } InstallerResultCode;
 
 /** Everything the Installation needs from the outside. Borrowed. */
