@@ -6,6 +6,7 @@
 #include "installation/installation.h"
 #include "lifecycle/lifecycle.h"
 #include "update/self-update.h"
+#include "watcher/watcher.h"
 
 #include <errno.h>
 #include <grp.h>
@@ -642,6 +643,47 @@ static InstallerResultCode installerReadInstalledVersion(char *version, const si
   return INSTALLER_RESULT_OK;
 }
 
+static bool installerServiceIsActive(void) {
+  return installerRunSystemctl("is-active", CONFIG_SERVICE_NAME);
+}
+
+/** The Device identifier this build resolves, as the agent would. */
+static InstallerResultCode installerReadDeviceIdentifier(char *identifier, const size_t capacity) {
+  ConfigSourceStorage    sourceStorage;
+  const ConfigSources    sources = ConfigI.readSources(&sourceStorage);
+  PuppetConfig           config;
+  const ConfigResultCode configCode = ConfigI.resolve(&sources, &config);
+  if (configCode != CONFIG_RESULT_OK) {
+    fprintf(stderr, "[error] cannot determine the Device identifier (%d)\n", configCode);
+    return INSTALLER_ERROR_DEVICE_IDENTIFIER_UNKNOWN;
+  }
+  snprintf(identifier, capacity, "%s", config.deviceIdentifier);
+  return INSTALLER_RESULT_OK;
+}
+
+/** After a repair: show the technician whether the agent comes up. */
+static InstallerResultCode installerWatchAgent(const char *since) {
+  char identifier[CONFIG_DEVICE_IDENTIFIER_CAPACITY];
+  const InstallerResultCode identifierCode =
+    installerReadDeviceIdentifier(identifier, sizeof(identifier));
+  if (identifierCode != INSTALLER_RESULT_OK) {
+    return identifierCode;
+  }
+  const WatcherInputs inputs = {
+    .since            = since,
+    .deviceIdentifier = identifier,
+  };
+  const WatcherResultCode watched = WatcherI.watch(&inputs);
+  if (watched == WATCHER_RESULT_OK) {
+    return INSTALLER_RESULT_OK;
+  }
+  if (watched == WATCHER_ERROR_TIMED_OUT) {
+    return INSTALLER_ERROR_WATCH_TIMED_OUT;
+  }
+  fprintf(stderr, "[error] cannot watch the agent (%d)\n", watched);
+  return INSTALLER_ERROR_WATCH_FAILED;
+}
+
 /** Everything is in place: say how it is, write nothing. */
 static InstallerResultCode installerReportStatus(void) {
   char version[INSTALLER_VERSION_CAPACITY];
@@ -650,13 +692,11 @@ static InstallerResultCode installerReportStatus(void) {
     return versionCode;
   }
 
-  ConfigSourceStorage    sourceStorage;
-  const ConfigSources    sources = ConfigI.readSources(&sourceStorage);
-  PuppetConfig           config;
-  const ConfigResultCode configCode = ConfigI.resolve(&sources, &config);
-  if (configCode != CONFIG_RESULT_OK) {
-    fprintf(stderr, "[error] cannot determine the Device identifier (%d)\n", configCode);
-    return INSTALLER_ERROR_DEVICE_IDENTIFIER_UNKNOWN;
+  char identifier[CONFIG_DEVICE_IDENTIFIER_CAPACITY];
+  const InstallerResultCode identifierCode =
+    installerReadDeviceIdentifier(identifier, sizeof(identifier));
+  if (identifierCode != INSTALLER_RESULT_OK) {
+    return identifierCode;
   }
 
   char enrollment[INSTALLER_ENROLLMENT_CAPACITY];
@@ -668,7 +708,7 @@ static InstallerResultCode installerReportStatus(void) {
     return INSTALLER_ERROR_ENROLLMENT_UNREADABLE;
   }
 
-  const bool active = installerRunSystemctl("is-active", CONFIG_SERVICE_NAME);
+  const bool active = installerServiceIsActive();
   printf("the Puppet is installed and intact; nothing was changed\n");
   printf("  installed version:  %s\n", version);
   printf("  service:            enabled, %s\n", active ? "active" : "not active");
@@ -676,7 +716,7 @@ static InstallerResultCode installerReportStatus(void) {
     "  enrollment:         %s\n",
     trailCode == AUDIT_TRAIL_RESULT_OK ? enrollment : "not recorded yet"
   );
-  printf("  device identifier:  %s\n", config.deviceIdentifier);
+  printf("  device identifier:  %s\n", identifier);
   return INSTALLER_RESULT_OK;
 }
 
@@ -708,7 +748,10 @@ static InstallerResultCode installerRun(const InstallerContext *context) {
       .identifier = bySudo ? context->sudoUser : INSTALLER_ROOT_USER,
     },
   };
-  return installerRepair(&run, &repairs);
+  char since[LIFECYCLE_TIMESTAMP_CAPACITY];
+  LifecycleI.formatUtcNow(since);
+  const InstallerResultCode repaired = installerRepair(&run, &repairs);
+  return repaired == INSTALLER_RESULT_OK ? installerWatchAgent(since) : repaired;
 }
 
 const struct InstallerType InstallerI = {

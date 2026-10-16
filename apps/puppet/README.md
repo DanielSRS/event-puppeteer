@@ -27,6 +27,7 @@ At startup the agent takes an exclusive, non-blocking `flock` on `/run/dsrs-pupp
 | 8           | The running executable's path could not be determined      |
 | 9           | Installing needs root and `sudo` or `su` could not be started |
 | 10          | An installation step failed; completed steps are in the trail |
+| 11          | The Device was not pending 60 s after the install or repair   |
 
 When `sudo` or `su` itself fails (wrong password, user not allowed) its own message and exit status (1) are what the technician sees.
 
@@ -139,9 +140,17 @@ When all three hold, `./puppet` prints a status summary (installed version, serv
 3. copies the running executable to `/opt/dsrs-puppet/puppet` when the binary is missing, not an ELF or for another architecture. **A valid installed binary is never replaced by a terminal run**, even when it differs from the running one: only self-update changes it, so an old copy on a USB stick cannot downgrade a Device;
 4. writes the unit when it is missing or differs, and reloads systemd;
 5. enables the service when it is not (checked again after the unit is restored, which usually restores it too), and starts it when it is stopped;
-6. prints what it changed.
+6. prints what it changed;
+7. watches the agent (below).
 
 Every change is appended to the Device Audit Trail with the technician (`SUDO_USER`, which the Puppet also sets for `su`) as "who", and before and after. Pieces that were already right are not recorded. A failure partway leaves the steps already done in the trail and attempts nothing more. From then on systemd runs the agent at boot, restarts it if it crashes and keeps it independent of any terminal.
+
+After a repair or install the terminal stays on as a read-only observer so the technician sees on site whether the Device works. It streams the `dsrs-puppet` service's journal lines live and finishes:
+
+- with a summary (connected to Puppeteer, waiting for approval, Device identifier) once the agent logs that the Device is pending (or already approved). The evidence is the agent's own log from the start of the watch: the store has no read-only mode, and a record in the Audit Trail could predate this run;
+- or after 60 seconds with the agent's last error (network, TLS, HTTP) and exit status 11. The service keeps retrying on its own.
+
+The terminal never takes the agent lock and never opens the agent's storage: the token, the feed and the Command queue are out of its reach. It only reads the journal. Closing the terminal while it streams ends the watch and nothing else, because the agent belongs to systemd. An intact Installation is not watched; it only prints the status summary.
 
 The installed version comes from running the installed binary with `--version`. The Enrollment state is read from the Audit Trail, so it is only as current as the last recorded change (an approval that happened while the agent was not running is not in it). A service that is stopped but enabled is reported in the summary and left alone.
 

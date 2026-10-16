@@ -11,7 +11,7 @@
  * - the systemd unit exists with exactly the expected content;
  * - the service is enabled.
  *
- * When all three hold, `run` prints a status summary (installed version,
+ * When all three hold, `run` does not watch the agent: it prints a status summary (installed version,
  * service state, last recorded Enrollment state, Device identifier) and
  * changes nothing, needing no password. Otherwise it repairs each diverging
  * piece on its own:
@@ -27,7 +27,10 @@
  *    an old copy cannot downgrade a Device;
  * 4. writes the unit when it is missing or differs, and reloads systemd;
  * 5. enables the service when it is not, and starts it when it is stopped;
- * 6. prints what it changed.
+ * 6. prints what it changed;
+ * 7. watches the agent (see `watcher.h`): streams its journal until the
+ *    Device is pending in Enrollment, or fails after 60 seconds with the
+ *    agent's last error. The service keeps retrying on its own.
  *
  * Every change appends one entry to the Device Audit Trail, with the local
  * user from `SUDO_USER` as "who", plus before and after. Nothing that was
@@ -125,6 +128,10 @@ typedef enum {
   INSTALLER_ERROR_VERSION_PIPE_FAILED = 8036,
   /** The installed binary answered with nothing, or failed. */
   INSTALLER_ERROR_VERSION_REPORT_INVALID = 8037,
+  /** The agent did not report the Device as pending in time. */
+  INSTALLER_ERROR_WATCH_TIMED_OUT = 8038,
+  /** Watching the agent failed (the watcher's code is printed). */
+  INSTALLER_ERROR_WATCH_FAILED = 8039,
 } InstallerResultCode;
 
 /** Everything the Installation needs from the outside. Borrowed. */

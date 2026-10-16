@@ -37,6 +37,12 @@
 #define PUPPET_AUDIT_TRAIL_IMPLEMENTATION
 #include "audit-trail/audit-trail.h"
 
+#define PUPPET_WATCH_IMPLEMENTATION
+#include "watch/watch.h"
+
+#define PUPPET_WATCHER_IMPLEMENTATION
+#include "watcher/watcher.h"
+
 #define PUPPET_INSTALLER_IMPLEMENTATION
 #include "installer/installer.h"
 
@@ -70,6 +76,8 @@ typedef enum {
   PUPPET_EXIT_SUDO_UNAVAILABLE        = 9,
   /** An installation step failed; the steps already done are in the trail. */
   PUPPET_EXIT_INSTALLATION_FAILED     = 10,
+  /** The agent did not report the Device pending within 60 seconds. */
+  PUPPET_EXIT_AGENT_NOT_PENDING       = 11,
 } PuppetExitStatus;
 
 static const char *configErrorDescription(const ConfigResultCode code) {
@@ -94,6 +102,8 @@ static PuppetExitStatus installerExitStatus(const InstallerResultCode code) {
   switch (code) {
   case INSTALLER_RESULT_OK:
     return PUPPET_EXIT_SUCCESS;
+  case INSTALLER_ERROR_WATCH_TIMED_OUT:
+    return PUPPET_EXIT_AGENT_NOT_PENDING;
   case INSTALLER_ERROR_SUDO_UNAVAILABLE:
   case INSTALLER_ERROR_SU_UNAVAILABLE:
     return PUPPET_EXIT_SUDO_UNAVAILABLE;
