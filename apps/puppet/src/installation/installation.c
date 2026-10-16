@@ -107,6 +107,24 @@ static bool installationAppendQuoted(
   return true;
 }
 
+static InstallationResultCode installationReadBinaryDescription(
+  const char *text, InstallationBinaryDescription *description
+) {
+  const char *digest = strstr(text, AUDIT_TRAIL_DIGEST_PREFIX);
+  if (digest == NULL) {
+    return INSTALLATION_ERROR_DESCRIPTION_WITHOUT_DIGEST;
+  }
+  /** The version and the digest are separated by one space. */
+  const bool hasVersion = digest > text + 1;
+  *description = (InstallationBinaryDescription){
+    .hasVersion    = hasVersion,
+    .version       = text,
+    .versionLength = hasVersion ? (size_t)(digest - text) - 1 : 0,
+    .digest        = digest,
+  };
+  return INSTALLATION_RESULT_OK;
+}
+
 /** Append a separator and `word` single-quoted; false when it does not fit. */
 static bool installationAppendWord(
   char *buffer, const size_t capacity, size_t *length, const char *word
@@ -150,5 +168,6 @@ const struct InstallationType InstallationI = {
   .needsRepair     = installationNeedsRepair,
   .isExpectedUnit  = installationIsExpectedUnit,
   .formatUnit      = installationFormatUnit,
-  .formatSuCommand = installationFormatSuCommand,
+  .readBinaryDescription = installationReadBinaryDescription,
+  .formatSuCommand       = installationFormatSuCommand,
 };

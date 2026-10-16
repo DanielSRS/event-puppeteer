@@ -20,14 +20,15 @@
 #define PUPPET_SELF_UPDATE_IMPLEMENTATION
 #include "update/self-update.h"
 
-#define PUPPET_INSTALLATION_IMPLEMENTATION
-#include "installation/installation.h"
-
 #define PUPPET_LIFECYCLE_IMPLEMENTATION
 #include "lifecycle/lifecycle.h"
 
 #define PUPPET_AUDIT_TRAIL_IMPLEMENTATION
 #include "audit-trail/audit-trail.h"
+
+/** After the Audit Trail, whose names its rules read. */
+#define PUPPET_INSTALLATION_IMPLEMENTATION
+#include "installation/installation.h"
 
 #define PUPPET_WATCH_IMPLEMENTATION
 #include "watch/watch.h"

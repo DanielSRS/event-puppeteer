@@ -36,10 +36,10 @@ When `sudo` or `su` itself fails (wrong password, user not allowed) its own mess
 Every change the agent makes to the Device is appended to `/var/lib/dsrs-puppet/audit-trail.jsonl`, one JSON object per line with `when`, `who`, `what`, `before` and `after`:
 
 ```json
-{"when":"2026-01-02T03:04:05Z","who":{"kind":"command","identifier":"<command id>"},"what":"self-update","before":"0.0.1","after":"0.0.2 sha256:<hex>"}
+{"when":"2026-01-02T03:04:05Z","who":{"kind":"command","identifier":"<command id>"},"what":"binary","before":"0.0.1","after":"0.0.2 sha256:<hex>"}
 ```
 
-`who` is `agent` (no identifier), `command` (the Puppeteer Command id) or `user` (a local operating-system user, for the Installation). The agent records Enrollment changes, every executed Command with its result, self-updates, and reboots and power-offs before they are triggered. The file is only ever appended to, concurrent writers produce separate intact lines, and a failed write is logged as an error without stopping the work. Resuming stored credentials is not an Enrollment change, so a restart records nothing by itself.
+`who` is `agent` (no identifier), `command` (the Puppeteer Command id) or `user` (a local operating-system user, for the Installation). The agent records Enrollment changes, every executed Command with its result, self-updates (as a change of the `binary`, like the Installation, so the latest `binary` entry always describes what is installed), and reboots and power-offs before they are triggered. The file is only ever appended to, concurrent writers produce separate intact lines, and a failed write is logged as an error without stopping the work. Resuming stored credentials is not an Enrollment change, so a restart records nothing by itself.
 
 Connection failures back off exponentially (5 s up to 5 min, with jitter). `SIGTERM`, `SIGINT` and `SIGHUP` shut it down gracefully.
 
@@ -152,7 +152,7 @@ After a repair or install the terminal stays on as a read-only observer so the t
 
 The terminal never takes the agent lock and never opens the agent's storage: the token, the feed and the Command queue are out of its reach. It only reads the journal. Closing the terminal while it streams ends the watch and nothing else, because the agent belongs to systemd. An intact Installation is not watched; it only prints the status summary.
 
-The installed version comes from running the installed binary with `--version`. The Enrollment state is read from the Audit Trail, so it is only as current as the last recorded change (an approval that happened while the agent was not running is not in it). A service that is stopped but enabled is reported in the summary and left alone.
+The installed version is the one the Audit Trail last recorded for the `binary`, checked against the SHA-256 of the binary actually installed: a binary nobody recorded, or one replaced outside the Puppet, is reported as such instead of a version. The Enrollment state is read from the Audit Trail, so it is only as current as the last recorded change (an approval that happened while the agent was not running is not in it). A service that is stopped but enabled is reported in the summary and left alone.
 
 Which role a process plays is decided from how it was started: the **agent** is only the process systemd starts (`INVOCATION_ID` set) from `/opt/dsrs-puppet/puppet`; every other run is a **terminal** that installs, repairs or reports, and never becomes the agent.
 

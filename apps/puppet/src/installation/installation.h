@@ -17,6 +17,7 @@
 #ifndef PUPPET_INSTALLATION_H_
 #define PUPPET_INSTALLATION_H_
 
+#include "audit-trail/audit-trail.h"
 #include "config/config.h"
 
 #include <stdbool.h>
@@ -31,6 +32,9 @@
 typedef enum {
   INSTALLATION_RESULT_OK = 0,
 
+  /** A binary's description in the trail has no digest. */
+  INSTALLATION_ERROR_DESCRIPTION_WITHOUT_DIGEST = 7003,
+
   /** The unit does not fit the buffer. */
   INSTALLATION_ERROR_UNIT_BUFFER_TOO_SMALL = 7001,
 
@@ -44,6 +48,18 @@ typedef enum {
   /** Run by a person, from wherever the binary happens to be. */
   INSTALLATION_ROLE_TERMINAL,
 } InstallationRole;
+
+/**
+ * How the Device Audit Trail describes the installed binary: the version,
+ * when one is known, and the digest text (`sha256:<hex>`). Both point into
+ * the description they were read from.
+ */
+typedef struct {
+  bool        hasVersion;
+  const char *version;
+  size_t      versionLength;
+  const char *digest;
+} InstallationBinaryDescription;
 
 /** What the system says about the three pieces of the Installation. */
 typedef struct {
@@ -119,6 +135,18 @@ struct InstallationType {
    * @param capacity  At least `INSTALLATION_UNIT_CAPACITY`.
    */
   InstallationResultCode (*const formatUnit)(char *buffer, size_t capacity);
+
+  /**
+   * Split the `after` of the latest "binary" entry of the trail, written as
+   * "<version> sha256:<hex>" or, for an update without a version, as
+   * "sha256:<hex>".
+   *
+   * @return `INSTALLATION_RESULT_OK`, or
+   *         `INSTALLATION_ERROR_DESCRIPTION_WITHOUT_DIGEST`.
+   */
+  InstallationResultCode (*const readBinaryDescription)(
+    const char *text, InstallationBinaryDescription *description
+  );
 
   /**
    * Write the shell command `su -c` runs as root: it sets `SUDO_USER` to

@@ -31,11 +31,12 @@
 #define PUPPET_SELF_UPDATE_IMPLEMENTATION
 #include "update/self-update.h"
 
-#define PUPPET_INSTALLATION_IMPLEMENTATION
-#include "installation/installation.h"
-
 #define PUPPET_AUDIT_TRAIL_IMPLEMENTATION
 #include "audit-trail/audit-trail.h"
+
+/** After the Audit Trail, whose names its rules read. */
+#define PUPPET_INSTALLATION_IMPLEMENTATION
+#include "installation/installation.h"
 
 #define PUPPET_WATCH_IMPLEMENTATION
 #include "watch/watch.h"
@@ -56,7 +57,6 @@
 #include "agent/agent.h"
 
 #include <stdio.h>
-#include <string.h>
 
 /** Process exit statuses, distinct per failure so supervisors can tell. */
 typedef enum {
@@ -115,12 +115,6 @@ static PuppetExitStatus installerExitStatus(const InstallerResultCode code) {
 }
 
 int main(const int argumentCount, char *argumentValues[]) {
-  /** The Installation asks the installed binary which version it is. */
-  if (argumentCount == 2 && strcmp(argumentValues[1], INSTALLER_VERSION_OPTION) == 0) {
-    printf("%s\n", PUPPET_VERSION);
-    return PUPPET_EXIT_SUCCESS;
-  }
-
   /**
    * Resolved now: once an update replaces the binary, the kernel no
    * longer reports its original path.

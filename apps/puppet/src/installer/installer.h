@@ -11,9 +11,12 @@
  * - the systemd unit exists with exactly the expected content;
  * - the service is enabled.
  *
- * When all three hold, `run` does not watch the agent: it prints a status summary (installed version,
- * service state, last recorded Enrollment state, Device identifier) and
- * changes nothing, needing no password. Otherwise it repairs each diverging
+ * When all three hold, `run` does not watch the agent: it prints a status
+ * summary and changes nothing, needing no password. The summary reads the
+ * Device Audit Trail: the installed version is the one last recorded for
+ * the binary, checked against the installed binary's digest, and the
+ * Enrollment state is the last one recorded. The service state and the
+ * Device identifier come from the system. Otherwise it repairs each diverging
  * piece on its own:
  *
  * 1. re-runs the Puppet as root, with the same arguments, when it is not:
@@ -46,12 +49,6 @@
 #define PUPPET_INSTALLER_H_
 
 #include <stddef.h>
-
-/**
- * The option that makes the Puppet print its version and exit. The
- * Installation passes it to the installed binary to report the version.
- */
-#define INSTALLER_VERSION_OPTION "--version"
 
 typedef enum {
   INSTALLER_RESULT_OK = 0,
@@ -116,8 +113,6 @@ typedef enum {
   INSTALLER_ERROR_SU_COMMAND_TOO_LONG = 8029,
   /** The running executable's header could not be read. */
   INSTALLER_ERROR_RUNNING_HEADER_UNREADABLE = 8030,
-  /** The installed binary could not be started. */
-  INSTALLER_ERROR_VERSION_UNKNOWN = 8031,
   /** The Device identifier could not be determined. */
   INSTALLER_ERROR_DEVICE_IDENTIFIER_UNKNOWN = 8032,
   /** The Audit Trail exists but could not be read. */
@@ -126,16 +121,18 @@ typedef enum {
   INSTALLER_ERROR_PREVIOUS_CONTENT_READ_FAILED = 8034,
   /** The digest of the file about to be replaced does not fit its text. */
   INSTALLER_ERROR_PREVIOUS_CONTENT_TEXT_TOO_LONG = 8035,
-  /** The pipe to read the installed binary's version could not be made. */
-  INSTALLER_ERROR_VERSION_PIPE_FAILED = 8036,
-  /** The installed binary answered with nothing, or failed. */
-  INSTALLER_ERROR_VERSION_REPORT_INVALID = 8037,
   /** The agent did not report the Device as pending in time. */
   INSTALLER_ERROR_WATCH_TIMED_OUT = 8038,
   /** Watching the agent failed (the watcher's code is printed). */
   INSTALLER_ERROR_WATCH_FAILED = 8039,
   /** `sudo` accepted the user but could not replace this process. */
   INSTALLER_ERROR_SUDO_EXEC_FAILED = 8040,
+  /** The trail exists but its binary entries could not be read. */
+  INSTALLER_ERROR_BINARY_RECORD_UNREADABLE = 8041,
+  /** The binary's latest entry in the trail has no digest. */
+  INSTALLER_ERROR_BINARY_RECORD_WITHOUT_DIGEST = 8042,
+  /** The installed version's description does not fit its text. */
+  INSTALLER_ERROR_VERSION_TEXT_TOO_LONG = 8043,
 } InstallerResultCode;
 
 /** Everything the Installation needs from the outside. Borrowed. */

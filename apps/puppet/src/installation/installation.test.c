@@ -225,6 +225,34 @@ static void installationRejectsASuCommandThatDoesNotFit(TestContext *context) {
   );
 }
 
+static void installationReadsTheBinaryDescription(TestContext *context) {
+  InstallationBinaryDescription description;
+
+  EXPECT(
+    context,
+    InstallationI.readBinaryDescription("0.0.2 sha256:ab12", &description)
+      == INSTALLATION_RESULT_OK
+  );
+  EXPECT(context, description.hasVersion);
+  EXPECT(context, description.versionLength == 5);
+  EXPECT(context, strncmp(description.version, "0.0.2", description.versionLength) == 0);
+  EXPECT(context, strcmp(description.digest, "sha256:ab12") == 0);
+
+  EXPECT(
+    context,
+    InstallationI.readBinaryDescription("sha256:ab12", &description)
+      == INSTALLATION_RESULT_OK
+  );
+  EXPECT(context, !description.hasVersion);
+  EXPECT(context, strcmp(description.digest, "sha256:ab12") == 0);
+
+  EXPECT(
+    context,
+    InstallationI.readBinaryDescription("0.0.2", &description)
+      == INSTALLATION_ERROR_DESCRIPTION_WITHOUT_DIGEST
+  );
+}
+
 static const TestCase INSTALLATION_TEST_CASES[] = {
   {"runs the agent when systemd starts the installed binary", installationRunsTheAgentUnderSystemd},
   {"never makes a terminal run the agent", installationNeverMakesATerminalTheAgent},
@@ -237,6 +265,7 @@ static const TestCase INSTALLATION_TEST_CASES[] = {
   {"rejects a unit that does not fit instead of truncating", installationRejectsAUnitThatDoesNotFit},
   {"hands the technician's name to root through su", installationSetsTheTechnicianForRoot},
   {"keeps the arguments through su", installationKeepsTheArgumentsThroughSu},
+  {"reads the binary's description from the trail", installationReadsTheBinaryDescription},
   {"quotes the path and the name for the shell", installationQuotesWhatTheShellWouldInterpret},
   {"rejects a su command that does not fit instead of truncating", installationRejectsASuCommandThatDoesNotFit},
 };
