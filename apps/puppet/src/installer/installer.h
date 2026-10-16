@@ -5,8 +5,10 @@
  * Run by a person as `./puppet`, with no arguments. On a Device with nothing
  * installed, `run`:
  *
- * 1. re-runs the Puppet through `sudo` when not root (the technician types
- *    the password), failing explicitly when `sudo` is missing or denied;
+ * 1. re-runs the Puppet as root when it is not: through `sudo` for a user in
+ *    the `sudo` or `wheel` group (their own password), through `su` for any
+ *    other user (the root password). It fails explicitly when the chosen
+ *    program is missing or refuses;
  * 2. creates the data directory;
  * 3. copies the running executable to `CONFIG_BINARY_PATH`;
  * 4. writes the systemd unit (see `installation.h`);
@@ -81,6 +83,14 @@ typedef enum {
   INSTALLER_ERROR_ENABLE_AUDIT_FAILED = 8024,
   /** The service state's Audit Trail entry could not be written. */
   INSTALLER_ERROR_STATE_AUDIT_FAILED = 8025,
+  /** `su` could not be started. The wrong password is `su`'s own error. */
+  INSTALLER_ERROR_SU_UNAVAILABLE = 8026,
+  /** The user's groups could not be read, so the way to elevate is unknown. */
+  INSTALLER_ERROR_GROUPS_UNREADABLE = 8027,
+  /** The name of the user running the Puppet is unknown (needed for `su`). */
+  INSTALLER_ERROR_USER_UNKNOWN = 8028,
+  /** The executable path or user name does not fit the command for `su`. */
+  INSTALLER_ERROR_SU_COMMAND_TOO_LONG = 8029,
 } InstallerResultCode;
 
 /** Everything the Installation needs from the outside. Borrowed. */
@@ -88,7 +98,7 @@ typedef struct {
   /** Absolute path of the running executable: what gets installed. */
   const char *executablePath;
 
-  /** `SUDO_USER`, or NULL when the Puppet was not started through sudo. */
+  /** `SUDO_USER` (also set by the `su` command), or NULL when unset. */
   const char *sudoUser;
 
   /** Version of this build, recorded with the binary. */
@@ -101,7 +111,7 @@ struct InstallerType {
    *
    * Messages go to the terminal: what was changed on success, the reason on
    * failure. When not root this does not return on success: the process
-   * is replaced by `sudo`, which runs the Puppet again as root.
+   * is replaced by `sudo` or `su`, which runs the Puppet again as root.
    *
    * @return `INSTALLER_RESULT_OK` when the Installation is complete (done
    *         now or before), otherwise the code of the step that failed.

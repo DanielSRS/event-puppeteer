@@ -65,7 +65,7 @@ typedef enum {
   PUPPET_EXIT_AGENT_LOCK_UNAVAILABLE  = 7,
   /** The running executable's path could not be determined. */
   PUPPET_EXIT_EXECUTABLE_UNKNOWN      = 8,
-  /** Installing needs root and `sudo` could not be started. */
+  /** Installing needs root and `sudo` or `su` could not be started. */
   PUPPET_EXIT_SUDO_UNAVAILABLE        = 9,
   /** Only part of the Installation exists; nothing was changed. */
   PUPPET_EXIT_PARTIAL_INSTALLATION    = 10,
@@ -96,6 +96,7 @@ static PuppetExitStatus installerExitStatus(const InstallerResultCode code) {
   case INSTALLER_RESULT_OK:
     return PUPPET_EXIT_SUCCESS;
   case INSTALLER_ERROR_SUDO_UNAVAILABLE:
+  case INSTALLER_ERROR_SU_UNAVAILABLE:
     return PUPPET_EXIT_SUDO_UNAVAILABLE;
   case INSTALLER_ERROR_PARTIAL_INSTALLATION:
     return PUPPET_EXIT_PARTIAL_INSTALLATION;

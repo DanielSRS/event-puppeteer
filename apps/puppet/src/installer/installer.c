@@ -6,7 +6,9 @@
 #include "lifecycle/lifecycle.h"
 
 #include <errno.h>
+#include <grp.h>
 #include <fcntl.h>
+#include <pwd.h>
 #include <spawn.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -19,6 +21,10 @@
 extern char **environ;
 
 #define INSTALLER_SUDO_PROGRAM       "sudo"
+#define INSTALLER_SU_PROGRAM         "su"
+#define INSTALLER_SU_COMMAND_OPTION  "-c"
+#define INSTALLER_GROUP_CAPACITY     ((size_t)64)
+#define INSTALLER_GROUP_NAME_CAPACITY ((size_t)64)
 #define INSTALLER_SYSTEMCTL_PROGRAM  "systemctl"
 #define INSTALLER_TEMPORARY_SUFFIX   ".installing"
 #define INSTALLER_PATH_CAPACITY      ((size_t)512)
@@ -75,7 +81,7 @@ static bool installerFits(const int32_t written, const size_t capacity) {
 }
 
 /** `sudo <this executable>`: replaces the process, so only failure returns. */
-static InstallerResultCode installerElevate(const char *executablePath) {
+static InstallerResultCode installerElevateWithSudo(const char *executablePath) {
   char sudo[]  = INSTALLER_SUDO_PROGRAM;
   char path[INSTALLER_PATH_CAPACITY];
   if (!installerFits(
@@ -92,6 +98,89 @@ static InstallerResultCode installerElevate(const char *executablePath) {
     strerror(errno)
   );
   return INSTALLER_ERROR_SUDO_UNAVAILABLE;
+}
+
+/**
+ * `su -c <command> root`: replaces the process, so only failure returns. The
+ * command sets `SUDO_USER` so the Audit Trail names the technician.
+ */
+static InstallerResultCode installerElevateWithSu(
+  const char *executablePath, const char *userName
+) {
+  char command[INSTALLATION_SU_COMMAND_CAPACITY];
+  if (InstallationI.formatSuCommand(command, sizeof(command), executablePath, userName)
+      != INSTALLATION_RESULT_OK) {
+    fprintf(stderr, "[error] the executable path or user name is too long to hand to su\n");
+    return INSTALLER_ERROR_SU_COMMAND_TOO_LONG;
+  }
+  char  su[]     = INSTALLER_SU_PROGRAM;
+  char  option[] = INSTALLER_SU_COMMAND_OPTION;
+  char  root[]   = INSTALLER_ROOT_USER;
+  char *const arguments[] = {su, option, command, root, NULL};
+  execvp(INSTALLER_SU_PROGRAM, arguments);
+  fprintf(
+    stderr,
+    "[error] installing needs root, and su could not be started: %s\n",
+    strerror(errno)
+  );
+  return INSTALLER_ERROR_SU_UNAVAILABLE;
+}
+
+/** Names of the groups the process belongs to, copied out of getgrgid's buffer. */
+static InstallerResultCode installerReadGroupNames(
+  char        names[][INSTALLER_GROUP_NAME_CAPACITY],
+  size_t     *count
+) {
+  gid_t       groupIdentifiers[INSTALLER_GROUP_CAPACITY];
+  const int32_t groupTotal = getgroups((int)INSTALLER_GROUP_CAPACITY, groupIdentifiers);
+  if (groupTotal < 0) {
+    fprintf(stderr, "[error] cannot read the user's groups: %s\n", strerror(errno));
+    return INSTALLER_ERROR_GROUPS_UNREADABLE;
+  }
+  size_t found = 0;
+  for (int32_t index = 0; index < groupTotal; index++) {
+    const struct group *entry = getgrgid(groupIdentifiers[index]);
+    if (entry == NULL
+        || !installerFits(
+             snprintf(names[found], INSTALLER_GROUP_NAME_CAPACITY, "%s", entry->gr_name),
+             INSTALLER_GROUP_NAME_CAPACITY
+           )) {
+      continue;
+    }
+    found++;
+  }
+  *count = found;
+  return INSTALLER_RESULT_OK;
+}
+
+/** Become root the way this user can: `sudo` in an administrative group, else `su`. */
+static InstallerResultCode installerElevate(const char *executablePath) {
+  char   groupNames[INSTALLER_GROUP_CAPACITY][INSTALLER_GROUP_NAME_CAPACITY];
+  const char *groupPointers[INSTALLER_GROUP_CAPACITY];
+  size_t groupCount = 0;
+  const InstallerResultCode groupsCode = installerReadGroupNames(groupNames, &groupCount);
+  if (groupsCode != INSTALLER_RESULT_OK) {
+    return groupsCode;
+  }
+  for (size_t index = 0; index < groupCount; index++) {
+    groupPointers[index] = groupNames[index];
+  }
+
+  if (InstallationI.chooseElevation(groupPointers, groupCount)
+      == INSTALLATION_ELEVATION_SUDO) {
+    printf("installing needs root: using sudo (type your password)\n");
+    fflush(stdout);
+    return installerElevateWithSudo(executablePath);
+  }
+
+  const struct passwd *user = getpwuid(getuid());
+  if (user == NULL) {
+    fprintf(stderr, "[error] cannot find the name of the user running the Puppet\n");
+    return INSTALLER_ERROR_USER_UNKNOWN;
+  }
+  printf("installing needs root: you are not in the sudo or wheel group, using su (type the root password)\n");
+  fflush(stdout);
+  return installerElevateWithSu(executablePath, user->pw_name);
 }
 
 static bool installerRunSystemctl(const char *verb, const char *argument) {

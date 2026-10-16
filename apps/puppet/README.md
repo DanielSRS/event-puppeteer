@@ -25,11 +25,11 @@ At startup the agent takes an exclusive, non-blocking `flock` on `/run/dsrs-pupp
 | 6           | Another agent already holds the lock                       |
 | 7           | The lock could not be opened or locked at all              |
 | 8           | The running executable's path could not be determined      |
-| 9           | Installing needs root and `sudo` could not be started      |
+| 9           | Installing needs root and `sudo` or `su` could not be started |
 | 10          | The Installation is incomplete; nothing was changed        |
 | 11          | An installation step failed; completed steps are in the trail |
 
-When `sudo` itself fails (no password available, wrong password) its own message and exit status (1) are what the technician sees.
+When `sudo` or `su` itself fails (wrong password, user not allowed) its own message and exit status (1) are what the technician sees.
 
 ### Device Audit Trail
 
@@ -73,7 +73,7 @@ Displaying events on screen is not implemented yet. The feed is stored under the
 
 ## Configuration
 
-The Puppet is configured only when it is built (ADR-0001) and reads no environment variables for configuration. The only two it reads, `INVOCATION_ID` (set by systemd) and `SUDO_USER` (set by sudo), say who started the process.
+The Puppet is configured only when it is built (ADR-0001) and reads no environment variables for configuration. The only two it reads, `INVOCATION_ID` (set by systemd) and `SUDO_USER` (set by sudo, or by the Puppet itself when it uses `su`), say who started the process.
 
 **Puppeteer's URL** is given to CMake and baked into the binary. Configuring fails when it is missing or is not an `http://` or `https://` URL:
 
@@ -129,14 +129,14 @@ The Puppet installs itself (ADR-0001). Copy the one binary to the Device and run
 
 On a Device with nothing installed it:
 
-1. re-runs itself through `sudo`, which asks for the password (it fails with a clear error, changing nothing, when `sudo` is missing or the password is wrong);
+1. re-runs itself as root, saying which way: through `sudo` (your own password) when your user is in the `sudo` or `wheel` group, otherwise through `su` (the root password), so a user outside the sudo group can install too. It fails with a clear error, changing nothing, when the program is missing or the password is wrong. A Device whose root account is locked has no root password, so `su` cannot work there: install from a user in the `sudo` group;
 2. creates `/var/lib/dsrs-puppet`;
 3. copies the running executable to `/opt/dsrs-puppet/puppet`;
 4. writes `/etc/systemd/system/dsrs-puppet.service`: it waits for `network-online.target`, runs as root, uses `Restart=always` and is `WantedBy=multi-user.target`;
 5. reloads systemd, then enables and starts `dsrs-puppet.service`;
 6. prints what it changed.
 
-Every change is appended to the Device Audit Trail with the technician (`SUDO_USER`) as "who". A failure partway leaves the steps already done in the trail and attempts nothing more. From then on systemd runs the agent at boot, restarts it if it crashes and keeps it independent of any terminal.
+Every change is appended to the Device Audit Trail with the technician (`SUDO_USER`, which the Puppet also sets for `su`) as "who". A failure partway leaves the steps already done in the trail and attempts nothing more. From then on systemd runs the agent at boot, restarts it if it crashes and keeps it independent of any terminal.
 
 Which role a process plays is decided from how it was started: the **agent** is only the process systemd starts (`INVOCATION_ID` set) from `/opt/dsrs-puppet/puppet`; every other run is a **terminal** that installs and never becomes the agent. Running `./puppet` when the binary and the unit both exist changes nothing and does not check the service. Repairing a diverging Installation is not implemented yet: it is refused with exit status 10.
 
