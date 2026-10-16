@@ -11,8 +11,11 @@
  * - it never takes the agent lock and never opens the agent's storage (so
  *   the token, the feed and the Command queue are out of its reach);
  * - the Enrollment state is what the agent logs about it, from the start of
- *   the watch on: the MMKV wrapper has no read-only mode, and a record in
- *   the Audit Trail could predate this run;
+ *   the watch on (see `agent-log.h`). A stored record (credentials in the
+ *   store, an entry in the Audit Trail) could predate this run and says
+ *   nothing about whether the agent reaches Puppeteer now. The repair always
+ *   (re)starts the agent, and a started agent always logs where its
+ *   Enrollment stands, so this evidence always comes;
  * - it only reads the journal. Closing the terminal ends the watch and
  *   nothing else: the agent belongs to systemd.
  *
@@ -36,6 +39,18 @@ typedef enum {
   WATCHER_ERROR_PIPE_FLAGS_FAILED = 9005,
   /** `journalctl` ended on its own. */
   WATCHER_ERROR_JOURNAL_ENDED = 9006,
+  /** Reading the journal failed. */
+  WATCHER_ERROR_READ_FAILED = 9007,
+  /** The start of the watch does not fit `journalctl`'s argument. */
+  WATCHER_ERROR_SINCE_TOO_LONG = 9008,
+  /** The actions for starting `journalctl` could not be prepared. */
+  WATCHER_ERROR_SPAWN_SETUP_FAILED = 9009,
+  /** `journalctl`'s output could not be redirected to the pipe. */
+  WATCHER_ERROR_REDIRECT_FAILED = 9010,
+  /** `journalctl` could not be stopped. */
+  WATCHER_ERROR_STOP_FAILED = 9011,
+  /** Waiting for the stopped `journalctl` failed. */
+  WATCHER_ERROR_REAP_FAILED = 9012,
 } WatcherResultCode;
 
 /** Everything the watch needs from the outside. Strings are borrowed. */
@@ -45,7 +60,6 @@ typedef struct {
 
   /** Shown in the summary. */
   const char *deviceIdentifier;
-
 } WatcherInputs;
 
 struct WatcherType {
@@ -54,8 +68,7 @@ struct WatcherType {
    *
    * Prints the log lines as they come, then the summary (connected to
    * Puppeteer, waiting for approval or approved, Device identifier) on
-   * success. On
-   * `WATCHER_ERROR_TIMED_OUT` it prints the agent's last error line instead;
+   * success. On `WATCHER_ERROR_TIMED_OUT` it prints the agent's last error line instead;
    * the service keeps retrying on its own.
    *
    * @return `WATCHER_RESULT_OK`, or the code of what went wrong.
