@@ -25,12 +25,26 @@
 /** Room for the unit file's content. */
 #define INSTALLATION_UNIT_CAPACITY ((size_t)1024)
 
+/** Room for the command `su -c` hands to root's shell. */
+#define INSTALLATION_SU_COMMAND_CAPACITY ((size_t)1024)
+
 typedef enum {
   INSTALLATION_RESULT_OK = 0,
 
   /** The unit does not fit the buffer. */
   INSTALLATION_ERROR_UNIT_BUFFER_TOO_SMALL = 7001,
+
+  /** The command for `su` does not fit the buffer. */
+  INSTALLATION_ERROR_SU_COMMAND_TOO_LONG = 7002,
 } InstallationResultCode;
+
+/** How a technician becomes root to install. */
+typedef enum {
+  /** The technician's own password, through `sudo`. */
+  INSTALLATION_ELEVATION_SUDO = 1,
+  /** The root password, through `su`. */
+  INSTALLATION_ELEVATION_SU,
+} InstallationElevation;
 
 typedef enum {
   /** Started by systemd from the installed binary. */
@@ -86,6 +100,30 @@ struct InstallationType {
    * @param capacity  At least `INSTALLATION_UNIT_CAPACITY`.
    */
   InstallationResultCode (*const formatUnit)(char *buffer, size_t capacity);
+
+  /**
+   * `sudo` for a user in the `sudo` or `wheel` group (the groups Debian and
+   * Fedora grant it to), `su` for anyone else.
+   *
+   * @param groupNames  Names of the groups the user belongs to.
+   */
+  InstallationElevation (*const chooseElevation)(
+    const char *const *groupNames, size_t groupCount
+  );
+
+  /**
+   * Write the shell command `su -c` runs as root: it sets `SUDO_USER` to
+   * `userName`, so the Audit Trail names the technician as it does under
+   * `sudo`, and runs `executablePath`. Both are single-quoted for the shell.
+   *
+   * @param capacity  At least `INSTALLATION_SU_COMMAND_CAPACITY`.
+   */
+  InstallationResultCode (*const formatSuCommand)(
+    char       *buffer,
+    size_t      capacity,
+    const char *executablePath,
+    const char *userName
+  );
 };
 
 extern const struct InstallationType InstallationI;

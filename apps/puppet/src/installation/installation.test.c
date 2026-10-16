@@ -104,12 +104,67 @@ static void installationRejectsAUnitThatDoesNotFit(TestContext *context) {
   );
 }
 
+static void installationUsesSudoForAnAdministrativeGroupMember(TestContext *context) {
+  const char *const sudoGroups[]  = {"users", "sudo"};
+  const char *const wheelGroups[] = {"wheel"};
+
+  EXPECT(context, InstallationI.chooseElevation(sudoGroups, 2) == INSTALLATION_ELEVATION_SUDO);
+  EXPECT(context, InstallationI.chooseElevation(wheelGroups, 1) == INSTALLATION_ELEVATION_SUDO);
+}
+
+static void installationUsesSuForAnyoneElse(TestContext *context) {
+  const char *const lookalikes[] = {"users", "sudoers", "Sudo", "wheels"};
+
+  EXPECT(context, InstallationI.chooseElevation(lookalikes, 4) == INSTALLATION_ELEVATION_SU);
+  EXPECT(context, InstallationI.chooseElevation(lookalikes, 0) == INSTALLATION_ELEVATION_SU);
+}
+
+static void installationSetsTheTechnicianForRoot(TestContext *context) {
+  char command[INSTALLATION_SU_COMMAND_CAPACITY];
+
+  EXPECT(
+    context,
+    InstallationI.formatSuCommand(command, sizeof(command), "/home/ana/puppet", "ana")
+      == INSTALLATION_RESULT_OK
+  );
+  EXPECT(context, strcmp(command, "SUDO_USER='ana' '/home/ana/puppet'") == 0);
+}
+
+static void installationQuotesWhatTheShellWouldInterpret(TestContext *context) {
+  char command[INSTALLATION_SU_COMMAND_CAPACITY];
+
+  EXPECT(
+    context,
+    InstallationI.formatSuCommand(command, sizeof(command), "/tmp/o'; rm -rf x/puppet", "a b")
+      == INSTALLATION_RESULT_OK
+  );
+  EXPECT(
+    context,
+    strcmp(command, "SUDO_USER='a b' '/tmp/o'\\''; rm -rf x/puppet'") == 0
+  );
+}
+
+static void installationRejectsASuCommandThatDoesNotFit(TestContext *context) {
+  char command[16];
+
+  EXPECT(
+    context,
+    InstallationI.formatSuCommand(command, sizeof(command), "/home/ana/puppet", "ana")
+      == INSTALLATION_ERROR_SU_COMMAND_TOO_LONG
+  );
+}
+
 static const TestCase INSTALLATION_TEST_CASES[] = {
   {"runs the agent when systemd starts the installed binary", installationRunsTheAgentUnderSystemd},
   {"never makes a terminal run the agent", installationNeverMakesATerminalTheAgent},
   {"classifies what is installed", installationClassifiesWhatIsInstalled},
   {"writes the expected unit", installationWritesTheExpectedUnit},
   {"rejects a unit that does not fit instead of truncating", installationRejectsAUnitThatDoesNotFit},
+  {"uses sudo for members of an administrative group", installationUsesSudoForAnAdministrativeGroupMember},
+  {"uses su for everyone else", installationUsesSuForAnyoneElse},
+  {"hands the technician's name to root through su", installationSetsTheTechnicianForRoot},
+  {"quotes the path and the name for the shell", installationQuotesWhatTheShellWouldInterpret},
+  {"rejects a su command that does not fit instead of truncating", installationRejectsASuCommandThatDoesNotFit},
 };
 
 static const TestSuite InstallationTestSuite = {
