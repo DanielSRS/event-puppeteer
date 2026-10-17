@@ -2,7 +2,6 @@ import { Elysia, t, type ElysiaAdapter } from 'elysia';
 import { openapi } from '@elysiajs/openapi';
 import type { AppIO } from './io/index.ts';
 import { healthCheck } from './handlers/health.ts';
-import { holdTestHandler } from './handlers/hold-test.ts';
 import {
   createOrganizationHandler,
   getOrganizationHandler,
@@ -199,19 +198,6 @@ export function createServer(io: AppIO, { adapter, appUrl = 'http://localhost:30
           status: t.Literal('ok')
         }),
         detail: { tags: ['Health'], summary: 'Health check' }
-      }
-    )
-    .get(
-      '/hold-test',
-      ({ request, query, io }) => holdTestHandler(request, query.seconds, io),
-      {
-        query: t.Object({ seconds: t.Numeric() }),
-        detail: {
-          tags: ['Health'],
-          summary: 'Hold the connection open (experiment)',
-          description: 'Superadmin only. Streams events for `seconds` (1 to 290) and then ends. Temporary: measures how Vercel bills a connection kept open.',
-          security: asUser
-        }
       }
     )
 
