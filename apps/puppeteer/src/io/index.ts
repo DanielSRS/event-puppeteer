@@ -134,6 +134,8 @@ export interface CommandRepository {
   getById(id: string): Promise<Command | null>;
   listByDevice(deviceId: string): Promise<Command[]>;
   updateStatus(id: string, status: Command['status']): Promise<Command | null>;
+  /** Whether the Device has at least one Command in `pending` or `sent`, i.e. not yet acknowledged. */
+  hasWaiting(deviceId: string): Promise<boolean>;
 }
 
 export interface AuthSession {
