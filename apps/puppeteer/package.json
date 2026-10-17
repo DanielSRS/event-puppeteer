@@ -35,6 +35,7 @@
     "better-sqlite3": "^13.0.3",
     "drizzle-orm": "^0.45.3",
     "elysia": "^1.4.30",
+    "mqtt": "5.16.1",
     "postgres": "^3.4.4",
     "sharp": "^0.35.5",
     "thumbhash": "^0.1.1",

@@ -1,6 +1,6 @@
 import type { AppIO } from '../io/index.ts';
 import type { DeviceTelemetry, PostLogInput } from '../types/telemetry.ts';
-import type { Command, CreateCommandInput, RequestUpdateUploadInput, UpdateUploadGrantView } from '../types/command.ts';
+import type { Command, CreateCommandInput, IssuedCommand, RequestUpdateUploadInput, UpdateUploadGrantView } from '../types/command.ts';
 import { UPDATE_BINARY_CONTENT_TYPE, UPDATE_BINARY_MAX_BYTES, UpdateBinaryPrefix } from '../types/command.ts';
 
 /** How long a signed download URL lives. The download starts as soon as it is answered, and a started download is not cut off. */
@@ -172,7 +172,16 @@ export async function getDetailedTelemetryHandler(request: Request, orgId: strin
   return await io.telemetryRepo.getLatestTelemetry(deviceId);
 }
 
-export async function sendCommandHandler(request: Request, orgId: string, deviceId: string, body: CreateCommandInput, io: AppIO) {
+/** Topic a Device listens on for Wake-ups: its id and its Organization's id (ADR-0001). */
+function wakeupTopic(deviceId: string, organizationId: string): string {
+  return `${deviceId}/${organizationId}`;
+}
+
+/**
+ * Stores a Command for the Device and publishes its Wake-up. A failed Wake-up is reported in the
+ * answer and logged, but never fails the request or removes the Command.
+ */
+export async function sendCommandHandler(request: Request, orgId: string, deviceId: string, body: CreateCommandInput, io: AppIO): Promise<IssuedCommand> {
   const actor = await requireAuth(request, io);
   assertCanManageOrg(actor, orgId, 'Admin');
 
@@ -189,7 +198,19 @@ export async function sendCommandHandler(request: Request, orgId: string, device
     issuedBy: actor.id,
     issuedAt: new Date().toISOString()
   });
-  return command;
+
+  const startedAt = performance.now();
+  const published = await io.wakeupPublisher.publish(wakeupTopic(deviceId, orgId));
+  console.log(JSON.stringify({
+    event: 'wakeup.publish',
+    deviceId,
+    organizationId: orgId,
+    commandId: command.id,
+    sent: published.ok,
+    ...(published.ok ? {} : { reason: published.error }),
+    durationMs: Math.round(performance.now() - startedAt)
+  }));
+  return { ...command, wakeup: published.ok ? { sent: true } : { sent: false, reason: published.error } };
 }
 
 export async function requestTelemetryHandler(request: Request, orgId: string, deviceId: string, io: AppIO) {

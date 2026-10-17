@@ -275,6 +275,18 @@ export interface UpdateBinaryStore {
   signedDownloadUrl(pathname: string, validUntil: number): Promise<Result<string, UpdateBinaryStoreFailure>>;
 }
 
+/** Why publishing a Wake-up failed. */
+export type WakeupFailure = string;
+
+/**
+ * Sends a Wake-up: an empty one-way notice that a Device has a Command waiting (see the Wake-up
+ * glossary entry and ADR-0001). A failed publish is returned, never thrown.
+ */
+export interface WakeupPublisher {
+  /** Publishes an empty, QoS 1, non-retained message to `topic`. */
+  publish(topic: string): Promise<Result<void, WakeupFailure>>;
+}
+
 export interface AppIO {
   orgRepo: OrganizationRepository;
   userRepo: UserRepository;
@@ -294,6 +306,7 @@ export interface AppIO {
   imageScreener: ImageScreener;
   imageStore: ImageStore;
   updateBinaryStore: UpdateBinaryStore;
+  wakeupPublisher: WakeupPublisher;
 }
 
 import postgres from 'postgres';
@@ -322,6 +335,7 @@ import { CombinedImageScreener } from './screening/combined.ts';
 import { SightengineImageScreener } from './screening/sightengine.ts';
 import { OpenAIImageScreener } from './screening/openai.ts';
 import { CloudinaryImageStore } from './image-store/cloudinary.ts';
+import { MqttWakeupPublisher, WAKEUP_BROKER_URL } from './wakeup/mqtt.ts';
 import { VercelBlobUpdateBinaryStore } from './update-binary-store/vercel-blob.ts';
 
 // close() ends the database pool: an open pool keeps the process alive after the server stops
@@ -375,6 +389,7 @@ export function createRealIO(): AppIO & { close(): Promise<void> } {
       apiSecret: env.CLOUDINARY_API_SECRET
     }),
     updateBinaryStore: new VercelBlobUpdateBinaryStore(env.BLOB_READ_WRITE_TOKEN),
+    wakeupPublisher: new MqttWakeupPublisher(WAKEUP_BROKER_URL),
     close: () => queryClient.end({ timeout: 5 })
   };
 }

@@ -13,11 +13,12 @@
 import { useEffect, useState } from "react";
 import { MdRefresh } from "react-icons/md";
 import { api, ApiErrorMessage, type ApiError } from "@/lib/api/client";
-import type { CommandType, CreateCommandInput } from "@/lib/api/schemas";
+import type { CommandType, CreateCommandInput, WakeupOutcome } from "@/lib/api/schemas";
 import { Err, Ok, type Result } from "@/lib/result";
-import { ErrorAlert, LoadingMessage, StatusMessage } from "@/components/ui/Feedback";
+import { ErrorAlert, LoadingMessage } from "@/components/ui/Feedback";
 import { SectionDenialFor, SelectOrgNotice, useDashboard } from "../DashboardContext";
 import { AccessNotice } from "../global/AccessNotice";
+import { CommandIssuedNotice } from "./CommandIssuedNotice";
 import { COMMAND_LABELS, DeviceTelemetry, type DeviceDetails } from "./DeviceTelemetry";
 import { SendUpdateFile, UpdateStepText } from "./updateUpload";
 
@@ -26,6 +27,9 @@ const REFRESH_INTERVAL_MS = 10_000;
 
 /** Data on screen and when it was loaded. */
 type Loaded = { details: DeviceDetails; loadedAt: string };
+
+/** What the last command attempt left to tell the person: a failure, or the stored Command with its Wake-up outcome. */
+type Feedback = { kind: "error"; text: string } | { kind: "issued"; commandLabel: string; wakeup: WakeupOutcome };
 
 /** Text for a failed load; 404 means the device isn't in this organization. */
 function LoadErrorText(what: string, error: ApiError): string {
@@ -72,7 +76,7 @@ function DevicePage({ orgId, deviceId }: { orgId: string; deviceId: string }) {
   const [loadError, setLoadError] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
   const [sending, setSending] = useState<CommandType | null>(null);
-  const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null);
+  const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [updateProgress, setUpdateProgress] = useState("");
 
   useEffect(() => {
@@ -101,10 +105,10 @@ function DevicePage({ orgId, deviceId }: { orgId: string; deviceId: string }) {
 
     if (!sent.ok) {
       const text = `Não foi possível enviar “${COMMAND_LABELS[command.type]}”. ${ApiErrorMessage(sent.error)}`;
-      setFeedback({ ok: false, text });
+      setFeedback({ kind: "error", text });
       return text;
     }
-    setFeedback({ ok: true, text: `Comando “${COMMAND_LABELS[command.type]}” enviado. O dispositivo o executa na próxima sincronização.` });
+    setFeedback({ kind: "issued", commandLabel: COMMAND_LABELS[command.type], wakeup: sent.value.wakeup });
     setReloadKey((key) => key + 1);
     return null;
   };
@@ -118,10 +122,10 @@ function DevicePage({ orgId, deviceId }: { orgId: string; deviceId: string }) {
 
     if (!sent.ok) {
       const text = `Não foi possível enviar “${COMMAND_LABELS.update}”. ${sent.error}`;
-      setFeedback({ ok: false, text });
+      setFeedback({ kind: "error", text });
       return text;
     }
-    setFeedback({ ok: true, text: `Comando “${COMMAND_LABELS.update}” enviado. O dispositivo o executa na próxima sincronização.` });
+    setFeedback({ kind: "issued", commandLabel: COMMAND_LABELS.update, wakeup: sent.value.wakeup });
     setReloadKey((key) => key + 1);
     return null;
   };
@@ -140,7 +144,9 @@ function DevicePage({ orgId, deviceId }: { orgId: string; deviceId: string }) {
 
   return (
     <div className="column gap-[22px]">
-      {feedback !== null && (feedback.ok ? <StatusMessage>{feedback.text}</StatusMessage> : <ErrorAlert>{feedback.text}</ErrorAlert>)}
+      {feedback !== null && (feedback.kind === "issued"
+        ? <CommandIssuedNotice commandLabel={feedback.commandLabel} wakeup={feedback.wakeup} />
+        : <ErrorAlert>{feedback.text}</ErrorAlert>)}
       <DeviceTelemetry
         details={loaded.details}
         loadedAt={loaded.loadedAt}

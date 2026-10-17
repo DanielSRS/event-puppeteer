@@ -18,6 +18,7 @@ import { DrizzleScreeningPolicyRepository } from './drizzle/screening-policy-rep
 import { InMemoryImageScreener } from './screening/in-memory.ts';
 import { InMemoryImageStore } from './image-store/in-memory.ts';
 import { InMemoryUpdateBinaryStore } from './update-binary-store/in-memory.ts';
+import { InMemoryWakeupPublisher } from './wakeup/in-memory.ts';
 import type { AppIO } from './index.ts';
 
 /** The IO tests run on, with the test doubles exposed so tests can drive and inspect them. */
@@ -26,6 +27,7 @@ export type InMemoryIO = AppIO & {
   imageScreener: InMemoryImageScreener;
   imageStore: InMemoryImageStore;
   updateBinaryStore: InMemoryUpdateBinaryStore;
+  wakeupPublisher: InMemoryWakeupPublisher;
 };
 
 export async function createInMemoryIO(): Promise<InMemoryIO> {
@@ -49,6 +51,7 @@ export async function createInMemoryIO(): Promise<InMemoryIO> {
     emailSender,
     imageScreener: new InMemoryImageScreener(),
     imageStore: new InMemoryImageStore(),
-    updateBinaryStore: new InMemoryUpdateBinaryStore()
+    updateBinaryStore: new InMemoryUpdateBinaryStore(),
+    wakeupPublisher: new InMemoryWakeupPublisher()
   };
 }

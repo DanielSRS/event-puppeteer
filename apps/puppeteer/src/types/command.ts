@@ -31,6 +31,22 @@ export const CommandSchema = t.Object({
 });
 export type Command = Static<typeof CommandSchema>;
 
+/** Whether the Wake-up for a stored Command was published; a failure is a value, never an error. */
+export const WakeupOutcomeSchema = t.Union([
+  t.Object({ sent: t.Literal(true) }),
+  t.Object({
+    sent: t.Literal(false),
+    reason: t.String({ description: 'Why the broker did not take the Wake-up; the Command is stored regardless' })
+  })
+], {
+  description: 'Outcome of the Wake-up sent when the Command was stored. When `sent` is false the Device still receives the Command, on its next heartbeat (up to 20 s).'
+});
+export type WakeupOutcome = Static<typeof WakeupOutcomeSchema>;
+
+/** What issuing a Command answers: the stored Command and the outcome of its Wake-up. */
+export const IssuedCommandSchema = t.Composite([CommandSchema, t.Object({ wakeup: WakeupOutcomeSchema })]);
+export type IssuedCommand = Static<typeof IssuedCommandSchema>;
+
 const Sha256Schema = t.String({ pattern: '^[0-9a-fA-F]{64}$', description: 'SHA-256 of the binary, 64 hex characters' });
 const VersionSchema = t.Optional(t.String({ description: 'Informational; shows up in device logs' }));
 
