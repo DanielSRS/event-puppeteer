@@ -203,6 +203,16 @@ test('HTTP layer', async (t) => {
     assert.equal(storedWhenPublished, 1);
   });
 
+  await t.test('every request asks the Wake-up publisher to warm up, whatever the route', async () => {
+    const { io, call } = await setup();
+    const before = io.wakeupPublisher.warmUps;
+
+    await call('GET', '/health');
+    await call('GET', '/no-such-route');
+
+    assert.equal(io.wakeupPublisher.warmUps, before + 2);
+  });
+
   await t.test('GET device telemetry answers JSON before and after the device sends any', async () => {
     const { orgId, adminToken, call } = await setup();
     const connected = await call('POST', '/devices/connect', undefined, { identifier: 'mac-telemetry', organizationId: orgId });

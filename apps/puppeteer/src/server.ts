@@ -116,6 +116,8 @@ export function createServer(io: AppIO, { adapter, appUrl = 'http://localhost:30
     // Not .decorate(): Elysia deep-merges decorators into every group, and walking the
     // Drizzle/better-auth instances inside io never terminates (heap OOM at startup)
     .derive({ as: 'global' }, () => ({ io }))
+    /** Every request gets the Wake-up connection ready for the next Command, without waiting for it. */
+    .onRequest(() => io.wakeupPublisher.warmUp())
     .onError(({ error, set }) => {
       if (!(error instanceof Error)) return;
       const message = error.message;

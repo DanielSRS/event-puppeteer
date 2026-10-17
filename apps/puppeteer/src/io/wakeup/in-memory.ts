@@ -11,6 +11,14 @@ export class InMemoryWakeupPublisher implements WakeupPublisher {
   /** When set, publishing fails with this reason. */
   failure: WakeupFailure | null = null;
 
+  /** How many times the server asked it to get ready. */
+  warmUps = 0;
+
+  /** Counts the request; there is no connection to open. */
+  warmUp(): void {
+    this.warmUps += 1;
+  }
+
   async publish(topic: string): Promise<Result<void, WakeupFailure>> {
     if (this.failure !== null) return err(this.failure);
     this.published.push({ topic, payload: '', qos: 1, retain: false });
