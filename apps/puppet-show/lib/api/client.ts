@@ -17,7 +17,7 @@ import type { z } from "zod";
 import { Err, Ok, type Result } from "@/lib/result";
 import { GetToken } from "./session";
 import {
-  ApiErrorBodySchema, AuditEntrySchema, CommandSchema, IssuedCommandSchema, DeviceLogSchema, DeviceSchema, DeviceStatusSchema,
+  ApiErrorBodySchema, AuditEntrySchema, CommandSchema, IssuedCommandSchema, WakeupOutcomeSchema, DeviceLogSchema, DeviceSchema, DeviceStatusSchema,
   DeviceTelemetryResponseSchema, EventSchema, EventWithVotesSchema, FeedEventSchema, ImageDecisionSchema, ImageReviewItemSchema,
   ImageViewSchema, LinkLabelSchema, LoginResponseSchema, OrganizationSchema, RegisterResponseSchema, ReportSchema, ReportStatusSchema,
   ScreeningPolicyResponseSchema, ScreeningPolicySchema, SuccessSchema, TagSchema, UpdateUploadGrantSchema, UserSchema, VoteResponseSchema, VoteStatusSchema,
@@ -342,6 +342,9 @@ export const api = {
     /** Authorizes the upload of one Puppet binary of `sizeBytes` straight to the (private) store. */
     requestUpdateUpload: (orgId: string, sizeBytes: number) =>
       Request(UpdateUploadGrantSchema, "POST", `/organizations/${seg(orgId)}/devices/update-uploads`, { sizeBytes }),
+    /** Publishes the Wake-up of a `pending` or `sent` Command again; 409 for any other status. */
+    resendWakeup: (orgId: string, deviceId: string, commandId: string) =>
+      Request(WakeupOutcomeSchema, "POST", `/organizations/${seg(orgId)}/devices/${seg(deviceId)}/commands/${seg(commandId)}/wakeup`),
     sendCommand: (orgId: string, deviceId: string, body: CreateCommandInput) =>
       Request(IssuedCommandSchema, "POST", `/organizations/${seg(orgId)}/devices/${seg(deviceId)}/commands`, body),
   },

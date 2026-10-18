@@ -34,9 +34,9 @@ import { TagSchema, CreateTagBody, LinkLabelSchema, CreateLinkLabelBody } from '
 import { EventSchema, EventViewSchema, CreateEventBody, FeedEventSchema, EventWithVotesSchema } from './types/event.ts';
 import { connectDeviceHandler, getCurrentDeviceHandler, listPendingDevicesGlobalHandler, listPendingDevicesOrgHandler, listActiveDevicesOrgHandler, getDeviceHandler, approveDeviceHandler, rejectDeviceHandler } from './handlers/devices.ts';
 import { PublicDeviceSchema, ConnectDeviceBody, ApproveDeviceBody } from './types/device.ts';
-import { heartbeatHandler, postLogHandler, postTelemetryHandler, pullPendingCommandsHandler, ackCommandHandler, completeCommandHandler, getDeviceStatusHandler, getDeviceLogsHandler, getDetailedTelemetryHandler, sendCommandHandler, requestTelemetryHandler, listCommandsHandler, requestUpdateUploadHandler, downloadUpdateBinaryHandler } from './handlers/telemetry.ts';
+import { heartbeatHandler, postLogHandler, postTelemetryHandler, pullPendingCommandsHandler, ackCommandHandler, completeCommandHandler, getDeviceStatusHandler, getDeviceLogsHandler, getDetailedTelemetryHandler, sendCommandHandler, requestTelemetryHandler, listCommandsHandler, requestUpdateUploadHandler, downloadUpdateBinaryHandler, resendWakeupHandler } from './handlers/telemetry.ts';
 import { PostLogBody, DeviceTelemetrySchema, DeviceLogSchema, HeartbeatSchema } from './types/telemetry.ts';
-import { CreateCommandBody, CommandSchema, IssuedCommandSchema, RequestUpdateUploadBody, UpdateUploadGrantSchema } from './types/command.ts';
+import { CreateCommandBody, CommandSchema, IssuedCommandSchema, WakeupOutcomeSchema, RequestUpdateUploadBody, UpdateUploadGrantSchema } from './types/command.ts';
 import { createTagHandler, listTagsHandler, createLinkLabelHandler, listLinkLabelsHandler } from './handlers/system.ts';
 import { createEventHandler, listEventsHandler, listMyEventsHandler, getEventHandler, deleteEventHandler } from './handlers/events.ts';
 import { voteHandler, getVoteStatusHandler } from './handlers/votes.ts';
@@ -176,6 +176,10 @@ export function createServer(io: AppIO, { adapter, appUrl = 'http://localhost:30
       if (message === 'TAG_EXISTS') {
         set.status = 409;
         return { error: 'Tag already exists' };
+      }
+      if (message === 'COMMAND_NOT_RESENDABLE') {
+        set.status = 409;
+        return { error: 'Only a pending or sent Command can have its Wake-up sent again' };
       }
       if (message === 'LINK_LABEL_EXISTS') {
         set.status = 409;
@@ -793,6 +797,18 @@ export function createServer(io: AppIO, { adapter, appUrl = 'http://localhost:30
               params: t.Object({ id: t.String(), deviceId: t.String() }),
               response: t.Array(CommandSchema),
               detail: { tags: ['Device Management'], summary: 'List Commands sent to a Device', security: asUser }
+            })
+            .post('/:deviceId/commands/:commandId/wakeup', async ({ request, params: { id, deviceId, commandId }, io }) => {
+              return await resendWakeupHandler(request, id, deviceId, commandId, io);
+            }, {
+              params: t.Object({ id: t.String(), deviceId: t.String(), commandId: t.String() }),
+              response: WakeupOutcomeSchema,
+              detail: {
+                tags: ['Device Management'],
+                summary: 'Send the Wake-up of a Command again',
+                description: 'Publishes the Wake-up again for a Command that is `pending` or `sent`, and answers the outcome like issuing a Command does (`{ sent: true }` or `{ sent: false, reason }`). A failed publish is an outcome, not an error. Rejected with 409 for an acknowledged, completed or failed Command.',
+                security: asUser
+              }
             })
             .post('/:deviceId/commands', async ({ request, params: { id, deviceId }, body, io }) => {
               return await sendCommandHandler(request, id, deviceId, body, io);

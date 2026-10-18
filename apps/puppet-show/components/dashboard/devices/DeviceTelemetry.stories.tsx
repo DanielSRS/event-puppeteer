@@ -35,6 +35,7 @@ const meta = {
     loadedAt: NOW,
     refreshError: "",
     sending: null,
+    resendingCommandId: null,
     onCommand: fn(async () => null),
     onUpdateFile: fn(async () => null),
     updateProgress: "",
@@ -172,5 +173,53 @@ export const Sending: Story = {
   play: async ({ canvas }) => {
     await expect(canvas.getByRole("button", { name: "Enviando..." })).toBeDisabled();
     await expect(canvas.getByRole("button", { name: "Desligar" })).toBeDisabled();
+  },
+};
+
+const WAITING_COMMANDS: DeviceDetails["commands"] = [
+  { id: "w1", deviceId: "d2", type: "restart", status: "pending", issuedBy: "u1", issuedAt: NOW },
+  { id: "w2", deviceId: "d2", type: "request_telemetry", status: "sent", issuedBy: "u1", issuedAt: NOW },
+  { id: "w3", deviceId: "d2", type: "shutdown", status: "acknowledged", issuedBy: "u1", issuedAt: NOW },
+  ...DETAILS.commands,
+];
+
+/** The resend action shows only for pending or sent Commands; clicking it asks to resend that Command. */
+export const ResendOffered: Story = {
+  args: { details: { ...DETAILS, commands: WAITING_COMMANDS }, onResendWakeup: fn(async () => null) },
+  play: async ({ canvas, args }) => {
+    await expect(canvas.getAllByRole("button", { name: /Reenviar aviso/ })).toHaveLength(2);
+    await userEvent.click(canvas.getByRole("button", { name: "Reenviar aviso do comando Reiniciar" }));
+    await expect(args.onResendWakeup).toHaveBeenCalledWith(WAITING_COMMANDS[0]);
+  },
+};
+
+/** The server does not offer the endpoint: no resend action, whatever the status. */
+export const ResendNotOffered: Story = {
+  args: { details: { ...DETAILS, commands: WAITING_COMMANDS } },
+  play: async ({ canvas }) => {
+    await expect(canvas.getByText("Pendente")).toBeInTheDocument();
+    await expect(canvas.queryByRole("button", { name: /Reenviar aviso/ })).not.toBeInTheDocument();
+    await expect(canvas.queryByRole("columnheader", { name: "Ações" })).not.toBeInTheDocument();
+  },
+};
+
+/** The resend is running: its button says so and every resend button is disabled. */
+export const Resending: Story = {
+  args: { details: { ...DETAILS, commands: WAITING_COMMANDS }, onResendWakeup: fn(async () => null), resendingCommandId: "w1" },
+  play: async ({ canvas }) => {
+    await expect(canvas.getByRole("button", { name: /Reenviando/ })).toBeDisabled();
+    await expect(canvas.getByRole("button", { name: "Reenviar aviso do comando Pedir telemetria" })).toBeDisabled();
+  },
+};
+
+/** The resend failed: the reason is shown with the history. */
+export const ResendRefused: Story = {
+  args: {
+    details: { ...DETAILS, commands: WAITING_COMMANDS },
+    onResendWakeup: fn(async () => "Não foi possível reenviar o aviso do comando “Reiniciar”. Sem conexão."),
+  },
+  play: async ({ canvas }) => {
+    await userEvent.click(canvas.getByRole("button", { name: "Reenviar aviso do comando Reiniciar" }));
+    await waitFor(() => expect(canvas.getByRole("alert")).toHaveTextContent("Sem conexão."));
   },
 };
