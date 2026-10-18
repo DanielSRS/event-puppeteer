@@ -62,7 +62,7 @@ function RailItem({ card, today, onIntent }: { card: FeedCard; today: string; on
           ) : (
             <span className="t3 font-mono text-xs uppercase">{day === null ? "" : `${ShortDate(day.date)} · ${time}`}</span>
           )}
-          <span className="truncate font-semibold">{card.title}</span>
+          <span className="line-clamp-2 font-semibold">{card.title}</span>
           <span className="t3 truncate text-[13px]">{card.location}</span>
         </span>
       </Link>

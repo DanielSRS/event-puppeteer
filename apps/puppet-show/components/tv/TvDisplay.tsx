@@ -10,7 +10,9 @@
  * - The site's QR code and the count of the next seven days.
  * - **Agenda**: the next events in calendar order.
  *
- * Sizes follow the 1920×1080 design through `--u` (see `.tv` in globals.css).
+ * Sizes follow the 1920×1080 design through `--u`, and the grid areas come
+ * from `.tv-bento` (see globals.css). Surfaces, colors and theme are the
+ * app's: glass cards over the organization's gradient, light or dark.
  *
  * @module
  */
@@ -105,11 +107,11 @@ function BannerSource(banner: ImageView | null | undefined): string | null {
 }
 
 /** Fades the side picture into the blurred background, in four layers (stronger blur further left). */
-const SIDE_LAYERS: Array<{ blur: number; brightness: number; from: number; to: number; inset: boolean }> = [
-  { blur: 32, brightness: 0.55, from: 0, to: 14, inset: true },
-  { blur: 14, brightness: 0.7, from: 4, to: 22, inset: true },
-  { blur: 5, brightness: 0.86, from: 8, to: 30, inset: true },
-  { blur: 0, brightness: 1, from: 12, to: 36, inset: false },
+const SIDE_LAYERS: Array<{ blur: number; from: number; to: number; inset: boolean }> = [
+  { blur: 32, from: 0, to: 14, inset: true },
+  { blur: 14, from: 4, to: 22, inset: true },
+  { blur: 5, from: 8, to: 30, inset: true },
+  { blur: 0, from: 12, to: 36, inset: false },
 ];
 
 /** The event on screen now. */
@@ -122,18 +124,18 @@ function Featured({ event, today, hot, duration, slot }: { event: TvEvent; today
   return (
     <article
       aria-label="Evento em exibição"
-      className="relative min-h-[460px] overflow-hidden border lg:col-start-1 lg:row-span-2 lg:row-start-1 lg:min-h-0"
-      style={{ borderRadius: U(24), background: "var(--tv-card)", borderColor: "var(--line-2)" }}
+      className="glass tv-feature relative min-h-[460px] overflow-hidden lg:min-h-0"
+      style={{ borderRadius: U(26) }}
     >
       {source !== null ? (
         <>
           {/* eslint-disable-next-line @next/next/no-img-element -- decorative copies of the signed banner URL */}
-          <img src={source} alt="" aria-hidden className="pointer-events-none absolute left-[-10%] top-[-10%] h-[120%] w-[120%] object-cover" style={{ filter: `blur(${U(64)}) brightness(0.42) saturate(1.3)` }} />
+          <img src={source} alt="" aria-hidden className="pointer-events-none absolute left-[-10%] top-[-10%] h-[120%] w-[120%] object-cover" style={{ filter: `blur(${U(64)}) saturate(1.3)`, opacity: "var(--photo-opacity)" }} />
           <div aria-hidden className="absolute inset-y-0 right-0 left-[30%] overflow-hidden lg:left-[calc(600*var(--u))]">
             {SIDE_LAYERS.map((layer) => {
               const mask = `linear-gradient(90deg, transparent ${layer.from}%, #000 ${layer.to}%)`;
               const style: CSSProperties = {
-                filter: layer.blur === 0 ? undefined : `blur(${U(layer.blur)}) brightness(${layer.brightness})`,
+                filter: layer.blur === 0 ? undefined : `blur(${U(layer.blur)})`,
                 WebkitMaskImage: mask,
                 maskImage: mask,
                 ...(layer.inset
@@ -212,10 +214,10 @@ function TimeColumn({ event, today }: { event: TvEvent; today: string }) {
 /** One compact event row (title and place next to the time). */
 function EventRow({ event, today }: { event: TvEvent; today: string }) {
   return (
-    <div className="row" style={{ gap: U(18), padding: `${U(14)} ${U(16)}`, borderRadius: U(16), background: "var(--tv-card-2)" }}>
+    <div className="well row" style={{ gap: U(18), padding: `${U(14)} ${U(16)}`, borderRadius: U(16) }}>
       <TimeColumn event={event} today={today} />
       <div className="min-w-0 flex-1">
-        <div className="truncate font-bold" style={{ fontSize: U(23) }}>{event.title}</div>
+        <div className="line-clamp-2 font-bold leading-tight" style={{ fontSize: U(23) }}>{event.title}</div>
         <div className="t3 truncate" style={{ fontSize: U(18), marginTop: U(2) }}>{event.location}</div>
       </div>
     </div>
@@ -232,8 +234,8 @@ function Today({ events, today }: { events: TvEvent[]; today: string }) {
   return (
     <section
       aria-labelledby="tv-today"
-      className="column border lg:col-span-2 lg:col-start-2 lg:row-start-1"
-      style={{ padding: `${U(26)} ${U(28)}`, borderRadius: U(24), background: "var(--tv-card)", borderColor: "var(--line-2)" }}
+      className="glass tv-today column"
+      style={{ padding: `${U(26)} ${U(28)}`, borderRadius: U(26) }}
     >
       <div className="row" style={{ gap: U(14) }}>
         <h2 id="tv-today" className="font-display font-bold" style={{ fontSize: U(32) }}>Hoje</h2>
@@ -271,8 +273,8 @@ function Week({ events, today }: { events: TvEvent[]; today: string }) {
   return (
     <section
       aria-label="Próximos 7 dias"
-      className="column justify-between bg-accent text-on-accent lg:col-start-3 lg:row-start-2"
-      style={{ padding: `${U(26)} ${U(28)}`, borderRadius: U(24), gap: U(12) }}
+      className="tv-week column justify-between bg-accent text-on-accent"
+      style={{ padding: `${U(26)} ${U(28)}`, borderRadius: U(26), gap: U(12), boxShadow: "0 20px 50px -24px var(--accent)" }}
     >
       <p className="font-bold uppercase" style={{ fontSize: U(19), letterSpacing: "0.04em" }}>Próximos 7 dias</p>
       <div>
@@ -305,8 +307,8 @@ function Agenda({ events, today }: { events: TvEvent[]; today: string }) {
           return (
             <li
               key={event.id}
-              className="column border lg:h-[calc(184*var(--u))]"
-              style={{ padding: `${U(20)} ${U(22)}`, borderRadius: U(20), gap: U(12), background: "var(--tv-card)", borderColor: "var(--line-2)" }}
+              className="glass column lg:h-[calc(184*var(--u))]"
+              style={{ padding: `${U(20)} ${U(22)}`, borderRadius: U(22), gap: U(12) }}
             >
               <div className="flex items-start" style={{ gap: U(16) }}>
                 <div aria-hidden className="column center shrink-0 bg-accent text-on-accent" style={{ width: U(64), height: U(64), borderRadius: U(14) }}>
@@ -353,7 +355,7 @@ export function TvDisplay({ branding, status, events, errors, qr, today }: TvDis
 
   return (
     <main
-      className="tv flex min-h-dvh w-full min-w-0 flex-col bg-background text-foreground lg:h-dvh lg:overflow-hidden"
+      className="tv flex min-h-dvh w-full min-w-0 flex-col text-foreground lg:h-dvh lg:overflow-hidden"
       style={{ padding: `${U(44)} ${U(48)} ${U(48)}` }}
     >
       <header className="flex flex-wrap items-center justify-between" style={{ minHeight: U(72), gap: U(32) }}>
@@ -383,23 +385,23 @@ export function TvDisplay({ branding, status, events, errors, qr, today }: TvDis
       {status === "loading" && <LoadingMessage className="text-2xl">Carregando eventos...</LoadingMessage>}
 
       {status === "ready" && events.length === 0 && (
-        <p className="t2 border text-center" style={{ marginTop: U(28), padding: U(64), borderRadius: U(24), fontSize: U(32), background: "var(--tv-card)", borderColor: "var(--line-2)" }}>
+        <p className="glass t2 text-center" style={{ marginTop: U(28), padding: U(64), borderRadius: U(26), fontSize: U(32) }}>
           Nenhum evento programado por enquanto.
         </p>
       )}
 
       <section
         aria-label="Destaques"
-        className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_calc(300*var(--u))_calc(300*var(--u))] lg:grid-rows-[calc(300*var(--u))_calc(256*var(--u))] sm:[&>article]:col-span-2 sm:[&>section:first-of-type]:col-span-2"
-        style={{ marginTop: U(28), gap: U(24) }}
+        className="tv-bento"
+        style={{ marginTop: U(28) }}
       >
         {featured !== null && (
           <Featured event={featured} today={today} hot={featured.id === hotId} duration={duration} slot={slot} />
         )}
         {events.length > 0 && <Today events={events} today={today} />}
         <div
-          className="center border lg:col-start-2 lg:row-start-2"
-          style={{ padding: U(20), borderRadius: U(24), background: "var(--tv-card)", borderColor: "var(--line-2)" }}
+          className="glass tv-qr center"
+          style={{ padding: U(20), borderRadius: U(26) }}
         >
           <QrCodePanel qr={qr} variant="tv" />
         </div>

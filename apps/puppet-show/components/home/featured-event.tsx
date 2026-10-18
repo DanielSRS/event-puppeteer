@@ -81,7 +81,7 @@ export function FeaturedEvent({ card, today, onIntent }: FeaturedEventProps) {
 
         <h2
           id={titleId}
-          className="max-w-[13ch] font-display text-[38px] font-bold leading-[.98] tracking-[-.035em] break-words lg:text-[clamp(40px,5.4vw,76px)] lg:leading-[.96]"
+          className="line-clamp-2 max-w-[18ch] font-display text-[38px] font-bold leading-[.98] tracking-[-.035em] break-words lg:text-[clamp(40px,5.4vw,76px)] lg:leading-[.96]"
         >
           {card.title}
         </h2>

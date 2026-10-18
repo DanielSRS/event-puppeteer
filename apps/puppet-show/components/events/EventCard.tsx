@@ -81,7 +81,7 @@ export function EventCard({
       <div className="col-start-2 row-start-1 column min-w-0 gap-1 self-center sm:gap-2.5 sm:px-[22px] sm:pt-5">
         <h2
           id={`event-${card.id}-title`}
-          className="font-display text-base font-bold leading-tight tracking-[-.015em] break-words sm:text-[22px]"
+          className="line-clamp-2 font-display text-base font-bold leading-tight tracking-[-.015em] break-words sm:text-[22px]"
         >
           <Link href={href} {...intent} className="rounded focus-ring hover:text-main">
             {card.title}

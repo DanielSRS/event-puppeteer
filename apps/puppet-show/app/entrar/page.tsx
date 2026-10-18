@@ -21,7 +21,7 @@ export default function LoginPage() {
         <span className="absolute right-[4%] top-[6%] h-[180px] w-[180px] rounded-full bg-accent opacity-[.22] blur-[30px]" />
       </div>
 
-      <div className="relative mx-auto flex w-full max-w-[1280px] flex-wrap items-center justify-between gap-12 px-4 py-12 sm:px-6">
+      <div className="relative mx-auto flex w-full max-w-page flex-wrap items-center justify-between gap-12 px-4 py-12 sm:px-6">
         <div className="column flex-[1_1_380px] max-w-[560px] gap-6">
           <p className="m-0 font-display text-[clamp(36px,5.4vw,80px)] font-bold leading-[.95] tracking-[-.04em] text-balance">
             Tudo o que acontece no campus, num só mural.
