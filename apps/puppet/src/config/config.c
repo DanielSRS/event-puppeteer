@@ -1,7 +1,6 @@
 #include "config.h"
 
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
 /**
@@ -10,9 +9,6 @@
  * Device.
  */
 #define CONFIG_MACHINE_IDENTIFIER_PATH "/etc/machine-id"
-
-#define CONFIG_DATA_SUBDIRECTORY      "puppet"
-#define CONFIG_HOME_DATA_SUBDIRECTORY ".local/share/puppet"
 
 static bool configIsSet(const char *value) {
   return value != NULL && value[0] != '\0';
@@ -57,42 +53,10 @@ static ConfigResultCode configResolveServerUrl(
   return CONFIG_RESULT_OK;
 }
 
-static ConfigResultCode configResolveDataDirectory(
-  const ConfigSources *sources, PuppetConfig *config
-) {
-  const size_t capacity = sizeof(config->dataDirectory);
-  int32_t      written  = 0;
-  if (configIsSet(sources->dataDirectory)) {
-    written = snprintf(config->dataDirectory, capacity, "%s", sources->dataDirectory);
-  } else if (configIsSet(sources->dataHome)) {
-    written = snprintf(
-      config->dataDirectory,
-      capacity,
-      "%s/" CONFIG_DATA_SUBDIRECTORY,
-      sources->dataHome
-    );
-  } else if (configIsSet(sources->home)) {
-    written = snprintf(
-      config->dataDirectory,
-      capacity,
-      "%s/" CONFIG_HOME_DATA_SUBDIRECTORY,
-      sources->home
-    );
-  } else {
-    return CONFIG_ERROR_MISSING_DATA_DIRECTORY;
-  }
-  if (written < 0 || (size_t)written >= capacity) {
-    return CONFIG_ERROR_DATA_DIRECTORY_TOO_LONG;
-  }
-  return CONFIG_RESULT_OK;
-}
-
 static ConfigResultCode configResolveDeviceIdentifier(
   const ConfigSources *sources, PuppetConfig *config
 ) {
-  const char *identifier = configIsSet(sources->deviceIdentifier)
-                           ? sources->deviceIdentifier
-                           : sources->machineIdentifier;
+  const char *identifier = sources->machineIdentifier;
   if (!configIsSet(identifier)) {
     return CONFIG_ERROR_MISSING_DEVICE_IDENTIFIER;
   }
@@ -111,23 +75,6 @@ static ConfigResultCode configResolve(
     configResolveServerUrl(sources->serverUrl, config);
   if (serverUrlCode != CONFIG_RESULT_OK) {
     return serverUrlCode;
-  }
-
-  config->hasOrganization = configIsSet(sources->organizationId);
-  config->organizationId[0] = '\0';
-  if (config->hasOrganization
-      && !configCopy(
-        config->organizationId,
-        sizeof(config->organizationId),
-        sources->organizationId
-      )) {
-    return CONFIG_ERROR_ORGANIZATION_ID_TOO_LONG;
-  }
-
-  const ConfigResultCode dataDirectoryCode =
-    configResolveDataDirectory(sources, config);
-  if (dataDirectoryCode != CONFIG_RESULT_OK) {
-    return dataDirectoryCode;
   }
   return configResolveDeviceIdentifier(sources, config);
 }
@@ -151,12 +98,7 @@ static ConfigSources configReadSources(ConfigSourceStorage *storage) {
     storage->machineIdentifier, sizeof(storage->machineIdentifier)
   );
   return (ConfigSources){
-    .serverUrl         = getenv("PUPPET_SERVER_URL"),
-    .organizationId    = getenv("PUPPET_ORGANIZATION_ID"),
-    .dataDirectory     = getenv("PUPPET_DATA_DIRECTORY"),
-    .deviceIdentifier  = getenv("PUPPET_DEVICE_IDENTIFIER"),
-    .dataHome          = getenv("XDG_DATA_HOME"),
-    .home              = getenv("HOME"),
+    .serverUrl         = PUPPET_SERVER_URL,
     .machineIdentifier = storage->machineIdentifier,
   };
 }

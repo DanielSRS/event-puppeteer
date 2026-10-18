@@ -349,4 +349,26 @@ test('HTTP layer', async (t) => {
     assert.equal((await call('DELETE', `/organizations/${orgId}/logo`, adminToken)).status, 200);
     assert.equal((await call('GET', `/organizations/${orgId}`)).body.logo, undefined);
   });
+
+  await t.test('an uploaded update reaches the device as a short path that redirects to a signed URL', async () => {
+    const { orgId, adminToken, call, app } = await setup();
+    const { device, token } = (await call('POST', '/devices/connect', undefined, { identifier: 'mac-1', organizationId: orgId })).body;
+    await call('POST', `/devices/${device.id}/approve`, adminToken, { name: 'D1', location: 'L1' });
+
+    const grant = await call('POST', `/organizations/${orgId}/devices/update-uploads`, adminToken, { sizeBytes: 1000 });
+    assert.equal(grant.status, 200);
+    assert.equal(grant.body.contentType, 'application/octet-stream');
+    const sha256 = 'c'.repeat(64);
+    const sent = await call('POST', `/organizations/${orgId}/devices/${device.id}/commands`, adminToken, { type: 'update', payload: { blobPathname: grant.body.pathname, sha256 } });
+    assert.equal(sent.status, 200);
+
+    const pulled = await call('GET', `/devices/${device.id}/commands/pending`, token);
+    const url: string = pulled.body[0].payload.url;
+    assert.equal(url, `/devices/${device.id}/commands/${sent.body.id}/binary`);
+
+    const download = await app.handle(new Request(`http://localhost${url}`, { headers: { authorization: `Bearer ${token}` } }));
+    assert.equal(download.status, 302);
+    assert.match(download.headers.get('location') ?? '', /^memory:\/\/signed\/puppet-updates\//);
+    assert.equal((await app.handle(new Request(`http://localhost${url}`))).status, 401);
+  });
 });

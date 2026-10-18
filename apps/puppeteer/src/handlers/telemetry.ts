@@ -1,8 +1,13 @@
 import type { AppIO } from '../io/index.ts';
 import type { DeviceTelemetry, PostLogInput } from '../types/telemetry.ts';
-import type { CreateCommandInput } from '../types/command.ts';
+import type { Command, CreateCommandInput, RequestUpdateUploadInput, UpdateUploadGrantView } from '../types/command.ts';
+import { UPDATE_BINARY_CONTENT_TYPE, UPDATE_BINARY_MAX_BYTES, UpdateBinaryPrefix } from '../types/command.ts';
+
+/** How long a signed download URL lives. The download starts as soon as it is answered, and a started download is not cut off. */
+const DOWNLOAD_URL_LIFETIME_MS = 10 * 60 * 1000;
 import { requireDeviceAuth } from './devices.ts';
 import { requireAuth, assertCanManageOrg } from './users.ts';
+import { UpdateBinaryDownloadPath } from '../types/command.ts';
 import { randomUUID } from 'node:crypto';
 
 // DEVICE HANDLERS
@@ -83,9 +88,42 @@ export async function pullPendingCommandsHandler(request: Request, deviceId: str
   const sent = [];
   for (const command of undelivered) {
     const updated = command.status === 'pending' ? await io.commandRepo.updateStatus(command.id, 'sent') : command;
-    if (updated) sent.push(updated);
+    if (!updated) continue;
+    sent.push(withDownloadPath(updated));
   }
   return sent;
+}
+
+/**
+ * The Command as the Device must see it. An update Command of an uploaded binary stores a
+ * pathname; the Device receives `{ url, sha256, version }` where `url` is a short path on
+ * Puppeteer (Puppet keeps the address in 512 bytes, far less than a signed Blob URL) that
+ * {@link downloadUpdateBinaryHandler} answers with a redirect to a freshly signed URL.
+ */
+function withDownloadPath(command: Command): Command {
+  const payload = command.payload;
+  if (command.type !== 'update' || payload === undefined || typeof payload.blobPathname !== 'string') return command;
+
+  const { blobPathname: _stored, ...rest } = payload;
+  return { ...command, payload: { url: UpdateBinaryDownloadPath(command.deviceId, command.id), ...rest } };
+}
+
+/**
+ * Where a Device downloads the binary of an uploaded update: answers the URL to redirect to,
+ * signed for a few minutes at the moment of the download, so a Device that was offline for
+ * days still finds a valid link. Only the Device the Command was sent to may ask.
+ * @throws UPDATE_STORE_FAILED:<reason> when the store cannot sign.
+ */
+export async function downloadUpdateBinaryHandler(request: Request, deviceId: string, commandId: string, io: AppIO): Promise<string> {
+  const device = await requireDeviceAuth(request, io);
+  if (device.id !== deviceId) throw new Error('FORBIDDEN');
+  const command = await requireDeviceCommand(deviceId, commandId, io);
+  const pathname = command.payload?.blobPathname;
+  if (command.type !== 'update' || typeof pathname !== 'string' || (command.status !== 'sent' && command.status !== 'acknowledged')) throw new Error('NOT_FOUND');
+
+  const signed = await io.updateBinaryStore.signedDownloadUrl(pathname, Date.now() + DOWNLOAD_URL_LIFETIME_MS);
+  if (!signed.ok) throw new Error(`UPDATE_STORE_FAILED: ${signed.error}`);
+  return signed.value;
 }
 
 async function requireDeviceCommand(deviceId: string, commandId: string, io: AppIO) {
@@ -140,6 +178,7 @@ export async function sendCommandHandler(request: Request, orgId: string, device
 
   const device = await io.deviceRepo.getById(deviceId);
   if (!device || device.organizationId !== orgId) throw new Error('NOT_FOUND');
+  if (body.type === 'update' && 'blobPathname' in body.payload && (!body.payload.blobPathname.startsWith(UpdateBinaryPrefix(orgId)) || body.payload.blobPathname.includes('..'))) throw new Error('BAD_REQUEST');
 
   const command = await io.commandRepo.create({
     id: randomUUID(),
@@ -165,4 +204,20 @@ export async function listCommandsHandler(request: Request, orgId: string, devic
   if (!device || device.organizationId !== orgId) throw new Error('NOT_FOUND');
 
   return await io.commandRepo.listByDevice(deviceId);
+}
+
+/**
+ * Authorizes the browser of an Admin of the Organization to upload one update binary
+ * straight to the store, so it can then send an `update` Command pointing at the result.
+ * The name is chosen here, not by the caller, so nobody can pick another file's name.
+ * @throws UPDATE_STORE_FAILED:<reason> when the store refuses to issue the grant.
+ */
+export async function requestUpdateUploadHandler(request: Request, orgId: string, body: RequestUpdateUploadInput, io: AppIO): Promise<UpdateUploadGrantView> {
+  const actor = await requireAuth(request, io);
+  assertCanManageOrg(actor, orgId, 'Admin');
+  if (body.sizeBytes > UPDATE_BINARY_MAX_BYTES) throw new Error('BAD_REQUEST');
+
+  const granted = await io.updateBinaryStore.issueUploadGrant(`${UpdateBinaryPrefix(orgId)}${randomUUID()}`, UPDATE_BINARY_MAX_BYTES);
+  if (!granted.ok) throw new Error(`UPDATE_STORE_FAILED: ${granted.error}`);
+  return { ...granted.value, contentType: UPDATE_BINARY_CONTENT_TYPE, maxBytes: UPDATE_BINARY_MAX_BYTES };
 }

@@ -18,6 +18,8 @@ const envSchema = z.object({
   CLOUDINARY_CLOUD_NAME: z.string().min(1, "Obrigatória: armazenamento de Images (Cloudinary)"),
   CLOUDINARY_API_KEY: z.string().min(1, "Obrigatória: armazenamento de Images (Cloudinary)"),
   CLOUDINARY_API_SECRET: z.string().min(1, "Obrigatória: armazenamento de Images (Cloudinary)"),
+  /** Vercel Blob read-write token: where the update binaries uploaded from the dashboard are stored. Always required. */
+  BLOB_READ_WRITE_TOKEN: z.string().min(1, "Obrigatória: armazenamento dos binários de atualização (Vercel Blob)"),
   // Public URL of the frontend: where the verification link lands after confirming
   APP_URL: z.string().url("A url do frontend deve ser válida").default("http://localhost:3000"),
   PORT: z.coerce.number().default(3000),

@@ -285,12 +285,23 @@ export const CommandSchema = z.object({
 });
 export type Command = z.infer<typeof CommandSchema>;
 
+/** Answer of `POST .../devices/update-uploads`: what the browser needs to upload one Puppet binary. */
+export const UpdateUploadGrantSchema = z.object({
+  pathname: z.string(),
+  clientToken: z.string(),
+  contentType: z.string(),
+  maxBytes: z.number().int(),
+});
+export type UpdateUploadGrant = z.infer<typeof UpdateUploadGrantSchema>;
+
 /**
- * Body of `POST .../commands`. `update` must carry where to download the new
- * Puppet binary (absolute http(s) URL or a path on Puppeteer) and its SHA-256.
+ * Body of `POST .../commands`. `update` must carry the new Puppet binary's
+ * SHA-256 and either where to download it (absolute http(s) URL or a path on
+ * Puppeteer) or, for a binary uploaded through `update-uploads`, its pathname
+ * in the store (the device then gets a freshly signed URL).
  */
 export type CreateCommandInput =
-  | { type: "update"; payload: { url: string; sha256: string; version?: string } }
+  | { type: "update"; payload: { url: string; sha256: string; version?: string } | { blobPathname: string; sha256: string; version?: string } }
   | { type: Exclude<CommandType, "update">; payload?: Record<string, unknown> };
 
 /** `{ success: true }` answers of delete/resend endpoints. */

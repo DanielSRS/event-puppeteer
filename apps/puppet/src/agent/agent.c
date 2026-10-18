@@ -10,6 +10,13 @@
 #include <stdio.h>
 #include <string.h>
 
+/**
+ * Room for the "before" or "after" text of one Audit Trail entry. The longest
+ * is an update's "<version> sha256:<digest>" (about 105 characters), so
+ * `snprintf` never truncates it.
+ */
+#define AGENT_AUDIT_TEXT_CAPACITY ((size_t)192)
+
 /** Room for the largest request body (detailed Telemetry). */
 #define AGENT_REQUEST_BODY_CAPACITY ((size_t)4096)
 
@@ -84,6 +91,14 @@ typedef struct {
 
   /** Set once an update is installed; the loop then stops. */
   bool restartRequested;
+
+  /**
+   * Whether `schedule.phase` was confirmed by Puppeteer or by this process
+   * itself. False after resuming stored credentials, until the first status
+   * check: the phase is then only a starting point, so a change from it is
+   * not a change made to the Device.
+   */
+  bool phaseConfirmed;
 } AgentRuntime;
 
 static const char *agentLogLevelName(const AgentLogLevel level) {
@@ -96,6 +111,18 @@ static const char *agentLogLevelName(const AgentLogLevel level) {
     break;
   }
   return "error";
+}
+
+static const char *agentLogLevelPrefix(const AgentLogLevel level) {
+  switch (level) {
+  case AGENT_LOG_LEVEL_INFO:
+    return AGENT_LOG_INFO_PREFIX;
+  case AGENT_LOG_LEVEL_WARNING:
+    return AGENT_LOG_WARNING_PREFIX;
+  case AGENT_LOG_LEVEL_ERROR:
+    break;
+  }
+  return AGENT_LOG_ERROR_PREFIX;
 }
 
 static void agentQueueLog(
@@ -122,7 +149,7 @@ __attribute__((format(printf, 3, 4))) static void agentLog(
   vsnprintf(message, sizeof(message), format, arguments);
   va_end(arguments);
 
-  fprintf(stderr, "[%s] %s\n", agentLogLevelName(level), message);
+  fprintf(stderr, "%s%s\n", agentLogLevelPrefix(level), message);
   agentQueueLog(&runtime->logs, level, message);
 }
 
@@ -171,6 +198,81 @@ static void agentLogFailure(
   }
 }
 
+static const char *agentPhaseName(const AgentPhase phase) {
+  switch (phase) {
+  case AGENT_PHASE_UNENROLLED:
+    return "not enrolled";
+  case AGENT_PHASE_PENDING:
+    return "pending";
+  case AGENT_PHASE_ACTIVE:
+    return "active";
+  case AGENT_PHASE_REJECTED:
+    break;
+  }
+  return "rejected";
+}
+
+/**
+ * Append a change to the Device Audit Trail. A failure is reported like any
+ * other error and never stops the change itself: the trail is a record, not
+ * a gate.
+ */
+static void agentAudit(
+  AgentRuntime         *runtime,
+  const AuditTrailActor actor,
+  const char           *what,
+  const char           *before,
+  const char           *after
+) {
+  const AuditTrailResultCode code = AuditTrailI.record(
+    runtime->environment->auditTrailPath, actor, what, before, after
+  );
+  if (code != AUDIT_TRAIL_RESULT_OK) {
+    agentLog(
+      runtime,
+      AGENT_LOG_LEVEL_ERROR,
+      "could not record \"%s\" in the audit trail (%d)",
+      what,
+      code
+    );
+  }
+}
+
+/**
+ * Format the text of an Audit Trail entry into `buffer`, of
+ * `AGENT_AUDIT_TEXT_CAPACITY` bytes. A text that does not fit is logged as an
+ * error and the entry is not written: a cut text would misstate the change.
+ */
+__attribute__((format(printf, 4, 5))) static bool agentFormatAuditText(
+  AgentRuntime *runtime, char *buffer, const char *what, const char *format, ...
+) {
+  va_list arguments;
+  va_start(arguments, format);
+  const int32_t written =
+    vsnprintf(buffer, AGENT_AUDIT_TEXT_CAPACITY, format, arguments);
+  va_end(arguments);
+  if (written < 0 || (size_t)written >= AGENT_AUDIT_TEXT_CAPACITY) {
+    agentLog(
+      runtime,
+      AGENT_LOG_LEVEL_ERROR,
+      "could not record \"%s\" in the audit trail: its text does not fit",
+      what
+    );
+    return false;
+  }
+  return true;
+}
+
+static AuditTrailActor agentActor(void) {
+  return (AuditTrailActor){.kind = AUDIT_TRAIL_ACTOR_AGENT, .identifier = NULL};
+}
+
+static AuditTrailActor agentCommandActor(const Command *command) {
+  return (AuditTrailActor){
+    .kind = AUDIT_TRAIL_ACTOR_COMMAND, .identifier = command->id
+  };
+}
+
 static void agentSetCredentials(
   AgentRuntime *runtime, const DeviceCredentials *credentials
 ) {
@@ -195,6 +297,23 @@ static void agentRevokeCredentials(AgentRuntime *runtime, const uint64_t now) {
     "Puppeteer rejected the credentials of device %s; enrolling again",
     runtime->credentials.deviceId
   );
+  char before[AGENT_AUDIT_TEXT_CAPACITY];
+  if (agentFormatAuditText(
+        runtime,
+        before,
+        AUDIT_TRAIL_WHAT_ENROLLMENT,
+        "%s as device %s",
+        agentPhaseName(runtime->schedule.phase),
+        runtime->credentials.deviceId
+      )) {
+    agentAudit(
+      runtime,
+      agentActor(),
+      AUDIT_TRAIL_WHAT_ENROLLMENT,
+      before,
+      AUDIT_TRAIL_STATE_CREDENTIALS_REVOKED
+    );
+  }
   DeviceStoreI.clearCredentials(runtime->environment->storage);
   runtime->hasCredentials = false;
   runtime->schedule = AgentScheduleI.credentialsRevoked(&runtime->schedule, now);
@@ -218,7 +337,7 @@ static void agentConnect(AgentRuntime *runtime, const uint64_t now) {
   char                body[AGENT_REQUEST_BODY_CAPACITY];
   const ProtocolResultCode written = ProtocolI.writeConnectRequest(
     config->deviceIdentifier,
-    config->hasOrganization ? config->organizationId : NULL,
+    NULL,
     (RequestBody){.buffer = body, .capacity = sizeof(body)}
   );
 
@@ -250,24 +369,42 @@ static void agentConnect(AgentRuntime *runtime, const uint64_t now) {
   }
   agentSetCredentials(runtime, &credentials);
   runtime->schedule = AgentScheduleI.connected(&runtime->schedule, now);
+  char after[AGENT_AUDIT_TEXT_CAPACITY];
+  if (agentFormatAuditText(
+        runtime,
+        after,
+        AUDIT_TRAIL_WHAT_ENROLLMENT,
+        "%s as device %s",
+        agentPhaseName(AGENT_PHASE_PENDING),
+        credentials.deviceId
+      )) {
+    agentAudit(
+      runtime, agentActor(), AUDIT_TRAIL_WHAT_ENROLLMENT, AUDIT_TRAIL_STATE_NOT_ENROLLED, after
+    );
+  }
   agentLog(
     runtime,
     AGENT_LOG_LEVEL_INFO,
-    "connected as device %s; waiting for approval",
+    AGENT_LOG_ENROLLMENT_PENDING " as device %s",
     credentials.deviceId
   );
 }
 
-static void agentLogPhaseChange(AgentRuntime *runtime, const DeviceState *state) {
+static void agentLogPhase(AgentRuntime *runtime, const DeviceState *state) {
   switch (runtime->schedule.phase) {
   case AGENT_PHASE_PENDING:
-    agentLog(runtime, AGENT_LOG_LEVEL_INFO, "waiting for approval");
+    agentLog(
+      runtime,
+      AGENT_LOG_LEVEL_INFO,
+      AGENT_LOG_ENROLLMENT_PENDING " as device %s",
+      runtime->credentials.deviceId
+    );
     break;
   case AGENT_PHASE_ACTIVE:
     agentLog(
       runtime,
       AGENT_LOG_LEVEL_INFO,
-      "approved as \"%s\" in organization %s",
+      AGENT_LOG_ENROLLMENT_APPROVED " as \"%s\" in organization %s",
       state->name,
       state->hasOrganization ? state->organizationId : "(none)"
     );
@@ -277,6 +414,45 @@ static void agentLogPhaseChange(AgentRuntime *runtime, const DeviceState *state)
     break;
   case AGENT_PHASE_UNENROLLED:
     break;
+  }
+}
+
+/**
+ * Record a phase change Puppeteer reported. Not after resuming stored
+ * credentials: the first status check then only confirms a starting point.
+ */
+static void agentRecordPhaseChange(
+  AgentRuntime *runtime, const AgentPhase previousPhase, const DeviceState *state
+) {
+  if (!runtime->phaseConfirmed) {
+    return;
+  }
+  char       after[AGENT_AUDIT_TEXT_CAPACITY];
+  const bool described =
+    state->hasOrganization
+      ? agentFormatAuditText(
+          runtime,
+          after,
+          AUDIT_TRAIL_WHAT_ENROLLMENT,
+          "%s in organization %s",
+          agentPhaseName(runtime->schedule.phase),
+          state->organizationId
+        )
+      : agentFormatAuditText(
+          runtime,
+          after,
+          AUDIT_TRAIL_WHAT_ENROLLMENT,
+          "%s",
+          agentPhaseName(runtime->schedule.phase)
+        );
+  if (described) {
+    agentAudit(
+      runtime,
+      agentActor(),
+      AUDIT_TRAIL_WHAT_ENROLLMENT,
+      agentPhaseName(previousPhase),
+      after
+    );
   }
 }
 
@@ -302,9 +478,15 @@ static void agentCheckStatus(AgentRuntime *runtime, const uint64_t now) {
   const AgentPhase previousPhase = runtime->schedule.phase;
   runtime->schedule =
     AgentScheduleI.deviceStateReceived(&runtime->schedule, &state, now);
-  if (runtime->schedule.phase != previousPhase) {
-    agentLogPhaseChange(runtime, &state);
+  const bool changed = runtime->schedule.phase != previousPhase;
+  /** Also on the first check after starting: see the logging contract. */
+  if (changed || !runtime->phaseConfirmed) {
+    agentLogPhase(runtime, &state);
   }
+  if (changed) {
+    agentRecordPhaseChange(runtime, previousPhase, &state);
+  }
+  runtime->phaseConfirmed = true;
 }
 
 /** Ship queued log lines, stopping at the first failure to retry later. */
@@ -494,6 +676,36 @@ static bool agentUpdate(AgentRuntime *runtime, const Command *command) {
     );
     return false;
   }
+  /**
+   * Recorded as a change of the binary, like the Installation's, so the
+   * latest "binary" entry always describes what is installed. Without a
+   * version only the digest is known, and only the digest is written.
+   */
+  char after[AGENT_AUDIT_TEXT_CAPACITY];
+  char digest[SHA256_HEX_DIGEST_CAPACITY];
+  Sha256I.formatHexDigest(instruction.sha256, digest);
+  const bool described =
+    instruction.hasVersion
+      ? agentFormatAuditText(
+          runtime,
+          after,
+          AUDIT_TRAIL_WHAT_BINARY,
+          "%s " AUDIT_TRAIL_DIGEST_PREFIX "%s",
+          instruction.version,
+          digest
+        )
+      : agentFormatAuditText(
+          runtime, after, AUDIT_TRAIL_WHAT_BINARY, AUDIT_TRAIL_DIGEST_PREFIX "%s", digest
+        );
+  if (described) {
+    agentAudit(
+      runtime,
+      agentCommandActor(command),
+      AUDIT_TRAIL_WHAT_BINARY,
+      runtime->environment->puppetVersion,
+      after
+    );
+  }
   agentLog(
     runtime,
     AGENT_LOG_LEVEL_INFO,
@@ -539,7 +751,43 @@ static void agentRunCommand(AgentRuntime *runtime, const Command *command) {
     agentLogFailure(runtime, "acknowledging command", &acknowledgement);
   }
 
+  /** Recorded before the action: a reboot or power-off may end this
+   *  process before it could write anything afterwards. */
+  if (command->type == COMMAND_TYPE_RESTART) {
+    agentAudit(
+      runtime,
+      agentCommandActor(command),
+      AUDIT_TRAIL_WHAT_REBOOT,
+      AUDIT_TRAIL_STATE_RUNNING,
+      AUDIT_TRAIL_STATE_REBOOT_REQUESTED
+    );
+  } else if (command->type == COMMAND_TYPE_SHUTDOWN) {
+    agentAudit(
+      runtime,
+      agentCommandActor(command),
+      AUDIT_TRAIL_WHAT_POWEROFF,
+      AUDIT_TRAIL_STATE_RUNNING,
+      AUDIT_TRAIL_STATE_POWEROFF_REQUESTED
+    );
+  }
+
   const bool succeeded = agentExecute(runtime, command);
+  char       what[AGENT_AUDIT_TEXT_CAPACITY];
+  if (agentFormatAuditText(
+        runtime,
+        what,
+        AUDIT_TRAIL_WHAT_COMMAND_PREFIX,
+        AUDIT_TRAIL_WHAT_COMMAND_PREFIX "%s",
+        agentCommandTypeName(command->type)
+      )) {
+    agentAudit(
+      runtime,
+      agentCommandActor(command),
+      what,
+      AUDIT_TRAIL_STATE_ACKNOWLEDGED,
+      succeeded ? AUDIT_TRAIL_STATE_SUCCEEDED : AUDIT_TRAIL_STATE_FAILED
+    );
+  }
 
   char body[AGENT_REQUEST_BODY_CAPACITY];
   ProtocolI.writeCommandCompletion(
@@ -663,6 +911,7 @@ static AgentExitReason agentRun(const AgentEnvironment *environment) {
     .logs                = {.first = 0, .count = 0},
     .lastFeedEventCount  = 0,
     .restartRequested    = false,
+    .phaseConfirmed      = true,
   };
 
   DeviceCredentials stored;
@@ -670,6 +919,7 @@ static AgentExitReason agentRun(const AgentEnvironment *environment) {
     DeviceStoreI.loadCredentials(environment->storage, &stored);
   if (hasStored) {
     agentSetCredentials(&runtime, &stored);
+    runtime.phaseConfirmed = false;
   }
   runtime.schedule =
     AgentScheduleI.create(hasStored, LifecycleI.monotonicSeconds());
@@ -708,7 +958,7 @@ static AgentExitReason agentRun(const AgentEnvironment *environment) {
       break;
     }
   }
-  fprintf(stderr, "[info] termination requested; shutting down\n");
+  fprintf(stderr, AGENT_LOG_INFO_PREFIX "termination requested; shutting down\n");
   return AGENT_EXIT_TERMINATION_REQUESTED;
 }
 

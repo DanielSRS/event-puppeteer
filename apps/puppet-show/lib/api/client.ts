@@ -20,7 +20,7 @@ import {
   ApiErrorBodySchema, AuditEntrySchema, CommandSchema, DeviceLogSchema, DeviceSchema, DeviceStatusSchema,
   DeviceTelemetryResponseSchema, EventSchema, EventWithVotesSchema, FeedEventSchema, ImageDecisionSchema, ImageReviewItemSchema,
   ImageViewSchema, LinkLabelSchema, LoginResponseSchema, OrganizationSchema, RegisterResponseSchema, ReportSchema, ReportStatusSchema,
-  ScreeningPolicyResponseSchema, ScreeningPolicySchema, SuccessSchema, TagSchema, UserSchema, VoteResponseSchema, VoteStatusSchema,
+  ScreeningPolicyResponseSchema, ScreeningPolicySchema, SuccessSchema, TagSchema, UpdateUploadGrantSchema, UserSchema, VoteResponseSchema, VoteStatusSchema,
   type CreateCommandInput, type CreateEventInput, type OrgRole, type OrganizationInput, type ReportReason, type ScreeningPolicy,
 } from "./schemas";
 
@@ -339,6 +339,9 @@ export const api = {
       Request(DeviceLogSchema.array(), "GET", `/organizations/${seg(orgId)}/devices/${seg(deviceId)}/logs`),
     commands: (orgId: string, deviceId: string) =>
       Request(CommandSchema.array(), "GET", `/organizations/${seg(orgId)}/devices/${seg(deviceId)}/commands`),
+    /** Authorizes the upload of one Puppet binary of `sizeBytes` straight to the (private) store. */
+    requestUpdateUpload: (orgId: string, sizeBytes: number) =>
+      Request(UpdateUploadGrantSchema, "POST", `/organizations/${seg(orgId)}/devices/update-uploads`, { sizeBytes }),
     sendCommand: (orgId: string, deviceId: string, body: CreateCommandInput) =>
       Request(CommandSchema, "POST", `/organizations/${seg(orgId)}/devices/${seg(deviceId)}/commands`, body),
   },

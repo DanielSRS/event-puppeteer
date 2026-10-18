@@ -31,6 +31,25 @@
 #define PUPPET_SELF_UPDATE_IMPLEMENTATION
 #include "update/self-update.h"
 
+#define PUPPET_AUDIT_TRAIL_IMPLEMENTATION
+#include "audit-trail/audit-trail.h"
+
+/** After the Audit Trail, whose names its rules read. */
+#define PUPPET_INSTALLATION_IMPLEMENTATION
+#include "installation/installation.h"
+
+#define PUPPET_WATCH_IMPLEMENTATION
+#include "watch/watch.h"
+
+#define PUPPET_WATCHER_IMPLEMENTATION
+#include "watcher/watcher.h"
+
+#define PUPPET_INSTALLER_IMPLEMENTATION
+#include "installer/installer.h"
+
+#define PUPPET_AGENT_LOCK_IMPLEMENTATION
+#include "agent-lock/agent-lock.h"
+
 #define PUPPET_AGENT_SCHEDULE_IMPLEMENTATION
 #include "agent/agent-schedule.h"
 
@@ -47,40 +66,122 @@ typedef enum {
   PUPPET_EXIT_HTTP_CLIENT_ALLOCATION  = 3,
   PUPPET_EXIT_STORAGE_INITIALIZATION  = 4,
   PUPPET_EXIT_RESTART_FAILED          = 5,
+  /** Another agent already holds the agent lock. */
+  PUPPET_EXIT_AGENT_ALREADY_RUNNING   = 6,
+  /** The agent lock could not be opened or locked at all. */
+  PUPPET_EXIT_AGENT_LOCK_UNAVAILABLE  = 7,
+  /** The running executable's path could not be determined. */
+  PUPPET_EXIT_EXECUTABLE_UNKNOWN      = 8,
+  /** Installing needs root and `sudo`, `pkexec` or `su` could not be started. */
+  PUPPET_EXIT_ELEVATION_UNAVAILABLE   = 9,
+  /** An installation step failed; the steps already done are in the trail. */
+  PUPPET_EXIT_INSTALLATION_FAILED     = 10,
+  /** The agent did not report the Device pending within 60 seconds. */
+  PUPPET_EXIT_AGENT_NOT_PENDING       = 11,
 } PuppetExitStatus;
 
 static const char *configErrorDescription(const ConfigResultCode code) {
   switch (code) {
   case CONFIG_ERROR_MISSING_SERVER_URL:
-    return "PUPPET_SERVER_URL is not set";
+    return "the Puppeteer URL baked into this build is empty";
   case CONFIG_ERROR_INVALID_SERVER_URL:
-    return "PUPPET_SERVER_URL must start with http:// or https://";
+    return "the Puppeteer URL baked into this build must start with http:// or https://";
   case CONFIG_ERROR_SERVER_URL_TOO_LONG:
-    return "PUPPET_SERVER_URL is too long";
-  case CONFIG_ERROR_ORGANIZATION_ID_TOO_LONG:
-    return "PUPPET_ORGANIZATION_ID is too long";
-  case CONFIG_ERROR_MISSING_DATA_DIRECTORY:
-    return "set PUPPET_DATA_DIRECTORY (HOME is unknown)";
-  case CONFIG_ERROR_DATA_DIRECTORY_TOO_LONG:
-    return "the data directory path is too long";
+    return "the Puppeteer URL baked into this build is too long";
   case CONFIG_ERROR_MISSING_DEVICE_IDENTIFIER:
-    return "set PUPPET_DEVICE_IDENTIFIER (/etc/machine-id is unavailable)";
+    return "/etc/machine-id is missing or empty";
   case CONFIG_ERROR_DEVICE_IDENTIFIER_TOO_LONG:
-    return "the device identifier is too long";
+    return "/etc/machine-id is too long";
   case CONFIG_RESULT_OK:
     break;
   }
   return "unknown configuration error";
 }
 
+static PuppetExitStatus installerExitStatus(const InstallerResultCode code) {
+  switch (code) {
+  case INSTALLER_RESULT_OK:
+    return PUPPET_EXIT_SUCCESS;
+  case INSTALLER_ERROR_WATCH_TIMED_OUT:
+    return PUPPET_EXIT_AGENT_NOT_PENDING;
+  case INSTALLER_ERROR_SUDO_UNAVAILABLE:
+  case INSTALLER_ERROR_SUDO_EXEC_FAILED:
+  case INSTALLER_ERROR_PKEXEC_SPAWN_FAILED:
+  case INSTALLER_ERROR_SU_UNAVAILABLE:
+    return PUPPET_EXIT_ELEVATION_UNAVAILABLE;
+  default:
+    break;
+  }
+  return PUPPET_EXIT_INSTALLATION_FAILED;
+}
+
 int main(const int argumentCount, char *argumentValues[]) {
-  (void)argumentCount; // argv is NULL-terminated; only re-exec needs it
+  /**
+   * Resolved now: once an update replaces the binary, the kernel no
+   * longer reports its original path.
+   */
+  SelfUpdatePaths            updatePaths;
+  const SelfUpdateResultCode pathsCode = SelfUpdateI.resolvePaths(&updatePaths);
+  if (pathsCode != SELF_UPDATE_RESULT_OK) {
+    fprintf(
+      stderr, "[error] cannot locate the running executable (%d)\n", pathsCode
+    );
+    return PUPPET_EXIT_EXECUTABLE_UNKNOWN;
+  }
+
+  /**
+   * Before the lifecycle blocks the termination signals: a terminal run must
+   * stay interruptible, and it never takes the agent lock.
+   */
+  const InstallationEnvironment installationEnvironment =
+    InstallationI.readEnvironment();
+  const InstallationInputs installationInputs = {
+    .invocationIdentifier = installationEnvironment.invocationIdentifier,
+    .executablePath       = updatePaths.executablePath,
+  };
+  if (InstallationI.decideRole(&installationInputs) == INSTALLATION_ROLE_TERMINAL) {
+    const InstallerContext installerContext = {
+      .executablePath = updatePaths.executablePath,
+      .arguments      = argumentValues,
+      .argumentCount  = (size_t)argumentCount,
+      .sudoUser             = installationEnvironment.sudoUser,
+      .pkexecUserIdentifier = installationEnvironment.pkexecUserIdentifier,
+      .puppetVersion  = PUPPET_VERSION,
+    };
+    int32_t                   elevatedStatus = PUPPET_EXIT_SUCCESS;
+    const InstallerResultCode installed =
+      InstallerI.run(&installerContext, &elevatedStatus);
+    /** The run as root through pkexec did the work and set the outcome. */
+    return installed == INSTALLER_RESULT_FINISHED_AS_ROOT
+             ? elevatedStatus
+             : (int32_t)installerExitStatus(installed);
+  }
 
   /** Block termination signals before anything else (see lifecycle.h). */
   const Lifecycle lifecycle = LifecycleI.create();
 
   char puppetStartTime[LIFECYCLE_TIMESTAMP_CAPACITY];
   LifecycleI.formatUtcNow(puppetStartTime);
+
+  /** Before anything touches storage: two agents must never share it. */
+  const AgentLockResultCode lockCode = AgentLockI.acquire(CONFIG_AGENT_LOCK_PATH);
+  if (lockCode == AGENT_LOCK_ERROR_HELD) {
+    fprintf(
+      stderr,
+      "[error] another agent is already running (lock %s is held)\n",
+      CONFIG_AGENT_LOCK_PATH
+    );
+    return PUPPET_EXIT_AGENT_ALREADY_RUNNING;
+  }
+  if (lockCode != AGENT_LOCK_RESULT_OK) {
+    fprintf(
+      stderr,
+      "[error] cannot take the agent lock %s (%d)\n",
+      CONFIG_AGENT_LOCK_PATH,
+      lockCode
+    );
+    return PUPPET_EXIT_AGENT_LOCK_UNAVAILABLE;
+  }
 
   ConfigSourceStorage    sourceStorage;
   const ConfigSources    sources = ConfigI.readSources(&sourceStorage);
@@ -96,11 +197,11 @@ int main(const int argumentCount, char *argumentValues[]) {
     return PUPPET_EXIT_INVALID_CONFIGURATION;
   }
 
-  MmkvI.initialize(config.dataDirectory);
+  MmkvI.initialize(CONFIG_DATA_DIRECTORY);
   MMKVHandle_t storage = MmkvI.createDefault();
   if (storage == NULL) {
     fprintf(
-      stderr, "[error] cannot open storage in %s\n", config.dataDirectory
+      stderr, "[error] cannot open storage in %s\n", CONFIG_DATA_DIRECTORY
     );
     MmkvI.shutdown();
     return PUPPET_EXIT_STORAGE_INITIALIZATION;
@@ -125,27 +226,15 @@ int main(const int argumentCount, char *argumentValues[]) {
     return PUPPET_EXIT_HTTP_CLIENT_ALLOCATION;
   }
 
-  /** Resolved now: once an update replaces the binary, the kernel no
-   *  longer reports its original path. */
-  SelfUpdatePaths            updatePaths;
-  const SelfUpdateResultCode pathsCode = SelfUpdateI.resolvePaths(&updatePaths);
-  if (pathsCode != SELF_UPDATE_RESULT_OK) {
-    fprintf(
-      stderr,
-      "[warning] updates disabled: executable path unknown (%d)\n",
-      pathsCode
-    );
-  }
-
   const AgentEnvironment environment = {
     .config          = &config,
     .httpClient      = httpClient,
     .storage         = storage,
     .lifecycle       = &lifecycle,
+    .auditTrailPath  = CONFIG_AUDIT_TRAIL_PATH,
     .puppetVersion   = PUPPET_VERSION,
     .puppetStartTime = puppetStartTime,
-    .updatePaths =
-      pathsCode == SELF_UPDATE_RESULT_OK ? &updatePaths : NULL,
+    .updatePaths     = &updatePaths,
   };
   const AgentExitReason exitReason = AgentI.run(&environment);
 
@@ -154,6 +243,13 @@ int main(const int argumentCount, char *argumentValues[]) {
   MmkvI.shutdown();
 
   if (exitReason == AGENT_EXIT_RESTART_REQUESTED) {
+    const AgentLockResultCode keepCode = AgentLockI.keepAcrossRestart();
+    if (keepCode != AGENT_LOCK_RESULT_OK) {
+      fprintf(
+        stderr, "[error] cannot keep the agent lock across the restart (%d)\n", keepCode
+      );
+      return PUPPET_EXIT_RESTART_FAILED;
+    }
     SelfUpdateI.restart(&updatePaths, argumentValues);
     fprintf(stderr, "[error] restart into the updated binary failed\n");
     return PUPPET_EXIT_RESTART_FAILED;

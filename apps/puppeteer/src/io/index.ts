@@ -247,6 +247,32 @@ export interface ImageStore {
   signedUrl(id: string): string;
 }
 
+/** Why issuing an upload grant for an update binary failed. */
+export type UpdateBinaryStoreFailure = string;
+
+/** What a browser needs to upload one update binary straight to the store. */
+export interface UpdateUploadGrant {
+  /** Where the binary will live in the store; the upload must use exactly this name. */
+  pathname: string;
+  /** Credential the browser presents to the store; it only allows this one upload. */
+  clientToken: string;
+}
+
+/**
+ * Where Puppet update binaries live until Devices download them. The browser uploads
+ * straight to the store (a Function cannot take a body of tens of MiB), so Puppeteer only
+ * decides what may be uploaded and issues the credential for it.
+ */
+export interface UpdateBinaryStore {
+  /**
+   * Authorizes one upload of at most `maxBytes` to `pathname`, as a private file: nobody
+   * can read it without a URL from `signedDownloadUrl`.
+   */
+  issueUploadGrant(pathname: string, maxBytes: number): Promise<Result<UpdateUploadGrant, UpdateBinaryStoreFailure>>;
+  /** A URL that downloads `pathname` with a plain GET until `validUntil` (ms since the epoch), and not afterwards. */
+  signedDownloadUrl(pathname: string, validUntil: number): Promise<Result<string, UpdateBinaryStoreFailure>>;
+}
+
 export interface AppIO {
   orgRepo: OrganizationRepository;
   userRepo: UserRepository;
@@ -265,6 +291,7 @@ export interface AppIO {
   emailSender: EmailSender;
   imageScreener: ImageScreener;
   imageStore: ImageStore;
+  updateBinaryStore: UpdateBinaryStore;
 }
 
 import postgres from 'postgres';
@@ -293,6 +320,7 @@ import { CombinedImageScreener } from './screening/combined.ts';
 import { SightengineImageScreener } from './screening/sightengine.ts';
 import { OpenAIImageScreener } from './screening/openai.ts';
 import { CloudinaryImageStore } from './image-store/cloudinary.ts';
+import { VercelBlobUpdateBinaryStore } from './update-binary-store/vercel-blob.ts';
 
 // close() ends the database pool: an open pool keeps the process alive after the server stops
 export function createRealIO(): AppIO & { close(): Promise<void> } {
@@ -344,6 +372,7 @@ export function createRealIO(): AppIO & { close(): Promise<void> } {
       apiKey: env.CLOUDINARY_API_KEY,
       apiSecret: env.CLOUDINARY_API_SECRET
     }),
+    updateBinaryStore: new VercelBlobUpdateBinaryStore(env.BLOB_READ_WRITE_TOKEN),
     close: () => queryClient.end({ timeout: 5 })
   };
 }

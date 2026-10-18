@@ -20,6 +20,22 @@
 #define PUPPET_SELF_UPDATE_IMPLEMENTATION
 #include "update/self-update.h"
 
+#define PUPPET_LIFECYCLE_IMPLEMENTATION
+#include "lifecycle/lifecycle.h"
+
+#define PUPPET_AUDIT_TRAIL_IMPLEMENTATION
+#include "audit-trail/audit-trail.h"
+
+/** After the Audit Trail, whose names its rules read. */
+#define PUPPET_INSTALLATION_IMPLEMENTATION
+#include "installation/installation.h"
+
+#define PUPPET_WATCH_IMPLEMENTATION
+#include "watch/watch.h"
+
+#define PUPPET_AGENT_LOCK_IMPLEMENTATION
+#include "agent-lock/agent-lock.h"
+
 #define PUPPET_AGENT_SCHEDULE_IMPLEMENTATION
 #include "agent/agent-schedule.h"
 
@@ -29,8 +45,12 @@
 #include "protocol/protocol.test.c"
 #include "config/config.test.c"
 #include "agent/agent-schedule.test.c"
+#include "agent-lock/agent-lock.test.c"
+#include "audit-trail/audit-trail.test.c"
+#include "installation/installation.test.c"
 #include "crypto/sha256.test.c"
 #include "update/self-update.test.c"
+#include "watch/watch.test.c"
 
 #include <stdio.h>
 
@@ -42,8 +62,12 @@ static const TestSuite *const TEST_SUITES[] = {
   &ProtocolTestSuite,
   &ConfigTestSuite,
   &AgentScheduleTestSuite,
+  &AgentLockTestSuite,
+  &AuditTrailTestSuite,
+  &InstallationTestSuite,
   &Sha256TestSuite,
   &SelfUpdateTestSuite,
+  &WatchTestSuite,
 };
 
 int main(void) {

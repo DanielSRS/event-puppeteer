@@ -1,7 +1,17 @@
 cmake_minimum_required(VERSION 3.19)
 
 # Define the project name and set the languages to C and CXX
-project(puppet VERSION 0.0.1 LANGUAGES C CXX)
+project(puppet VERSION 0.0.2 LANGUAGES C CXX)
+
+# The Puppet is configured only at build time (ADR-0001): Puppeteer's URL is
+# baked into the binary, and configuring fails without a valid one.
+set(PUPPET_SERVER_URL "" CACHE STRING "Puppeteer base URL, http:// or https:// (required)")
+if(PUPPET_SERVER_URL STREQUAL "")
+    message(FATAL_ERROR "PUPPET_SERVER_URL is required: configure with -DPUPPET_SERVER_URL=https://puppeteer.example")
+endif()
+if(NOT PUPPET_SERVER_URL MATCHES "^https?://[^ \t\"\\;]+$")
+    message(FATAL_ERROR "PUPPET_SERVER_URL must be an http:// or https:// URL, got '${PUPPET_SERVER_URL}'")
+endif()
 
 # Enforce C++17 for MMKV compilation compatibility
 set(CMAKE_CXX_STANDARD 17)
@@ -65,7 +75,10 @@ set(PUPPET_STRICT_COMPILE_OPTIONS
 # Add an executable with the source file
 add_executable(puppet src/main.c)
 target_compile_options(puppet PRIVATE ${PUPPET_STRICT_COMPILE_OPTIONS})
-target_compile_definitions(puppet PRIVATE PUPPET_VERSION="${PROJECT_VERSION}")
+target_compile_definitions(puppet PRIVATE
+    PUPPET_VERSION="${PROJECT_VERSION}"
+    PUPPET_SERVER_URL="${PUPPET_SERVER_URL}"
+)
 
 # Link MMKV Core, Threads, and libcurl to the puppet executable
 target_link_libraries(puppet PRIVATE core Threads::Threads gcc_s stdc++ CURL::libcurl)
@@ -93,6 +106,7 @@ if(PUPPET_BUILD_TESTS)
     enable_testing()
     add_executable(puppet-tests src/test-runner.c)
     target_compile_options(puppet-tests PRIVATE ${PUPPET_STRICT_COMPILE_OPTIONS})
+    target_compile_definitions(puppet-tests PRIVATE PUPPET_SERVER_URL="${PUPPET_SERVER_URL}")
     target_include_directories(puppet-tests PRIVATE src)
     target_link_libraries(puppet-tests PRIVATE m)
 

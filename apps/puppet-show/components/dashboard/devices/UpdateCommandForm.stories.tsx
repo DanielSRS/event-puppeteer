@@ -16,6 +16,7 @@ type Story = StoryObj<typeof meta>;
 export const Validation: Story = {
   args: { onSubmit: fn() },
   play: async ({ canvas, args }) => {
+    await userEvent.click(canvas.getByLabelText("Informar um endereço"));
     await userEvent.click(canvas.getByRole("button", { name: "Enviar atualização" }));
     await expect(args.onSubmit).not.toHaveBeenCalled();
     await expect(canvas.getByLabelText("Endereço do Puppet")).toHaveAttribute("aria-invalid", "true");
@@ -24,14 +25,30 @@ export const Validation: Story = {
     await userEvent.type(canvas.getByLabelText("Endereço do Puppet"), "https://cdn.example.org/puppet");
     await userEvent.type(canvas.getByLabelText("SHA-256"), "D".repeat(64));
     await userEvent.click(canvas.getByRole("button", { name: "Enviar atualização" }));
-    await expect(args.onSubmit).toHaveBeenCalledWith({ url: "https://cdn.example.org/puppet", sha256: "D".repeat(64) });
+    await expect(args.onSubmit).toHaveBeenCalledWith({ kind: "url", payload: { url: "https://cdn.example.org/puppet", sha256: "D".repeat(64) } });
   },
 };
 
-/** Sending: buttons disabled. */
+/** A file is the default origin; it must be chosen and fit Puppet's 64 MB. */
+export const FromFile: Story = {
+  args: { onSubmit: fn() },
+  play: async ({ canvas, args }) => {
+    await expect(canvas.queryByLabelText("SHA-256")).not.toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Enviar atualização" }));
+    await expect(canvas.getByText("Escolha o arquivo do Puppet.")).toBeInTheDocument();
+
+    const file = new File(["ELF"], "puppet");
+    await userEvent.upload(canvas.getByLabelText("Arquivo do Puppet"), file);
+    await userEvent.click(canvas.getByRole("button", { name: "Enviar atualização" }));
+    await expect(args.onSubmit).toHaveBeenCalledWith({ kind: "file", file });
+  },
+};
+
+/** Sending: buttons disabled, the step of the upload shown. */
 export const Saving: Story = {
-  args: { saving: true },
+  args: { saving: true, progress: "Enviando o arquivo... 42%" },
   play: async ({ canvas }) => {
+    await expect(canvas.getByRole("status")).toHaveTextContent("42%");
     await expect(canvas.getByRole("button", { name: "Enviando..." })).toBeDisabled();
   },
 };

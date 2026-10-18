@@ -85,10 +85,22 @@ static void sha256ParsesHexDigests(TestContext *context) {
   );
 }
 
+static void sha256FormatsHexDigests(TestContext *context) {
+  const char *const expected =
+    "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+  uint8_t digest[SHA256_DIGEST_LENGTH];
+  char    text[SHA256_HEX_DIGEST_CAPACITY];
+
+  EXPECT(context, Sha256I.parseHexDigest(expected, digest));
+  Sha256I.formatHexDigest(digest, text);
+  EXPECT(context, strcmp(text, expected) == 0);
+}
+
 static const TestCase SHA256_TEST_CASES[] = {
   {"matches NIST test vectors", sha256MatchesNistVectors},
   {"hashes one million bytes across chunks", sha256HashesAcrossChunks},
   {"parses hexadecimal digests", sha256ParsesHexDigests},
+  {"formats digests as lowercase hexadecimal", sha256FormatsHexDigests},
 };
 
 static const TestSuite Sha256TestSuite = {
