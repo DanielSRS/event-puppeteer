@@ -1083,6 +1083,7 @@ static void agentApplyBrokerEvents(AgentRuntime *runtime, const uint64_t now) {
     runtime->schedule = AgentScheduleI.brokerSubscribed(&runtime->schedule, now);
   }
   if (events.heard) {
+    agentLogBroker(runtime, AGENT_LOG_LEVEL_INFO, "Wake-up heard; fetching Commands");
     runtime->schedule = AgentScheduleI.wakeupHeard(&runtime->schedule, now);
   }
   if (events.lost) {
