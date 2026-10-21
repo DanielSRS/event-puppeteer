@@ -11,7 +11,10 @@
  */
 #define WAKEUP_SUBSCRIPTION_QOS ((int32_t)1)
 
-/** Packets handled per read or write call; the library documents it as unused, one for forward compatibility. */
+/** The caller has already waited on the socket, so the library's own wait is zero. */
+#define WAKEUP_LOOP_TIMEOUT_MILLISECONDS ((int32_t)0)
+
+/** Packets handled per `serve` call; the library documents it as unused, one for forward compatibility. */
 #define WAKEUP_LOOP_MAX_PACKETS ((int32_t)1)
 
 /** What `wakeupDescriptor` answers when there is no connection. */
@@ -249,34 +252,16 @@ static WakeupResultCode wakeupServed(
   return failure;
 }
 
-static WakeupResultCode wakeupHandleReadable(WakeupListener *listener) {
+static WakeupResultCode wakeupServe(WakeupListener *listener) {
   if (listener->client == NULL) {
-    return WAKEUP_ERROR_READ_NOT_OPEN;
+    return WAKEUP_ERROR_SERVE_NOT_OPEN;
   }
   return wakeupServed(
     listener,
-    (int32_t)mosquitto_loop_read(listener->client, (int)WAKEUP_LOOP_MAX_PACKETS),
-    WAKEUP_ERROR_READ
-  );
-}
-
-static WakeupResultCode wakeupHandleWritable(WakeupListener *listener) {
-  if (listener->client == NULL) {
-    return WAKEUP_ERROR_WRITE_NOT_OPEN;
-  }
-  return wakeupServed(
-    listener,
-    (int32_t)mosquitto_loop_write(listener->client, (int)WAKEUP_LOOP_MAX_PACKETS),
-    WAKEUP_ERROR_WRITE
-  );
-}
-
-static WakeupResultCode wakeupMaintain(WakeupListener *listener) {
-  if (listener->client == NULL) {
-    return WAKEUP_ERROR_MAINTAIN_NOT_OPEN;
-  }
-  return wakeupServed(
-    listener, (int32_t)mosquitto_loop_misc(listener->client), WAKEUP_ERROR_MAINTAIN
+    (int32_t)mosquitto_loop(
+      listener->client, (int)WAKEUP_LOOP_TIMEOUT_MILLISECONDS, (int)WAKEUP_LOOP_MAX_PACKETS
+    ),
+    WAKEUP_ERROR_SERVE
   );
 }
 
@@ -294,9 +279,7 @@ const struct WakeupListenerType WakeupListenerI = {
   .retarget          = wakeupRetarget,
   .descriptor        = wakeupDescriptor,
   .wantsWrite        = wakeupWantsWrite,
-  .handleReadable    = wakeupHandleReadable,
-  .handleWritable    = wakeupHandleWritable,
-  .maintain          = wakeupMaintain,
+  .serve             = wakeupServe,
   .takeEvents        = wakeupTakeEvents,
   .close             = wakeupClose,
 };
