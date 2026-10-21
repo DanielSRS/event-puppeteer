@@ -12,6 +12,9 @@ export const WAKEUP_CONNECT_TIMEOUT_MS = 8_000;
 /** How long to wait for the broker to acknowledge a publish (QoS 1) before giving up; a warm publish takes about 0.3 s, and a connection that died while the instance was paused only shows up as a missing acknowledgement. */
 export const WAKEUP_PUBLISH_TIMEOUT_MS = 2_000;
 
+/** How long `warmUp` leaves the broker alone after a failed connection, so an outage costs one attempt per period and not one per request; a publish still tries. */
+export const WAKEUP_WARM_UP_RETRY_DELAY_MS = 30_000;
+
 /**
  * Asks the platform to keep the instance running until `work` settles, so it is not paused
  * mid-connect. `work` never rejects: its failures are values.
@@ -24,10 +27,19 @@ export interface MqttWakeupPublisherOptions {
   keepAlive: KeepAlive;
   connectTimeoutMs: number;
   publishTimeoutMs: number;
+  warmUpRetryDelayMs: number;
 }
 
 /** Why a connection is being opened, for the logs. */
 type ConnectReason = 'warm-up' | 'publish' | 'reconnect';
+
+/** One try of `publish`, for the logs. */
+interface PublishAttempt {
+  attempt: number;
+  reason: ConnectReason;
+  startedAt: number;
+  reusedConnection: boolean;
+}
 
 /** What went wrong, as text for a Result's error and the logs. */
 function reasonOf(error: unknown): string {
@@ -47,12 +59,15 @@ export class MqttWakeupPublisher implements WakeupPublisher {
   private client: mqtt.MqttClient | null = null;
   private connecting: Promise<Result<mqtt.MqttClient, WakeupFailure>> | null = null;
   private closed = false;
+  /** When the last connection attempt failed (`performance.now()`), until one succeeds. */
+  private lastConnectFailureAt: number | null = null;
 
   constructor(private readonly options: MqttWakeupPublisherOptions) {}
 
-  /** Starts opening the connection when none is open or opening, handing it to the keep-alive facility; failures are logged by `connect`. */
+  /** Starts opening the connection when none is open or opening and the last attempt did not just fail, handing it to the keep-alive facility; failures are logged by `connect`. */
   warmUp(): void {
     if (this.connecting !== null || this.client?.connected === true) return;
+    if (this.lastConnectFailureAt !== null && performance.now() - this.lastConnectFailureAt < this.options.warmUpRetryDelayMs) return;
     this.log('wakeup.broker.warm_up', {});
     this.options.keepAlive(this.connect('warm-up'));
   }
@@ -60,21 +75,13 @@ export class MqttWakeupPublisher implements WakeupPublisher {
   /** Publishes on the open connection, opening one when needed, and retries once on a new connection when the publish fails. */
   async publish(topic: string): Promise<Result<void, WakeupFailure>> {
     const startedAt = performance.now();
-    const reusedConnection = this.client?.connected === true;
+    const first = await this.attemptPublish(topic, { attempt: 1, reason: 'publish', startedAt, reusedConnection: this.client?.connected === true });
+    if (first.result.ok || first.client === null) return first.result;
 
-    const first = await this.connected('publish');
-    if (!first.ok) return this.logPublish(first, { startedAt, reusedConnection, attempt: 1 });
-
-    const published = await this.publishOn(first.value, topic);
-    this.logPublish(published, { startedAt, reusedConnection, attempt: 1 });
-    if (published.ok) return published;
-
-    this.log('wakeup.broker.reconnect', { reason: published.error });
-    await this.discard(first.value);
-    const reconnected = await this.connected('reconnect');
-    if (!reconnected.ok) return this.logPublish(reconnected, { startedAt, reusedConnection: false, attempt: 2 });
-    const retried = await this.publishOn(reconnected.value, topic);
-    return this.logPublish(retried, { startedAt, reusedConnection: false, attempt: 2 });
+    this.log('wakeup.broker.reconnect', { reason: first.result.error });
+    await this.discard(first.client);
+    const second = await this.attemptPublish(topic, { attempt: 2, reason: 'reconnect', startedAt, reusedConnection: false });
+    return second.result;
   }
 
   /** Closes the connection, if any; for shutdown. */
@@ -111,10 +118,12 @@ export class MqttWakeupPublisher implements WakeupPublisher {
           this.log('wakeup.broker.disconnected', {});
         });
         this.client = client;
+        this.lastConnectFailureAt = null;
         this.log('wakeup.broker.connected', { reason, durationMs: Math.round(performance.now() - startedAt) });
         return ok(client);
       } catch (error) {
         const failure = reasonOf(error);
+        this.lastConnectFailureAt = performance.now();
         this.log('wakeup.broker.connect_failed', { reason, failure, durationMs: Math.round(performance.now() - startedAt) });
         return err(failure);
       }
@@ -157,8 +166,20 @@ export class MqttWakeupPublisher implements WakeupPublisher {
     }
   }
 
-  /** Logs the outcome and duration of a publish, then returns `result` unchanged. */
-  private logPublish<T>(result: Result<T, WakeupFailure>, details: { startedAt: number; reusedConnection: boolean; attempt: number }): Result<T, WakeupFailure> {
+  /** Connects if needed and publishes once, logging the outcome; `client` is the connection used, or null when none could be opened. */
+  private async attemptPublish(topic: string, details: PublishAttempt): Promise<{ result: Result<void, WakeupFailure>; client: mqtt.MqttClient | null }> {
+    const connected = await this.connected(details.reason);
+    if (!connected.ok) {
+      this.logPublish(connected, details);
+      return { result: err(connected.error), client: null };
+    }
+    const published = await this.publishOn(connected.value, topic);
+    this.logPublish(published, details);
+    return { result: published, client: connected.value };
+  }
+
+  /** Logs the outcome and duration of a publish attempt. */
+  private logPublish(result: Result<unknown, WakeupFailure>, details: PublishAttempt): void {
     this.log('wakeup.broker.publish', {
       ok: result.ok,
       ...(result.ok ? {} : { reason: result.error }),
@@ -166,7 +187,6 @@ export class MqttWakeupPublisher implements WakeupPublisher {
       attempt: details.attempt,
       durationMs: Math.round(performance.now() - details.startedAt)
     });
-    return result;
   }
 
   /** One structured line; never topics, tokens or content. */

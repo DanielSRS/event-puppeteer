@@ -12,9 +12,11 @@
  *
  * - `POST /devices/connect` — announce this Puppet (no auth).
  * - `GET  /devices/me` — read own Enrollment status and Organization.
- * - `POST /devices/:id/heartbeat` — liveness and recent errors.
+ * - `POST /devices/:id/heartbeat` — liveness and recent errors; the answer's
+ *   `commandsWaiting` flag decides when Commands are fetched.
  * - `POST /devices/:id/logs` — ship queued log lines.
- * - `GET  /devices/:id/commands/pending` — fetch Commands to run.
+ * - `GET  /devices/:id/commands/pending` — fetch Commands to run, on boot and
+ *   when a heartbeat answer says some wait; never on a timer.
  * - `POST /devices/:id/commands/:cid/ack` then `.../complete`.
  * - `POST /devices/:id/telemetry` — answer `request_telemetry`.
  * - the `update` payload's URL — download a new binary (see `self-update.h`).
@@ -49,6 +51,7 @@
 #include "lifecycle/lifecycle.h"
 #include "mmkv/mmkv.h"
 #include "update/self-update.h"
+#include "wakeup/wakeup.h"
 
 /** Everything the agent needs from the outside world. Borrowed, not owned. */
 typedef struct {
@@ -65,6 +68,9 @@ typedef struct {
 
   /** ISO-8601 UTC time at which the process started. */
   const char *puppetStartTime;
+
+  /** The Wake-up broker to listen to once active; compile-time constants. */
+  const WakeupBrokerSettings *wakeupBroker;
 
   /** Where updates are installed, or NULL when unknown (updates then fail). */
   const SelfUpdatePaths *updatePaths;

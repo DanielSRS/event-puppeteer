@@ -342,7 +342,7 @@ import { CombinedImageScreener } from './screening/combined.ts';
 import { SightengineImageScreener } from './screening/sightengine.ts';
 import { OpenAIImageScreener } from './screening/openai.ts';
 import { CloudinaryImageStore } from './image-store/cloudinary.ts';
-import { MqttWakeupPublisher, WAKEUP_BROKER_URL, WAKEUP_CONNECT_TIMEOUT_MS, WAKEUP_PUBLISH_TIMEOUT_MS, type KeepAlive } from './wakeup/mqtt.ts';
+import { MqttWakeupPublisher, WAKEUP_BROKER_URL, WAKEUP_CONNECT_TIMEOUT_MS, WAKEUP_PUBLISH_TIMEOUT_MS, WAKEUP_WARM_UP_RETRY_DELAY_MS, type KeepAlive } from './wakeup/mqtt.ts';
 import { VercelBlobUpdateBinaryStore } from './update-binary-store/vercel-blob.ts';
 
 /** What the real IO needs from the process it runs in. */
@@ -351,13 +351,14 @@ export interface RealIOOptions {
   keepAlive: KeepAlive;
 }
 
-// close() ends the database pool and the broker connection: either keeps the process alive after the server stops
+/** `close()` ends the database pool and the broker connection: either keeps the process alive after the server stops. */
 export function createRealIO({ keepAlive }: RealIOOptions): AppIO & { close(): Promise<void> } {
   const wakeupPublisher = new MqttWakeupPublisher({
     brokerUrl: WAKEUP_BROKER_URL,
     keepAlive,
     connectTimeoutMs: WAKEUP_CONNECT_TIMEOUT_MS,
-    publishTimeoutMs: WAKEUP_PUBLISH_TIMEOUT_MS
+    publishTimeoutMs: WAKEUP_PUBLISH_TIMEOUT_MS,
+    warmUpRetryDelayMs: WAKEUP_WARM_UP_RETRY_DELAY_MS
   });
   // prepare: false — Supabase's transaction pooler (what serverless should use) rejects prepared statements
   const queryClient = postgres(env.DATABASE_URL, { prepare: false });

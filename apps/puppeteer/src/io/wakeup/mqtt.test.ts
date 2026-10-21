@@ -64,8 +64,8 @@ async function captureLogs(run: () => Promise<void>): Promise<Array<Record<strin
 }
 
 /** A publisher for the broker at `url`, with short timeouts so failures show up quickly. */
-function publisherFor(url: string, keepAlive: (work: Promise<unknown>) => void, publishTimeoutMs = 2000) {
-  return new MqttWakeupPublisher({ brokerUrl: url, keepAlive, connectTimeoutMs: 1000, publishTimeoutMs });
+function publisherFor(url: string, keepAlive: (work: Promise<unknown>) => void, publishTimeoutMs = 2000, warmUpRetryDelayMs = 0) {
+  return new MqttWakeupPublisher({ brokerUrl: url, keepAlive, connectTimeoutMs: 1000, publishTimeoutMs, warmUpRetryDelayMs });
 }
 
 test('MqttWakeupPublisher', async (t) => {
@@ -184,6 +184,23 @@ test('MqttWakeupPublisher', async (t) => {
 
     assert.equal(result.ok, false);
     if (!result.ok) assert.notEqual(result.error, '');
+    await publisher.close();
+  });
+
+  await t.test('after a failed connection, warming again within the retry delay starts nothing, and a publish still tries', async () => {
+    const broker = await startBroker();
+    const url = broker.url;
+    await broker.stop();
+    const { kept, keepAlive } = keepAliveRecorder();
+    const publisher = publisherFor(url, keepAlive, 2000, 60_000);
+
+    publisher.warmUp();
+    await kept[0]!;
+    publisher.warmUp();
+    const result = await publisher.publish('a/b');
+
+    assert.equal(kept.length, 1);
+    assert.equal(result.ok, false);
     await publisher.close();
   });
 

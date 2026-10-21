@@ -193,6 +193,35 @@ static ProtocolResultCode protocolReadDeviceState(
   return PROTOCOL_RESULT_OK;
 }
 
+static ProtocolResultCode protocolReadHeartbeatAnswer(
+  const char *body, const size_t bodyLength, bool *commandsWaiting
+) {
+  JsonToken             tokens[PROTOCOL_OBJECT_TOKEN_CAPACITY];
+  const JsonParseResult parsed =
+    JsonI.parse(body, bodyLength, tokens, PROTOCOL_OBJECT_TOKEN_CAPACITY);
+  if (parsed.code != JSON_RESULT_OK
+      || tokens[PROTOCOL_ROOT_TOKEN].kind != JSON_TOKEN_OBJECT) {
+    return PROTOCOL_ERROR_HEARTBEAT_ANSWER_MALFORMED;
+  }
+
+  const int32_t flagIndex = JsonI.findMember(
+    body, tokens, parsed.tokenCount, PROTOCOL_ROOT_TOKEN, "commandsWaiting"
+  );
+  if (flagIndex == JSON_NOT_FOUND
+      || tokens[flagIndex].kind != JSON_TOKEN_PRIMITIVE) {
+    return PROTOCOL_ERROR_HEARTBEAT_ANSWER_FLAG_INVALID;
+  }
+  if (JsonI.equals(body, tokens, parsed.tokenCount, flagIndex, "true")) {
+    *commandsWaiting = true;
+    return PROTOCOL_RESULT_OK;
+  }
+  if (JsonI.equals(body, tokens, parsed.tokenCount, flagIndex, "false")) {
+    *commandsWaiting = false;
+    return PROTOCOL_RESULT_OK;
+  }
+  return PROTOCOL_ERROR_HEARTBEAT_ANSWER_FLAG_INVALID;
+}
+
 static ProtocolResultCode protocolWriteHeartbeatRequest(
   const char        *status,
   const char *const *errors,
@@ -213,6 +242,20 @@ static ProtocolResultCode protocolWriteHeartbeatRequest(
   }
   JsonWriterI.endObject(&writer);
   return protocolFinishRequest(&writer, PROTOCOL_ERROR_HEARTBEAT_REQUEST_OVERFLOW);
+}
+
+static ProtocolResultCode protocolWriteWakeupTopic(
+  const char *deviceId,
+  const char *organizationId,
+  char       *destination,
+  const size_t capacity
+) {
+  const int32_t written =
+    snprintf(destination, capacity, "%s/%s", deviceId, organizationId);
+  if (written < 0 || (size_t)written >= capacity) {
+    return PROTOCOL_ERROR_WAKEUP_TOPIC_OVERFLOW;
+  }
+  return PROTOCOL_RESULT_OK;
 }
 
 static ProtocolResultCode protocolWriteLogRequest(
@@ -455,6 +498,8 @@ const struct ProtocolType ProtocolI = {
   .readConnectResponse    = protocolReadConnectResponse,
   .readDeviceState        = protocolReadDeviceState,
   .writeHeartbeatRequest  = protocolWriteHeartbeatRequest,
+  .readHeartbeatAnswer    = protocolReadHeartbeatAnswer,
+  .writeWakeupTopic       = protocolWriteWakeupTopic,
   .writeLogRequest        = protocolWriteLogRequest,
   .writeTelemetryRequest  = protocolWriteTelemetryRequest,
   .readCommandBatch       = protocolReadCommandBatch,

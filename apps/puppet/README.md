@@ -1,14 +1,36 @@
 # Puppet
 
-The C application running on kiosk Devices. It enrolls itself with Puppeteer, waits for approval, then keeps the Device's event feed up to date, sends heartbeats, logs and Telemetry, and executes Commands sent by Admins. Built with CMake, using Tencent's MMKV for persistence and libcurl for HTTP(S).
+The C application running on kiosk Devices. It enrolls itself with Puppeteer, waits for approval, then keeps the Device's event feed up to date, sends heartbeats, logs and Telemetry, and executes Commands sent by Admins. Built with CMake, using Tencent's MMKV for persistence, libcurl for HTTP(S) and libmosquitto to hear Wake-ups over MQTT.
 
 ## What it does
 
 1. **Enrollment** (ADR-0002): on first start it calls `POST /devices/connect` and stores the issued credentials. The Device then appears in the Superadmin's pending queue.
 2. **Pending**: it checks its status every 15 s and sends heartbeats, waiting indefinitely without flooding Puppeteer.
-3. **Active**: once approved, it also polls Commands every 10 s and refreshes the Organization's event feed every 5 minutes, storing the last valid feed in MMKV.
+3. **Active**: once approved, it also fetches Commands, listens for Wake-ups (below) and refreshes the Organization's event feed every 5 minutes, storing the last valid feed in MMKV. Commands are never fetched on a timer: a fetch happens once on boot, whenever a heartbeat answer says some are waiting, whenever a Wake-up is heard and after every (re)subscription to the broker.
 4. **Rejected**: it goes quiet, checking its status only hourly.
 5. **Revoked credentials** (HTTP 401): it forgets them and enrolls again.
+
+### Wake-ups, cadence and request volume
+
+When Puppeteer stores a Command it publishes an empty **Wake-up** to a public MQTT broker, on the topic `<deviceId>/<organizationId>` (QoS 1, not retained; see ADR-0001 of the monorepo). An active Puppet is subscribed to that topic with a clean session and fetches its Commands as soon as it hears one, so a Command reaches the Device without waiting for a heartbeat.
+
+The broker is only an accelerator. Every heartbeat answer carries `commandsWaiting`, which is true while any Command of the Device is `pending` or `sent`, so a missed Wake-up (broker down, Puppet offline) costs at most one heartbeat. A heartbeat answer without a boolean `commandsWaiting` is a decoding error: the Puppet logs it as an error (Admins read it in the Device's logs), counts the heartbeat as failed and never assumes a value.
+
+| Task                | Cadence                                                      |
+|---------------------|--------------------------------------------------------------|
+| Heartbeat           | every 20 s                                                   |
+| Status check        | every 15 s pending, 60 s active, hourly when rejected        |
+| Event feed          | every 5 minutes (a failed refresh retries after 60 s)        |
+| Command fetch       | on boot, on `commandsWaiting`, on a Wake-up, after subscribing |
+| Broker connection   | reconnects after 10 s, doubling up to 300 s, plus up to 50% jitter |
+
+An idle active Device sends about **252 requests per hour** to Puppeteer (180 heartbeats, 60 status checks, 12 feed refreshes), down from about 612 when it also polled Commands every 10 s. The MQTT connection is not a Puppeteer request.
+
+The agent loop stays single-threaded: it waits on the broker socket, and on termination signals, with a timeout bounded by the next due task, so heartbeats and shutdown are never delayed by the broker. The one exception is the hostname lookup when a connection starts, which is blocking.
+
+**Outages.** When the broker connection is lost or cannot be made, the Puppet reconnects with the backoff above and logs exactly one error line for the outage and one info line when the broker is back, however many attempts it takes. An outage does not make the heartbeat report `degraded`: Commands still arrive through the heartbeat. After a (re)subscription the Puppet fetches Commands once, to catch Wake-ups sent while it could not hear them. If the Device's Organization changes it moves the subscription to the new topic, and it drops the connection when it leaves the active phase.
+
+**Settings.** The broker host, port and TLS are compile-time constants (CMake options `PUPPET_WAKEUP_BROKER_HOST`, default `broker.hivemq.com`; `PUPPET_WAKEUP_BROKER_PORT`, default `8883`; `PUPPET_WAKEUP_BROKER_TLS`, default `ON`). The Puppet reads no environment variables for them. With TLS on, the broker's certificate is verified against the system certificate store.
 
 ### Only one agent per Device
 
@@ -28,6 +50,8 @@ At startup the agent takes an exclusive, non-blocking `flock` on `/run/dsrs-pupp
 | 9           | Installing needs root and `sudo`, `pkexec` or `su` could not be started |
 | 10          | An installation step failed; completed steps are in the trail |
 | 11          | The Device was not pending 60 s after the install or repair   |
+| 12          | The descriptor that reports termination signals could not be created |
+| 13          | The MQTT library could not be initialized                  |
 
 When `sudo` or `pkexec` refuses, the Puppet says so and tries the next way. When `su` itself fails (wrong password) its own message and exit status (1) are what the technician sees. Through `pkexec` the terminal exits with the status of the Puppet run as root.
 
@@ -103,9 +127,12 @@ To build and run this project natively, ensure you have the following installed 
 - **libcurl development files**
   - **Fedora/RHEL**: `sudo dnf install libcurl-devel`
   - **Ubuntu/Debian**: `sudo apt install libcurl4-openssl-dev`
+- **libmosquitto development files**
+  - **Fedora/RHEL**: `sudo dnf install mosquitto-devel`
+  - **Ubuntu/Debian**: `sudo apt install libmosquitto-dev`
 - Standard build tools (e.g., `make`, `ninja`, or Visual Studio build tools)
 
-On the Device itself only the libcurl runtime (`libcurl4` on Debian) is needed.
+On the Device itself only the libcurl and libmosquitto runtimes (`libcurl4` and `libmosquitto1` on Debian) are needed.
 
 ## Native Build Instructions
 
@@ -184,7 +211,7 @@ You must install the ARM32 C and C++ cross-compilers on your host machine to com
 - **Ubuntu/Debian**: `sudo apt install gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf`
 
 **Build Instructions:**
-Use the provided toolchain file. During the configuration step, CMake will **automatically download and set up the required target sysroot**, libcurl included (using `scripts/setup-arm32-sysroot.sh`), into a local `sysroot` directory. The setup runs again automatically whenever that script changes.
+Use the provided toolchain file. During the configuration step, CMake will **automatically download and set up the required target sysroot**, libcurl and libmosquitto included (using `scripts/setup-arm32-sysroot.sh`), into a local `sysroot` directory. The setup runs again automatically whenever that script changes.
 ```bash
 cmake -B build-linux-arm32 -DPUPPET_SERVER_URL=https://puppeteer.example -DCMAKE_TOOLCHAIN_FILE=toolchains/arm32-linux.cmake
 cmake --build build-linux-arm32

@@ -6,7 +6,7 @@ DEBIAN_RELEASE="bullseye"
 ARCH="armhf"
 MIRROR="http://deb.debian.org/debian"
 
-# Minimal list of packages for X11 + EGL + libcurl + C and C++ Standard Libraries
+# Minimal list of packages for X11 + EGL + libcurl + libmosquitto + C and C++ Standard Libraries
 PACKAGES=(
     "libstdc++-10-dev"
     "libstdc++6"
@@ -75,6 +75,11 @@ PACKAGES=(
     "libsasl2-2"
     "libsasl2-modules-db"
     "libdb5.3"
+
+    # libmosquitto (MQTT client that hears Wake-ups). It needs only libc and
+    # the libssl listed above for libcurl, so it adds no further closure.
+    "libmosquitto-dev"
+    "libmosquitto1"
 )
 
 mkdir -p "$SYSROOT_DIR/tmp_debs"

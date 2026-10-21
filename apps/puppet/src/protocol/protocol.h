@@ -14,11 +14,13 @@
  * | response  | POST /devices/connect                       | `readConnectResponse`     |
  * | response  | GET  /devices/me                            | `readDeviceState`         |
  * | request   | POST /devices/:id/heartbeat                 | `writeHeartbeatRequest`   |
+ * | response  | POST /devices/:id/heartbeat                 | `readHeartbeatAnswer`     |
  * | request   | POST /devices/:id/logs                      | `writeLogRequest`         |
  * | request   | POST /devices/:id/telemetry                 | `writeTelemetryRequest`   |
  * | response  | GET  /devices/:id/commands/pending          | `readCommandBatch`        |
  * | request   | POST /devices/:id/commands/:cid/complete    | `writeCommandCompletion`  |
  * | response  | GET  /organizations/:id/feed                | `countFeedEvents`         |
+ * | topic     | Wake-up (MQTT, ADR-0001 of the monorepo)    | `writeWakeupTopic`        |
  * | payload   | `update` Command                            | `readUpdateInstruction`   |
  *
  * ## Errors
@@ -43,6 +45,11 @@
 #define PROTOCOL_DEVICE_TOKEN_CAPACITY ((size_t)128)
 
 #define PROTOCOL_ORGANIZATION_ID_CAPACITY ((size_t)64)
+
+/** `<deviceId>/<organizationId>`: both ids, the separator and a terminator. */
+#define PROTOCOL_WAKEUP_TOPIC_CAPACITY                                         \
+  (PROTOCOL_DEVICE_ID_CAPACITY + 1 + PROTOCOL_ORGANIZATION_ID_CAPACITY)
+
 #define PROTOCOL_DEVICE_NAME_CAPACITY     ((size_t)128)
 #define PROTOCOL_COMMAND_ID_CAPACITY      ((size_t)64)
 
@@ -97,6 +104,13 @@ typedef enum {
   PROTOCOL_ERROR_UPDATE_LOCATION_INVALID = 2017,
   /** The `sha256` is missing or not 64 hexadecimal characters. */
   PROTOCOL_ERROR_UPDATE_DIGEST_INVALID = 2018,
+
+  /** The heartbeat answer is not a valid JSON object. */
+  PROTOCOL_ERROR_HEARTBEAT_ANSWER_MALFORMED = 2019,
+  /** The heartbeat answer's `commandsWaiting` is absent or not a boolean. */
+  PROTOCOL_ERROR_HEARTBEAT_ANSWER_FLAG_INVALID = 2020,
+  /** The Wake-up topic did not fit its buffer. */
+  PROTOCOL_ERROR_WAKEUP_TOPIC_OVERFLOW = 2021,
 } ProtocolResultCode;
 
 /** What a Puppet needs to authenticate as its Device. Persisted locally. */
@@ -225,6 +239,33 @@ struct ProtocolType {
     const char *const *errors,
     uint32_t           errorCount,
     RequestBody        body
+  );
+
+  /**
+   * Read the answer to a heartbeat: whether Commands are waiting for this
+   * Device. That flag decides when the Puppet fetches Commands, so it is
+   * never assumed: an answer without a boolean `commandsWaiting` is an error
+   * and `commandsWaiting` is left untouched.
+   *
+   * @param commandsWaiting  Set only when the result is `PROTOCOL_RESULT_OK`.
+   */
+  ProtocolResultCode (*const readHeartbeatAnswer)(
+    const char *body, size_t bodyLength, bool *commandsWaiting
+  );
+
+  /**
+   * The MQTT topic Puppeteer publishes a Wake-up to for this Device:
+   * `<deviceId>/<organizationId>`. The Puppet subscribes to it once active.
+   *
+   * @param destination  Receives the null-terminated topic.
+   * @param capacity     Size of `destination`; `PROTOCOL_WAKEUP_TOPIC_CAPACITY`
+   *                     always suffices.
+   */
+  ProtocolResultCode (*const writeWakeupTopic)(
+    const char *deviceId,
+    const char *organizationId,
+    char       *destination,
+    size_t      capacity
   );
 
   /** A single log line shipped to Puppeteer. */
