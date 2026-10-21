@@ -20,11 +20,11 @@
  *
  * 1. `open` starts a non-blocking connection (the hostname lookup may still
  *    block briefly) and the subscription follows the broker's CONNACK.
- * 2. Wait on `descriptor` (and for writability while `wantsWrite`), then call
- *    `handleReadable` / `handleWritable`.
- * 3. Call `maintain` about once a second: it sends the keep-alive pings.
- * 4. After each of those calls read `takeEvents`.
- * 5. `close` ends the connection and releases everything.
+ * 2. Wait on `descriptor` (and for writability while `wantsWrite`), at most
+ *    about a second, then call `serve`: it connects, reads, writes and sends
+ *    the keep-alive pings in one call.
+ * 3. After each `serve` read `takeEvents`.
+ * 4. `close` ends the connection and releases everything.
  *
  * Every session is clean: the broker keeps nothing for a Puppet that is gone,
  * so a restarted Puppet never replays stale Wake-ups.
@@ -90,19 +90,11 @@ typedef enum {
 
   /** `retarget` was called on a listener with no open connection. */
   WAKEUP_ERROR_RETARGET_NOT_OPEN = 4108,
-  /** `handleReadable` was called on a listener with no open connection. */
-  WAKEUP_ERROR_READ_NOT_OPEN = 4111,
-  /** `handleWritable` was called on a listener with no open connection. */
-  WAKEUP_ERROR_WRITE_NOT_OPEN = 4112,
-  /** `maintain` was called on a listener with no open connection. */
-  WAKEUP_ERROR_MAINTAIN_NOT_OPEN = 4113,
+  /** `serve` was called on a listener with no open connection. */
+  WAKEUP_ERROR_SERVE_NOT_OPEN = 4111,
 
-  /** Reading from the broker failed; the loss is reported as an event. */
-  WAKEUP_ERROR_READ = 4107,
-  /** Writing to the broker failed; the loss is reported as an event. */
-  WAKEUP_ERROR_WRITE = 4114,
-  /** The connection's housekeeping failed; the loss is reported as an event. */
-  WAKEUP_ERROR_MAINTAIN = 4115,
+  /** Serving the connection failed; the loss is reported as an event. */
+  WAKEUP_ERROR_SERVE = 4107,
 } WakeupResultCode;
 
 /** What happened since the previous `takeEvents`. */
@@ -178,14 +170,17 @@ struct WakeupListenerType {
   /** Whether data is queued to send, i.e. whether to wait for writability. */
   bool (*const wantsWrite)(const WakeupListener *listener);
 
-  /** Read what the broker sent. Call when `descriptor` is readable. */
-  WakeupResultCode (*const handleReadable)(WakeupListener *listener);
-
-  /** Send what is queued. Call when `descriptor` is writable. */
-  WakeupResultCode (*const handleWritable)(WakeupListener *listener);
-
-  /** Keep-alive housekeeping. Call about once a second while open. */
-  WakeupResultCode (*const maintain)(WakeupListener *listener);
+  /**
+   * Do whatever the connection needs now, without waiting: finish connecting
+   * (including the TLS handshake), read what the broker sent, send what is
+   * queued and keep the connection alive. Call it after every wait on
+   * `descriptor`, and about once a second while open.
+   *
+   * The library's own loop does all of it in one call, and has to: its
+   * separate read, write and housekeeping calls do not advance a connection
+   * that is still being established.
+   */
+  WakeupResultCode (*const serve)(WakeupListener *listener);
 
   /** What happened since the last call; the record starts over. */
   WakeupEvents (*const takeEvents)(WakeupListener *listener);

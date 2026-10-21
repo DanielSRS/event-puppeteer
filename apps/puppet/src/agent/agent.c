@@ -45,7 +45,7 @@
 
 /**
  * Longest the loop sleeps while the broker is connected: the library sends
- * its keep-alive pings from `maintain`, which wants to run about once a second.
+ * its keep-alive pings from `serve`, which wants to run about once a second.
  */
 #define AGENT_BROKER_MAINTENANCE_MILLISECONDS ((uint64_t)1000)
 
@@ -1091,49 +1091,17 @@ static void agentApplyBrokerEvents(AgentRuntime *runtime, const uint64_t now) {
 }
 
 /**
- * Check how serving the broker socket went. A failed connection reports
- * itself as a `lost` event, which `agentApplyBrokerEvents` turns into one
- * outage line; a listener that is not open reports nothing, so it is treated
- * as a loss here, since the schedule believes a connection exists.
- *
- * @return false when the connection was dropped and serving must stop.
+ * Serve the broker connection after a wait, then apply what happened. A failed
+ * connection reports itself as a `lost` event, which `agentApplyBrokerEvents`
+ * turns into one outage line; a listener that is not open reports nothing, so
+ * it is treated as a loss here, since the schedule believes a connection exists.
  */
-static bool agentBrokerStillServed(
-  AgentRuntime *runtime, const WakeupResultCode served, const uint64_t now
-) {
-  switch (served) {
-  case WAKEUP_ERROR_READ_NOT_OPEN:
-  case WAKEUP_ERROR_WRITE_NOT_OPEN:
-  case WAKEUP_ERROR_MAINTAIN_NOT_OPEN:
-    agentBrokerLost(runtime, "the broker connection is not open", now);
-    return false;
-  default:
-    return true;
-  }
-}
-
-/** Serve the broker socket after a wait, then apply what happened. */
-static void agentServeBroker(
-  AgentRuntime *runtime, const LifecycleActivity activity, const uint64_t now
-) {
+static void agentServeBroker(AgentRuntime *runtime, const uint64_t now) {
   if (runtime->schedule.brokerState == AGENT_BROKER_DISCONNECTED) {
     return;
   }
-  if (activity.readable
-      && !agentBrokerStillServed(
-        runtime, WakeupListenerI.handleReadable(&runtime->wakeup), now
-      )) {
-    return;
-  }
-  if (activity.writable
-      && !agentBrokerStillServed(
-        runtime, WakeupListenerI.handleWritable(&runtime->wakeup), now
-      )) {
-    return;
-  }
-  if (!agentBrokerStillServed(
-        runtime, WakeupListenerI.maintain(&runtime->wakeup), now
-      )) {
+  if (WakeupListenerI.serve(&runtime->wakeup) == WAKEUP_ERROR_SERVE_NOT_OPEN) {
+    agentBrokerLost(runtime, "the broker connection is not open", now);
     return;
   }
   agentApplyBrokerEvents(runtime, now);
@@ -1218,7 +1186,7 @@ static AgentExitReason agentRun(const AgentEnvironment *environment) {
     if (activity.terminationRequested) {
       break;
     }
-    agentServeBroker(&runtime, activity, LifecycleI.monotonicSeconds());
+    agentServeBroker(&runtime, LifecycleI.monotonicSeconds());
   }
   WakeupListenerI.close(&runtime.wakeup);
   fprintf(stderr, AGENT_LOG_INFO_PREFIX "termination requested; shutting down\n");
