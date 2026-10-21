@@ -13,7 +13,7 @@ static Lifecycle lifecycleCreate(void) {
   sigaddset(&lifecycle.terminationSignals, SIGHUP);
   sigprocmask(SIG_BLOCK, &lifecycle.terminationSignals, NULL);
   lifecycle.terminationDescriptor =
-    signalfd(-1, &lifecycle.terminationSignals, SFD_NONBLOCK | SFD_CLOEXEC);
+    signalfd(LIFECYCLE_NEW_SIGNAL_DESCRIPTOR, &lifecycle.terminationSignals, SFD_NONBLOCK | SFD_CLOEXEC);
   return lifecycle;
 }
 

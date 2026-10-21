@@ -17,6 +17,9 @@
 /** What `wakeupDescriptor` answers when there is no connection. */
 #define WAKEUP_NO_DESCRIPTOR ((int32_t)-1)
 
+/** Value that turns on `MOSQ_OPT_TLS_USE_OS_CERTS`: trust the operating system's certificate store. */
+#define WAKEUP_TLS_USE_OS_CERTIFICATES ((int32_t)1)
+
 /** `SSL_VERIFY_PEER`: abort the connection when the certificate does not verify. */
 #define WAKEUP_TLS_VERIFY_PEER ((int32_t)1)
 
@@ -75,8 +78,10 @@ static void wakeupOnConnect(struct mosquitto *client, void *userdata, const int 
     return;
   }
   listener->accepted = true;
-  /** A failed request reports the loss itself (see `wakeupSubscribe`). */
-  wakeupSubscribe(listener);
+  if (wakeupSubscribe(listener) != WAKEUP_RESULT_OK) {
+    /** The failed request already reported the loss (see `wakeupSubscribe`). */
+    return;
+  }
 }
 
 static void wakeupOnSubscribe(
@@ -151,7 +156,7 @@ static WakeupResultCode wakeupConfigureTls(struct mosquitto *client) {
   /** The operating system's store is the one place trust is managed on a
    *  Device, as for libcurl. */
   const bool configured =
-    mosquitto_int_option(client, MOSQ_OPT_TLS_USE_OS_CERTS, 1) == MOSQ_ERR_SUCCESS
+    mosquitto_int_option(client, MOSQ_OPT_TLS_USE_OS_CERTS, (int)WAKEUP_TLS_USE_OS_CERTIFICATES) == MOSQ_ERR_SUCCESS
     && mosquitto_tls_opts_set(client, (int)WAKEUP_TLS_VERIFY_PEER, NULL, NULL)
          == MOSQ_ERR_SUCCESS;
   return configured ? WAKEUP_RESULT_OK : WAKEUP_ERROR_TLS_SETUP;
@@ -182,14 +187,25 @@ static WakeupResultCode wakeupOpen(
     return WAKEUP_ERROR_TLS_SETUP;
   }
 
-  /** The loop is driven from the agent's thread, never from the library's. */
-  const int connecting = mosquitto_connect_async(
+  /**
+   * The loop is driven from the agent's thread, never from the library's.
+   * The library documents `mosquitto_connect_async` for its own loop thread,
+   * but it starts the non-blocking connection and opens the socket right away
+   * (libmosquitto 2.0.11 and later), which is what a hand-driven loop needs;
+   * the check below turns any version that does otherwise into a visible failure.
+   */
+  const int connectResult = mosquitto_connect_async(
     client, settings->host, (int)settings->port, (int)settings->keepAliveSeconds
   );
-  if (connecting != MOSQ_ERR_SUCCESS) {
+  if (connectResult != MOSQ_ERR_SUCCESS) {
     mosquitto_destroy(client);
-    wakeupReportLibraryError(listener, connecting);
+    wakeupReportLibraryError(listener, connectResult);
     return WAKEUP_ERROR_CONNECT;
+  }
+  if (mosquitto_socket(client) == WAKEUP_NO_DESCRIPTOR) {
+    mosquitto_destroy(client);
+    wakeupReportLost(listener, "the MQTT library opened no socket");
+    return WAKEUP_ERROR_NO_SOCKET;
   }
   listener->client = client;
   return WAKEUP_RESULT_OK;
@@ -197,7 +213,7 @@ static WakeupResultCode wakeupOpen(
 
 static WakeupResultCode wakeupRetarget(WakeupListener *listener, const char *topic) {
   if (listener->client == NULL) {
-    return WAKEUP_ERROR_NOT_OPEN;
+    return WAKEUP_ERROR_RETARGET_NOT_OPEN;
   }
   char previous[PROTOCOL_WAKEUP_TOPIC_CAPACITY];
   snprintf(previous, sizeof(previous), "%s", listener->topic);
@@ -221,37 +237,47 @@ static bool wakeupWantsWrite(const WakeupListener *listener) {
   return listener->client != NULL && mosquitto_want_write(listener->client);
 }
 
-static WakeupResultCode wakeupServed(WakeupListener *listener, const int32_t result) {
+static WakeupResultCode wakeupServed(
+  WakeupListener         *listener,
+  const int32_t           result,
+  const WakeupResultCode  failure
+) {
   if (result == MOSQ_ERR_SUCCESS) {
     return WAKEUP_RESULT_OK;
   }
   wakeupReportLibraryError(listener, result);
-  return WAKEUP_ERROR_CONNECTION;
+  return failure;
 }
 
 static WakeupResultCode wakeupHandleReadable(WakeupListener *listener) {
   if (listener->client == NULL) {
-    return WAKEUP_ERROR_NOT_OPEN;
+    return WAKEUP_ERROR_READ_NOT_OPEN;
   }
   return wakeupServed(
-    listener, (int32_t)mosquitto_loop_read(listener->client, (int)WAKEUP_LOOP_MAX_PACKETS)
+    listener,
+    (int32_t)mosquitto_loop_read(listener->client, (int)WAKEUP_LOOP_MAX_PACKETS),
+    WAKEUP_ERROR_READ
   );
 }
 
 static WakeupResultCode wakeupHandleWritable(WakeupListener *listener) {
   if (listener->client == NULL) {
-    return WAKEUP_ERROR_NOT_OPEN;
+    return WAKEUP_ERROR_WRITE_NOT_OPEN;
   }
   return wakeupServed(
-    listener, (int32_t)mosquitto_loop_write(listener->client, (int)WAKEUP_LOOP_MAX_PACKETS)
+    listener,
+    (int32_t)mosquitto_loop_write(listener->client, (int)WAKEUP_LOOP_MAX_PACKETS),
+    WAKEUP_ERROR_WRITE
   );
 }
 
 static WakeupResultCode wakeupMaintain(WakeupListener *listener) {
   if (listener->client == NULL) {
-    return WAKEUP_ERROR_NOT_OPEN;
+    return WAKEUP_ERROR_MAINTAIN_NOT_OPEN;
   }
-  return wakeupServed(listener, (int32_t)mosquitto_loop_misc(listener->client));
+  return wakeupServed(
+    listener, (int32_t)mosquitto_loop_misc(listener->client), WAKEUP_ERROR_MAINTAIN
+  );
 }
 
 static WakeupEvents wakeupTakeEvents(WakeupListener *listener) {

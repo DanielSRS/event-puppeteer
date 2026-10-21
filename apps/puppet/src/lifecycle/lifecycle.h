@@ -46,6 +46,9 @@ typedef struct {
 /** Pass as the descriptor of `waitForActivity` to watch only for termination. */
 #define LIFECYCLE_NO_DESCRIPTOR ((int32_t)-1)
 
+/** `signalfd` argument that asks for a new descriptor instead of updating one. */
+#define LIFECYCLE_NEW_SIGNAL_DESCRIPTOR ((int32_t)-1)
+
 /** What `waitForActivity` found out. */
 typedef struct {
   /** A termination signal is pending. */

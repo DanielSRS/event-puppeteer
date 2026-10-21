@@ -83,12 +83,26 @@ typedef enum {
   WAKEUP_ERROR_SUBSCRIBE = 4105,
   /** The subscription could not be cancelled. */
   WAKEUP_ERROR_UNSUBSCRIBE = 4106,
-  /** The connection was lost, refused or failed while being served. */
-  WAKEUP_ERROR_CONNECTION = 4107,
   /** The Wake-up topic could not be built from the Device and Organization ids. */
   WAKEUP_ERROR_TOPIC = 4109,
-  /** The listener has no open connection. */
-  WAKEUP_ERROR_NOT_OPEN = 4108,
+  /** The library started connecting but holds no socket to wait on. */
+  WAKEUP_ERROR_NO_SOCKET = 4110,
+
+  /** `retarget` was called on a listener with no open connection. */
+  WAKEUP_ERROR_RETARGET_NOT_OPEN = 4108,
+  /** `handleReadable` was called on a listener with no open connection. */
+  WAKEUP_ERROR_READ_NOT_OPEN = 4111,
+  /** `handleWritable` was called on a listener with no open connection. */
+  WAKEUP_ERROR_WRITE_NOT_OPEN = 4112,
+  /** `maintain` was called on a listener with no open connection. */
+  WAKEUP_ERROR_MAINTAIN_NOT_OPEN = 4113,
+
+  /** Reading from the broker failed; the loss is reported as an event. */
+  WAKEUP_ERROR_READ = 4107,
+  /** Writing to the broker failed; the loss is reported as an event. */
+  WAKEUP_ERROR_WRITE = 4114,
+  /** The connection's housekeeping failed; the loss is reported as an event. */
+  WAKEUP_ERROR_MAINTAIN = 4115,
 } WakeupResultCode;
 
 /** What happened since the previous `takeEvents`. */

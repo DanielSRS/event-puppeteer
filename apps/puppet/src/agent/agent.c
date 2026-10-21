@@ -40,6 +40,9 @@
 /** Milliseconds per second, to turn the schedule's waits into `poll` timeouts. */
 #define AGENT_MILLISECONDS_PER_SECOND ((uint64_t)1000)
 
+/** Wait when a task is already due: only poll the descriptors, never sleep. */
+#define AGENT_NO_SLEEP_SECONDS ((uint64_t)0)
+
 /**
  * Longest the loop sleeps while the broker is connected: the library sends
  * its keep-alive pings from `maintain`, which wants to run about once a second.
@@ -1087,6 +1090,28 @@ static void agentApplyBrokerEvents(AgentRuntime *runtime, const uint64_t now) {
   }
 }
 
+/**
+ * Check how serving the broker socket went. A failed connection reports
+ * itself as a `lost` event, which `agentApplyBrokerEvents` turns into one
+ * outage line; a listener that is not open reports nothing, so it is treated
+ * as a loss here, since the schedule believes a connection exists.
+ *
+ * @return false when the connection was dropped and serving must stop.
+ */
+static bool agentBrokerStillServed(
+  AgentRuntime *runtime, const WakeupResultCode served, const uint64_t now
+) {
+  switch (served) {
+  case WAKEUP_ERROR_READ_NOT_OPEN:
+  case WAKEUP_ERROR_WRITE_NOT_OPEN:
+  case WAKEUP_ERROR_MAINTAIN_NOT_OPEN:
+    agentBrokerLost(runtime, "the broker connection is not open", now);
+    return false;
+  default:
+    return true;
+  }
+}
+
 /** Serve the broker socket after a wait, then apply what happened. */
 static void agentServeBroker(
   AgentRuntime *runtime, const LifecycleActivity activity, const uint64_t now
@@ -1094,15 +1119,23 @@ static void agentServeBroker(
   if (runtime->schedule.brokerState == AGENT_BROKER_DISCONNECTED) {
     return;
   }
-  /** Failures are not handled here: the listener reports them as a `lost`
-   *  event, which `agentApplyBrokerEvents` turns into one outage line. */
-  if (activity.readable) {
-    WakeupListenerI.handleReadable(&runtime->wakeup);
+  if (activity.readable
+      && !agentBrokerStillServed(
+        runtime, WakeupListenerI.handleReadable(&runtime->wakeup), now
+      )) {
+    return;
   }
-  if (activity.writable) {
-    WakeupListenerI.handleWritable(&runtime->wakeup);
+  if (activity.writable
+      && !agentBrokerStillServed(
+        runtime, WakeupListenerI.handleWritable(&runtime->wakeup), now
+      )) {
+    return;
   }
-  WakeupListenerI.maintain(&runtime->wakeup);
+  if (!agentBrokerStillServed(
+        runtime, WakeupListenerI.maintain(&runtime->wakeup), now
+      )) {
+    return;
+  }
   agentApplyBrokerEvents(runtime, now);
 }
 
@@ -1175,7 +1208,7 @@ static AgentExitReason agentRun(const AgentEnvironment *environment) {
     }
 
     const uint64_t untilNextTask =
-      dueTasks != 0 ? 0
+      dueTasks != 0 ? AGENT_NO_SLEEP_SECONDS
                     : AgentScheduleI.secondsUntilNextTask(&runtime.schedule, now);
     const uint64_t sleepSeconds = untilNextTask < AGENT_MAX_SLEEP_SECONDS
                                   ? untilNextTask
