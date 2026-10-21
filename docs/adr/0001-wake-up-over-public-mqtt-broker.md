@@ -9,7 +9,7 @@ A Puppet used to poll for Commands every 10 s, which delays every Command by up 
 - **Delivery:** QoS 1, not retained, clean session, empty payload.
 - **`commandsWaiting` in the heartbeat answer** is true while any Command is `pending` or `sent`. The Puppet fetches Commands only after a Wake-up, a true flag, or on boot and broker reconnect. A heartbeat answer without the field is an error: the Puppet logs it and treats the heartbeat as failed. Heartbeats stay at 20 s, which is the worst-case delay when MQTT fails.
 - **Puppeteer's publisher** keeps one broker connection per function instance and starts it, without waiting, on every request, kept alive with `waitUntil`. A failed publish reconnects and retries once. If it still fails, the Command succeeds and the response reports `wakeup: { sent: false, reason }`, never an exception. An Admin can resend a Wake-up while the Command is `pending` or `sent`.
-- **The Puppet uses libmosquitto**, polled from its single-threaded loop. Broker host, ports and TLS settings are compile-time constants, as in the Puppet's ADR-0001.
+- **The Puppet uses libmosquitto**, polled from its single-threaded loop and linked statically, so the Device needs no MQTT library installed. Broker host, ports and TLS settings are compile-time constants, as in the Puppet's ADR-0001.
 - **The Puppet logs broker loss and recovery once per change**, through the existing log queue. The Device is not marked `degraded`: it is on the slow path, not broken.
 - **Rollout:** deploy Puppeteer first. The new field is additive, so Puppets already deployed ignore it and keep polling every 10 s until updated.
 
