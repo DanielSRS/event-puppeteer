@@ -13,12 +13,13 @@
 import { useEffect, useState } from "react";
 import { MdRefresh } from "react-icons/md";
 import { api, ApiErrorMessage, type ApiError } from "@/lib/api/client";
-import type { CommandType, CreateCommandInput, WakeupOutcome } from "@/lib/api/schemas";
+import type { Command, CommandType, CreateCommandInput, WakeupOutcome } from "@/lib/api/schemas";
 import { Err, Ok, type Result } from "@/lib/result";
 import { ErrorAlert, LoadingMessage } from "@/components/ui/Feedback";
 import { SectionDenialFor, SelectOrgNotice, useDashboard } from "../DashboardContext";
 import { AccessNotice } from "../global/AccessNotice";
 import { CommandIssuedNotice } from "./CommandIssuedNotice";
+import { WakeupResentNotice } from "./WakeupResentNotice";
 import { COMMAND_LABELS, DeviceTelemetry, type DeviceDetails } from "./DeviceTelemetry";
 import { SendUpdateFile, UpdateStepText } from "./updateUpload";
 
@@ -28,8 +29,11 @@ const REFRESH_INTERVAL_MS = 10_000;
 /** Data on screen and when it was loaded. */
 type Loaded = { details: DeviceDetails; loadedAt: string };
 
-/** What the last command attempt left to tell the person: a failure, or the stored Command with its Wake-up outcome. */
-type Feedback = { kind: "error"; text: string } | { kind: "issued"; commandLabel: string; wakeup: WakeupOutcome };
+/** What the last command attempt left to tell the person: a failure, the stored Command with its Wake-up outcome, or the outcome of a resent Wake-up. */
+type Feedback =
+  | { kind: "error"; text: string }
+  | { kind: "issued"; commandLabel: string; wakeup: WakeupOutcome }
+  | { kind: "resent"; commandLabel: string; wakeup: WakeupOutcome };
 
 /** Text for a failed load; 404 means the device isn't in this organization. */
 function LoadErrorText(what: string, error: ApiError): string {
@@ -78,6 +82,7 @@ function DevicePage({ orgId, deviceId }: { orgId: string; deviceId: string }) {
   const [sending, setSending] = useState<CommandType | null>(null);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [updateProgress, setUpdateProgress] = useState("");
+  const [resending, setResending] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -113,6 +118,21 @@ function DevicePage({ orgId, deviceId }: { orgId: string; deviceId: string }) {
     return null;
   };
 
+  const handleResendWakeup = async (command: Command): Promise<string | null> => {
+    const label = COMMAND_LABELS[command.type];
+    setResending(command.id);
+    setFeedback(null);
+    const resent = await api.devices.resendWakeup(orgId, deviceId, command.id);
+    setResending(null);
+
+    if (!resent.ok) {
+      setReloadKey((key) => key + 1);
+      return `Não foi possível reenviar o aviso do comando “${label}”. ${ApiErrorMessage(resent.error)}`;
+    }
+    setFeedback({ kind: "resent", commandLabel: label, wakeup: resent.value });
+    return null;
+  };
+
   const handleUpdateFile = async (file: File, version: string | undefined): Promise<string | null> => {
     setSending("update");
     setFeedback(null);
@@ -144,9 +164,9 @@ function DevicePage({ orgId, deviceId }: { orgId: string; deviceId: string }) {
 
   return (
     <div className="column gap-[22px]">
-      {feedback !== null && (feedback.kind === "issued"
-        ? <CommandIssuedNotice commandLabel={feedback.commandLabel} wakeup={feedback.wakeup} />
-        : <ErrorAlert>{feedback.text}</ErrorAlert>)}
+      {feedback?.kind === "issued" && <CommandIssuedNotice commandLabel={feedback.commandLabel} wakeup={feedback.wakeup} />}
+      {feedback?.kind === "resent" && <WakeupResentNotice commandLabel={feedback.commandLabel} wakeup={feedback.wakeup} />}
+      {feedback?.kind === "error" && <ErrorAlert>{feedback.text}</ErrorAlert>}
       <DeviceTelemetry
         details={loaded.details}
         loadedAt={loaded.loadedAt}
@@ -156,6 +176,8 @@ function DevicePage({ orgId, deviceId }: { orgId: string; deviceId: string }) {
         onUpdateFile={handleUpdateFile}
         updateProgress={updateProgress}
         onRefresh={() => setReloadKey((key) => key + 1)}
+        onResendWakeup={handleResendWakeup}
+        resendingCommandId={resending}
       />
     </div>
   );

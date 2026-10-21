@@ -203,6 +203,80 @@ test('HTTP layer', async (t) => {
     assert.equal(storedWhenPublished, 1);
   });
 
+  await t.test('an Admin sends the Wake-up again for a pending or sent Command and gets the outcome as a value', async () => {
+    const { io, orgId, adminToken, call } = await setup();
+    const connected = await call('POST', '/devices/connect', undefined, { identifier: 'mac-resend', organizationId: orgId });
+    const { device, token } = connected.body;
+    await call('POST', `/devices/${device.id}/approve`, adminToken, { name: 'D1', location: 'L1' });
+    const base = `/organizations/${orgId}/devices/${device.id}/commands`;
+
+    const pending = await call('POST', base, adminToken, { type: 'restart' });
+    const sent = await call('POST', base, adminToken, { type: 'request_telemetry' });
+    await call('GET', `/devices/${device.id}/commands/pending`, token);
+    io.wakeupPublisher.published.length = 0;
+
+    for (const id of [pending.body.id, sent.body.id]) {
+      const again = await call('POST', `${base}/${id}/wakeup`, adminToken);
+      assert.equal(again.status, 200);
+      assert.deepEqual(again.body, { sent: true });
+    }
+    assert.deepEqual(io.wakeupPublisher.published, [
+      { topic: `${device.id}/${orgId}`, payload: '', qos: 1, retain: false },
+      { topic: `${device.id}/${orgId}`, payload: '', qos: 1, retain: false }
+    ]);
+
+    io.wakeupPublisher.failure = 'broker unreachable';
+    const failed = await call('POST', `${base}/${pending.body.id}/wakeup`, adminToken);
+    assert.equal(failed.status, 200);
+    assert.deepEqual(failed.body, { sent: false, reason: 'broker unreachable' });
+  });
+
+  await t.test('sending the Wake-up again is rejected with a clear error for acknowledged, completed and failed Commands', async () => {
+    const { io, orgId, adminToken, call } = await setup();
+    const connected = await call('POST', '/devices/connect', undefined, { identifier: 'mac-resend-final', organizationId: orgId });
+    const { device } = connected.body;
+    await call('POST', `/devices/${device.id}/approve`, adminToken, { name: 'D1', location: 'L1' });
+    const base = `/organizations/${orgId}/devices/${device.id}/commands`;
+    io.wakeupPublisher.published.length = 0;
+
+    for (const status of ['acknowledged', 'completed', 'failed'] as const) {
+      const issued = await call('POST', base, adminToken, { type: 'restart' });
+      await io.commandRepo.updateStatus(issued.body.id, status);
+      io.wakeupPublisher.published.length = 0;
+
+      const again = await call('POST', `${base}/${issued.body.id}/wakeup`, adminToken);
+      assert.equal(again.status, 409, status);
+      assert.match(again.body.error, /pending or sent/, status);
+      assert.deepEqual(io.wakeupPublisher.published, [], status);
+    }
+  });
+
+  await t.test('only an Admin of the Device’s Organization or a Superadmin may send the Wake-up again', async () => {
+    const { io, orgId, adminToken, call } = await setup();
+    const connected = await call('POST', '/devices/connect', undefined, { identifier: 'mac-resend-auth', organizationId: orgId });
+    const { device } = connected.body;
+    await call('POST', `/devices/${device.id}/approve`, adminToken, { name: 'D1', location: 'L1' });
+    const base = `/organizations/${orgId}/devices/${device.id}/commands`;
+    const issued = await call('POST', base, adminToken, { type: 'restart' });
+    io.wakeupPublisher.published.length = 0;
+
+    const otherOrg = await io.orgRepo.create({ name: 'Other', slug: 'other', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), shadowBanThreshold: 5 });
+    const { token: otherToken, user: otherAdmin } = await registerVerified({ firstName: 'B', lastName: 'Y', email: 'b@b.com', password: 'password123' }, otherOrg.id, io);
+    await io.userRepo.update(otherAdmin.id, { role: 'Admin' });
+
+    assert.equal((await call('POST', `${base}/${issued.body.id}/wakeup`)).status, 401);
+    assert.equal((await call('POST', `${base}/${issued.body.id}/wakeup`, otherToken)).status, 403);
+    assert.equal((await call('POST', `/organizations/${otherOrg.id}/devices/${device.id}/commands/${issued.body.id}/wakeup`, otherToken)).status, 404);
+    assert.equal((await call('POST', `${base}/no-such-command/wakeup`, adminToken)).status, 404);
+    assert.deepEqual(io.wakeupPublisher.published, []);
+
+    await seedSuperadminHandler({ email: 'root@a.com', password: 'secret-123', firstName: 'S', lastName: 'A' }, io);
+    const { token: superToken } = await loginHandler({ email: 'root@a.com', password: 'secret-123' }, io);
+    const bySuperadmin = await call('POST', `${base}/${issued.body.id}/wakeup`, superToken);
+    assert.equal(bySuperadmin.status, 200);
+    assert.deepEqual(bySuperadmin.body, { sent: true });
+  });
+
   await t.test('every request asks the Wake-up publisher to warm up, whatever the route', async () => {
     const { io, call } = await setup();
     const before = io.wakeupPublisher.warmUps;

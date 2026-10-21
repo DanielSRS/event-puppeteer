@@ -1,6 +1,6 @@
 import type { AppIO } from '../io/index.ts';
 import type { DeviceTelemetry, PostLogInput } from '../types/telemetry.ts';
-import type { Command, CreateCommandInput, IssuedCommand, RequestUpdateUploadInput, UpdateUploadGrantView } from '../types/command.ts';
+import type { Command, CreateCommandInput, IssuedCommand, WakeupOutcome, RequestUpdateUploadInput, UpdateUploadGrantView } from '../types/command.ts';
 import { UPDATE_BINARY_CONTENT_TYPE, UPDATE_BINARY_MAX_BYTES, UpdateBinaryPrefix } from '../types/command.ts';
 
 /** How long a signed download URL lives. The download starts as soon as it is answered, and a started download is not cut off. */
@@ -199,18 +199,43 @@ export async function sendCommandHandler(request: Request, orgId: string, device
     issuedAt: new Date().toISOString()
   });
 
+  return { ...command, wakeup: await publishWakeup(orgId, command, io) };
+}
+
+/**
+ * Publishes the Wake-up of a Command and logs the attempt. The outcome is a value: a failed
+ * publish is reported, never thrown.
+ */
+async function publishWakeup(orgId: string, command: Command, io: AppIO): Promise<WakeupOutcome> {
   const startedAt = performance.now();
-  const published = await io.wakeupPublisher.publish(wakeupTopic(deviceId, orgId));
+  const published = await io.wakeupPublisher.publish(wakeupTopic(command.deviceId, orgId));
   console.log(JSON.stringify({
     event: 'wakeup.publish',
-    deviceId,
+    deviceId: command.deviceId,
     organizationId: orgId,
     commandId: command.id,
     sent: published.ok,
     ...(published.ok ? {} : { reason: published.error }),
     durationMs: Math.round(performance.now() - startedAt)
   }));
-  return { ...command, wakeup: published.ok ? { sent: true } : { sent: false, reason: published.error } };
+  return published.ok ? { sent: true } : { sent: false, reason: published.error };
+}
+
+/**
+ * Publishes the Wake-up again for a Command the Device has not acknowledged yet.
+ * @throws NOT_FOUND when the Device is not in the Organization or the Command is not the Device's.
+ * @throws COMMAND_NOT_RESENDABLE when the Command is acknowledged, completed or failed.
+ */
+export async function resendWakeupHandler(request: Request, orgId: string, deviceId: string, commandId: string, io: AppIO): Promise<WakeupOutcome> {
+  const actor = await requireAuth(request, io);
+  assertCanManageOrg(actor, orgId, 'Admin');
+
+  const device = await io.deviceRepo.getById(deviceId);
+  if (!device || device.organizationId !== orgId) throw new Error('NOT_FOUND');
+  const command = await requireDeviceCommand(deviceId, commandId, io);
+  if (command.status !== 'pending' && command.status !== 'sent') throw new Error('COMMAND_NOT_RESENDABLE');
+
+  return await publishWakeup(orgId, command, io);
 }
 
 export async function requestTelemetryHandler(request: Request, orgId: string, deviceId: string, io: AppIO) {

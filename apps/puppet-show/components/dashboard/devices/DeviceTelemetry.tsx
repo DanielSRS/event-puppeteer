@@ -52,6 +52,13 @@ export type DeviceTelemetryProps = {
   /** What the upload is doing right now; empty when it is not running. */
   updateProgress: string;
   onRefresh: () => void;
+  /**
+   * Sends the Wake-up of a Command again; resolves to an error message, or `null` when it was
+   * sent. Leave it out when the server does not offer the endpoint: no resend action is shown.
+   */
+  onResendWakeup?: (command: Command) => Promise<string | null>;
+  /** Command whose Wake-up is being sent again right now. */
+  resendingCommandId: string | null;
 };
 
 /** Portuguese label of each command. */
@@ -166,12 +173,14 @@ function HardwareTiles(t: Telemetry, items: TelemetryGroup["items"], loadedAt: s
 }
 
 /** The device page. */
-export function DeviceTelemetry({ details, loadedAt, refreshError, sending, onCommand, onUpdateFile, updateProgress, onRefresh }: DeviceTelemetryProps) {
+export function DeviceTelemetry({ details, loadedAt, refreshError, sending, onCommand, onUpdateFile, updateProgress, onRefresh, onResendWakeup, resendingCommandId }: DeviceTelemetryProps) {
   const { device, status, telemetry, commands, logs } = details;
   const [confirming, setConfirming] = useState<ConfirmedCommand | null>(null);
   const [updateOpen, setUpdateOpen] = useState(false);
   const [updateError, setUpdateError] = useState("");
+  const [resendError, setResendError] = useState("");
   const busy = sending !== null;
+  const withActions = onResendWakeup !== undefined;
   const heartbeatErrors = status.latestHeartbeat !== null && status.latestHeartbeat.errors !== undefined ? status.latestHeartbeat.errors : [];
   const groups = telemetry === null ? [] : TelemetryGroups(telemetry);
   const hardware = groups.find((group) => group.title === "Hardware");
@@ -191,6 +200,13 @@ export function DeviceTelemetry({ details, loadedAt, refreshError, sending, onCo
       : await onUpdateFile(request.file, request.version);
     if (error === null) setUpdateOpen(false);
     else setUpdateError(error);
+  };
+
+  const resend = async (command: Command) => {
+    if (onResendWakeup === undefined) return;
+    setResendError("");
+    const error = await onResendWakeup(command);
+    if (error !== null) setResendError(error);
   };
 
   const confirmation = confirming === null ? null : CONFIRMATIONS[confirming];
@@ -315,6 +331,7 @@ export function DeviceTelemetry({ details, loadedAt, refreshError, sending, onCo
 
       <section aria-labelledby="commands-title" className="glass overflow-hidden rounded-[26px]">
         <h2 id="commands-title" className="h2 border-b border-[color:var(--line)] px-5 py-[18px]">Histórico de comandos</h2>
+        {resendError !== "" && <div className="px-5 pt-4"><ErrorAlert>{resendError}</ErrorAlert></div>}
         {commands.length === 0 ? (
           <p className="t2 px-5 py-6 text-sm">Nenhum comando enviado.</p>
         ) : (
@@ -326,7 +343,8 @@ export function DeviceTelemetry({ details, loadedAt, refreshError, sending, onCo
                 <th scope="col">Status</th>
                 <th scope="col">Enviado em</th>
                 <th scope="col">Concluído em</th>
-                <th scope="col" className="pr-5">Detalhes</th>
+                <th scope="col" className={withActions ? "" : "pr-5"}>Detalhes</th>
+                {withActions && <th scope="col" className="pr-5">Ações</th>}
               </tr>
             </thead>
             <tbody>
@@ -338,7 +356,22 @@ export function DeviceTelemetry({ details, loadedAt, refreshError, sending, onCo
                   <td className="mono t2 text-[13px]">
                     <CellLabel>Concluído em</CellLabel>{command.completedAt === undefined ? "Ainda não" : FormatInstant(command.completedAt)}
                   </td>
-                  <td className="t2 pr-5 break-all">{PayloadText(command)}</td>
+                  <td className={`t2 break-all ${withActions ? "" : "pr-5"}`}>{PayloadText(command)}</td>
+                  {withActions && (
+                    <td className="pr-5">
+                      {(command.status === "pending" || command.status === "sent") && (
+                        <button
+                          type="button"
+                          disabled={resendingCommandId !== null}
+                          onClick={() => resend(command)}
+                          className="button focus-ring"
+                        >
+                          {resendingCommandId === command.id ? "Reenviando..." : "Reenviar aviso"}
+                          <span className="sr-only"> do comando {COMMAND_LABELS[command.type]}</span>
+                        </button>
+                      )}
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
