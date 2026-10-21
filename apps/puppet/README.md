@@ -127,12 +127,12 @@ To build and run this project natively, ensure you have the following installed 
 - **libcurl development files**
   - **Fedora/RHEL**: `sudo dnf install libcurl-devel`
   - **Ubuntu/Debian**: `sudo apt install libcurl4-openssl-dev`
-- **libmosquitto development files**
-  - **Fedora/RHEL**: `sudo dnf install mosquitto-devel`
-  - **Ubuntu/Debian**: `sudo apt install libmosquitto-dev`
+- **OpenSSL development files**, to build libmosquitto, which CMake downloads and links statically
+  - **Fedora/RHEL**: `sudo dnf install openssl-devel openssl-devel-engine`
+  - **Ubuntu/Debian**: `sudo apt install libssl-dev`
 - Standard build tools (e.g., `make`, `ninja`, or Visual Studio build tools)
 
-On the Device itself only the libcurl and libmosquitto runtimes (`libcurl4` and `libmosquitto1` on Debian) are needed.
+On the Device itself only the libcurl runtime (`libcurl4` on Debian, which brings libssl) is needed: libmosquitto is part of the binary, so a Puppet that updates itself never depends on a library the Device may lack.
 
 ## Native Build Instructions
 
@@ -211,7 +211,7 @@ You must install the ARM32 C and C++ cross-compilers on your host machine to com
 - **Ubuntu/Debian**: `sudo apt install gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf`
 
 **Build Instructions:**
-Use the provided toolchain file. During the configuration step, CMake will **automatically download and set up the required target sysroot**, libcurl and libmosquitto included (using `scripts/setup-arm32-sysroot.sh`), into a local `sysroot` directory. The setup runs again automatically whenever that script changes.
+Use the provided toolchain file. During the configuration step, CMake will **automatically download and set up the required target sysroot**, libcurl and the OpenSSL headers included (using `scripts/setup-arm32-sysroot.sh`), into a local `sysroot` directory. The setup runs again automatically whenever that script changes.
 ```bash
 cmake -B build-linux-arm32 -DPUPPET_SERVER_URL=https://puppeteer.example -DCMAKE_TOOLCHAIN_FILE=toolchains/arm32-linux.cmake
 cmake --build build-linux-arm32

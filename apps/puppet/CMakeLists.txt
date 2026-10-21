@@ -56,9 +56,29 @@ find_package(Threads REQUIRED)
 # Require libcurl (provides HTTPS transport to Puppeteer)
 find_package(CURL REQUIRED)
 
-# Require libmosquitto (MQTT client for Wake-ups)
-find_path(MOSQUITTO_INCLUDE_DIR mosquitto.h REQUIRED)
-find_library(MOSQUITTO_LIBRARY mosquitto REQUIRED)
+# libmosquitto (MQTT client for Wake-ups) is built from source and linked
+# statically, so the Device needs no MQTT library installed: a binary that
+# cannot load its libraries cannot run, and so cannot update itself either.
+# Only the library is built (no broker, clients, plugins or documentation), at
+# the version the Wake-up code was verified against. It still needs OpenSSL
+# (headers to build, libssl at run time, which libcurl already requires).
+set(WITH_TLS ON CACHE BOOL "" FORCE)
+set(WITH_CLIENTS OFF CACHE BOOL "" FORCE)
+set(WITH_BROKER OFF CACHE BOOL "" FORCE)
+set(WITH_APPS OFF CACHE BOOL "" FORCE)
+set(WITH_PLUGINS OFF CACHE BOOL "" FORCE)
+set(WITH_LIB_CPP OFF CACHE BOOL "" FORCE)
+set(WITH_CJSON OFF CACHE BOOL "" FORCE)
+set(DOCUMENTATION OFF CACHE BOOL "" FORCE)
+set(WITH_STATIC_LIBRARIES ON CACHE BOOL "" FORCE)
+FetchContent_Declare(
+  mosquitto
+  GIT_REPOSITORY https://github.com/eclipse-mosquitto/mosquitto.git
+  GIT_TAG        v2.0.11
+  GIT_SHALLOW    TRUE
+)
+FetchContent_MakeAvailable(mosquitto)
+set_target_properties(libmosquitto PROPERTIES EXCLUDE_FROM_ALL TRUE)
 
 # Enable ultra-strict compilation, warnings as errors, and extra validations for our code
 set(PUPPET_STRICT_COMPILE_OPTIONS
@@ -106,8 +126,8 @@ target_compile_definitions(puppet PRIVATE
 )
 
 # Link MMKV Core, Threads, libcurl and libmosquitto to the puppet executable
-target_link_libraries(puppet PRIVATE core Threads::Threads gcc_s stdc++ CURL::libcurl ${MOSQUITTO_LIBRARY})
-target_include_directories(puppet PRIVATE ${MOSQUITTO_INCLUDE_DIR})
+target_link_libraries(puppet PRIVATE core Threads::Threads gcc_s stdc++ CURL::libcurl libmosquitto_static)
+target_include_directories(puppet PRIVATE ${mosquitto_SOURCE_DIR}/include)
 
 # Add include paths for our internal modules
 target_include_directories(puppet PRIVATE
