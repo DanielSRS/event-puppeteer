@@ -6,6 +6,17 @@ import { createServer } from './server.ts';
 import { loginHandler } from './handlers/auth.ts';
 import { seedSuperadminHandler } from './handlers/seed.ts';
 
+/** One Command of every type, in the shape the API accepts; `update` in both of its payload forms. */
+const everyCommandType = (orgId: string) => [
+  { type: 'restart' },
+  { type: 'shutdown' },
+  { type: 'open_ssh' },
+  { type: 'custom', payload: { script: 'x' } },
+  { type: 'request_telemetry' },
+  { type: 'update', payload: { url: 'https://example.com/puppet', sha256: 'a'.repeat(64) } },
+  { type: 'update', payload: { blobPathname: `puppet-updates/${orgId}/puppet`, sha256: 'a'.repeat(64) } }
+];
+
 // Handler tests bypass Elysia; these go through the HTTP layer so response
 // schema validation (and the OpenAPI plugin) is exercised too.
 async function setup() {
@@ -97,6 +108,109 @@ test('HTTP layer', async (t) => {
     const failedId = await issue(first);
     await call('POST', `/devices/${first.id}/commands/${failedId}/complete`, first.token, { success: false });
     assert.deepEqual(await heartbeat(first), { success: true, commandsWaiting: false });
+  });
+
+  await t.test('issuing any Command type publishes an empty QoS 1, non-retained Wake-up to the Device-id/Organization-id topic and reports it sent', async () => {
+    const { io, orgId, adminToken, call } = await setup();
+    const connected = await call('POST', '/devices/connect', undefined, { identifier: 'mac-wakeup', organizationId: orgId });
+    const { device } = connected.body;
+    await call('POST', `/devices/${device.id}/approve`, adminToken, { name: 'D1', location: 'L1' });
+    const path = `/organizations/${orgId}/devices/${device.id}/commands`;
+
+    const bodies = everyCommandType(orgId);
+    for (const body of bodies) {
+      const res = await call('POST', path, adminToken, body);
+      assert.equal(res.status, 200, body.type);
+      assert.deepEqual(res.body.wakeup, { sent: true }, body.type);
+    }
+    const viaTelemetry = await call('POST', `/organizations/${orgId}/devices/${device.id}/telemetry/request`, adminToken);
+    assert.equal(viaTelemetry.status, 200);
+    assert.deepEqual(viaTelemetry.body.wakeup, { sent: true });
+
+    assert.equal(io.wakeupPublisher.published.length, bodies.length + 1);
+    for (const published of io.wakeupPublisher.published) {
+      assert.deepEqual(published, { topic: `${device.id}/${orgId}`, payload: '', qos: 1, retain: false });
+    }
+  });
+
+  await t.test('a failing Wake-up leaves the Command stored and the request successful, reporting why', async () => {
+    const { io, orgId, adminToken, call } = await setup();
+    const connected = await call('POST', '/devices/connect', undefined, { identifier: 'mac-wakeup-fail', organizationId: orgId });
+    const { device } = connected.body;
+    await call('POST', `/devices/${device.id}/approve`, adminToken, { name: 'D1', location: 'L1' });
+    io.wakeupPublisher.failure = 'broker unreachable';
+
+    const path = `/organizations/${orgId}/devices/${device.id}/commands`;
+    const bodies = everyCommandType(orgId);
+
+    const issuedIds: string[] = [];
+    for (const body of bodies) {
+      const issued = await call('POST', path, adminToken, body);
+      assert.equal(issued.status, 200, body.type);
+      assert.deepEqual(issued.body.wakeup, { sent: false, reason: 'broker unreachable' }, body.type);
+      assert.equal(issued.body.status, 'pending', body.type);
+      issuedIds.push(issued.body.id);
+    }
+
+    const listed = await call('GET', path, adminToken);
+    assert.deepEqual(listed.body.map((command: { id: string }) => command.id).sort(), [...issuedIds].sort());
+    assert.deepEqual(io.wakeupPublisher.published, []);
+  });
+
+  await t.test('the publish log line names ids, outcome and duration, and carries no token or Command content', async () => {
+    const { io, orgId, adminToken, call } = await setup();
+    const connected = await call('POST', '/devices/connect', undefined, { identifier: 'mac-log', organizationId: orgId });
+    const { device, token } = connected.body;
+    await call('POST', `/devices/${device.id}/approve`, adminToken, { name: 'D1', location: 'L1' });
+    io.wakeupPublisher.failure = 'broker unreachable';
+
+    const lines: string[] = [];
+    const original = console.log;
+    console.log = (line: unknown) => { lines.push(String(line)); };
+    let issued;
+    try {
+      issued = await call('POST', `/organizations/${orgId}/devices/${device.id}/commands`, adminToken, { type: 'custom', payload: { secret: 'command-content' } });
+    } finally {
+      console.log = original;
+    }
+
+    const entries = lines.map((line) => JSON.parse(line) as Record<string, unknown>).filter((entry) => entry.event === 'wakeup.publish');
+    assert.equal(entries.length, 1);
+    const entry = entries[0]!;
+    assert.equal(entry.deviceId, device.id);
+    assert.equal(entry.organizationId, orgId);
+    assert.equal(entry.commandId, issued.body.id);
+    assert.equal(entry.sent, false);
+    assert.equal(entry.reason, 'broker unreachable');
+    assert.equal(typeof entry.durationMs, 'number');
+    const text = lines.join('\n');
+    for (const secret of [token, adminToken, 'command-content']) assert.equal(text.includes(secret), false);
+  });
+
+  await t.test('a Command is stored before its Wake-up is published', async () => {
+    const { io, orgId, adminToken, call } = await setup();
+    const connected = await call('POST', '/devices/connect', undefined, { identifier: 'mac-order', organizationId: orgId });
+    const { device } = connected.body;
+    await call('POST', `/devices/${device.id}/approve`, adminToken, { name: 'D1', location: 'L1' });
+    let storedWhenPublished: number | null = null;
+    const publish = io.wakeupPublisher.publish.bind(io.wakeupPublisher);
+    io.wakeupPublisher.publish = async (topic: string) => {
+      storedWhenPublished = (await io.commandRepo.listByDevice(device.id)).length;
+      return await publish(topic);
+    };
+
+    await call('POST', `/organizations/${orgId}/devices/${device.id}/commands`, adminToken, { type: 'restart' });
+    assert.equal(storedWhenPublished, 1);
+  });
+
+  await t.test('every request asks the Wake-up publisher to warm up, whatever the route', async () => {
+    const { io, call } = await setup();
+    const before = io.wakeupPublisher.warmUps;
+
+    await call('GET', '/health');
+    await call('GET', '/no-such-route');
+
+    assert.equal(io.wakeupPublisher.warmUps, before + 2);
   });
 
   await t.test('GET device telemetry answers JSON before and after the device sends any', async () => {

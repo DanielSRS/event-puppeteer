@@ -285,6 +285,20 @@ export const CommandSchema = z.object({
 });
 export type Command = z.infer<typeof CommandSchema>;
 
+/**
+ * Outcome of the Wake-up Puppeteer sends when it stores a Command. A failed Wake-up never
+ * fails the request: the Command is stored and the Device gets it on its next heartbeat.
+ */
+export const WakeupOutcomeSchema = z.discriminatedUnion("sent", [
+  z.object({ sent: z.literal(true) }),
+  z.object({ sent: z.literal(false), reason: z.string() }),
+]);
+export type WakeupOutcome = z.infer<typeof WakeupOutcomeSchema>;
+
+/** Answer of `POST .../commands`: the stored Command and the outcome of its Wake-up. */
+export const IssuedCommandSchema = CommandSchema.extend({ wakeup: WakeupOutcomeSchema });
+export type IssuedCommand = z.infer<typeof IssuedCommandSchema>;
+
 /** Answer of `POST .../devices/update-uploads`: what the browser needs to upload one Puppet binary. */
 export const UpdateUploadGrantSchema = z.object({
   pathname: z.string(),

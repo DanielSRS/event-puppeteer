@@ -275,6 +275,25 @@ export interface UpdateBinaryStore {
   signedDownloadUrl(pathname: string, validUntil: number): Promise<Result<string, UpdateBinaryStoreFailure>>;
 }
 
+/** Why publishing a Wake-up failed. */
+export type WakeupFailure = string;
+
+/**
+ * Sends a Wake-up: an empty one-way notice that a Device has a Command waiting (see the Wake-up
+ * glossary entry and ADR-0001). A failed publish is returned, never thrown.
+ */
+export interface WakeupPublisher {
+  /**
+   * Gets the publisher ready for the next `publish`, without waiting for it: called on every
+   * request, so the first Command after an idle period finds a connection already open. It does
+   * nothing while one is open or being opened. A failure to get ready is logged on the server
+   * only; `publish` copes with it.
+   */
+  warmUp(): void;
+  /** Publishes an empty, QoS 1, non-retained message to `topic`. */
+  publish(topic: string): Promise<Result<void, WakeupFailure>>;
+}
+
 export interface AppIO {
   orgRepo: OrganizationRepository;
   userRepo: UserRepository;
@@ -294,6 +313,7 @@ export interface AppIO {
   imageScreener: ImageScreener;
   imageStore: ImageStore;
   updateBinaryStore: UpdateBinaryStore;
+  wakeupPublisher: WakeupPublisher;
 }
 
 import postgres from 'postgres';
@@ -322,10 +342,23 @@ import { CombinedImageScreener } from './screening/combined.ts';
 import { SightengineImageScreener } from './screening/sightengine.ts';
 import { OpenAIImageScreener } from './screening/openai.ts';
 import { CloudinaryImageStore } from './image-store/cloudinary.ts';
+import { MqttWakeupPublisher, WAKEUP_BROKER_URL, WAKEUP_CONNECT_TIMEOUT_MS, WAKEUP_PUBLISH_TIMEOUT_MS, type KeepAlive } from './wakeup/mqtt.ts';
 import { VercelBlobUpdateBinaryStore } from './update-binary-store/vercel-blob.ts';
 
-// close() ends the database pool: an open pool keeps the process alive after the server stops
-export function createRealIO(): AppIO & { close(): Promise<void> } {
+/** What the real IO needs from the process it runs in. */
+export interface RealIOOptions {
+  /** Keeps the instance running while the Wake-up connection opens: Vercel's `waitUntil`, or a no-op in a process that never pauses. */
+  keepAlive: KeepAlive;
+}
+
+// close() ends the database pool and the broker connection: either keeps the process alive after the server stops
+export function createRealIO({ keepAlive }: RealIOOptions): AppIO & { close(): Promise<void> } {
+  const wakeupPublisher = new MqttWakeupPublisher({
+    brokerUrl: WAKEUP_BROKER_URL,
+    keepAlive,
+    connectTimeoutMs: WAKEUP_CONNECT_TIMEOUT_MS,
+    publishTimeoutMs: WAKEUP_PUBLISH_TIMEOUT_MS
+  });
   // prepare: false — Supabase's transaction pooler (what serverless should use) rejects prepared statements
   const queryClient = postgres(env.DATABASE_URL, { prepare: false });
   const db = drizzle(queryClient, { schema });
@@ -375,6 +408,9 @@ export function createRealIO(): AppIO & { close(): Promise<void> } {
       apiSecret: env.CLOUDINARY_API_SECRET
     }),
     updateBinaryStore: new VercelBlobUpdateBinaryStore(env.BLOB_READ_WRITE_TOKEN),
-    close: () => queryClient.end({ timeout: 5 })
+    wakeupPublisher: wakeupPublisher,
+    close: async () => {
+      await Promise.all([queryClient.end({ timeout: 5 }), wakeupPublisher.close()]);
+    }
   };
 }

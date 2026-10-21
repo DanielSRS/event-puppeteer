@@ -8,7 +8,7 @@
 
 import { put } from "@vercel/blob/client";
 import { api, ApiErrorMessage } from "@/lib/api/client";
-import type { Command, UpdateUploadGrant } from "@/lib/api/schemas";
+import type { IssuedCommand, UpdateUploadGrant } from "@/lib/api/schemas";
 import { Err, Ok, type Result } from "@/lib/result";
 
 /** The step an upload is in, for the progress line of the form. */
@@ -58,7 +58,7 @@ async function UploadToStore(grant: UpdateUploadGrant, file: File, onProgress: (
  * Uploads `file` and sends the `update` command of device `deviceId`.
  *
  * @param onStep - Called as each step starts (and while the upload advances).
- * @returns The command, or the text to show the person.
+ * @returns The command with the outcome of its Wake-up, or the text to show the person.
  */
 export async function SendUpdateFile(
   orgId: string,
@@ -66,7 +66,7 @@ export async function SendUpdateFile(
   file: File,
   version: string | undefined,
   onStep: (step: UpdateUploadStep) => void,
-): Promise<Result<Command, string>> {
+): Promise<Result<IssuedCommand, string>> {
   onStep({ step: "hashing" });
   const sha256 = await Sha256Hex(file);
   if (!sha256.ok) return Err(`Não foi possível calcular o SHA-256 do arquivo. ${sha256.error}`);

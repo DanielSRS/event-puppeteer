@@ -17,7 +17,7 @@ import type { z } from "zod";
 import { Err, Ok, type Result } from "@/lib/result";
 import { GetToken } from "./session";
 import {
-  ApiErrorBodySchema, AuditEntrySchema, CommandSchema, DeviceLogSchema, DeviceSchema, DeviceStatusSchema,
+  ApiErrorBodySchema, AuditEntrySchema, CommandSchema, IssuedCommandSchema, DeviceLogSchema, DeviceSchema, DeviceStatusSchema,
   DeviceTelemetryResponseSchema, EventSchema, EventWithVotesSchema, FeedEventSchema, ImageDecisionSchema, ImageReviewItemSchema,
   ImageViewSchema, LinkLabelSchema, LoginResponseSchema, OrganizationSchema, RegisterResponseSchema, ReportSchema, ReportStatusSchema,
   ScreeningPolicyResponseSchema, ScreeningPolicySchema, SuccessSchema, TagSchema, UpdateUploadGrantSchema, UserSchema, VoteResponseSchema, VoteStatusSchema,
@@ -343,6 +343,6 @@ export const api = {
     requestUpdateUpload: (orgId: string, sizeBytes: number) =>
       Request(UpdateUploadGrantSchema, "POST", `/organizations/${seg(orgId)}/devices/update-uploads`, { sizeBytes }),
     sendCommand: (orgId: string, deviceId: string, body: CreateCommandInput) =>
-      Request(CommandSchema, "POST", `/organizations/${seg(orgId)}/devices/${seg(deviceId)}/commands`, body),
+      Request(IssuedCommandSchema, "POST", `/organizations/${seg(orgId)}/devices/${seg(deviceId)}/commands`, body),
   },
 };

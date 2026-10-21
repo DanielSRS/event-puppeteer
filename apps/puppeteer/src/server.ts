@@ -36,7 +36,7 @@ import { connectDeviceHandler, getCurrentDeviceHandler, listPendingDevicesGlobal
 import { PublicDeviceSchema, ConnectDeviceBody, ApproveDeviceBody } from './types/device.ts';
 import { heartbeatHandler, postLogHandler, postTelemetryHandler, pullPendingCommandsHandler, ackCommandHandler, completeCommandHandler, getDeviceStatusHandler, getDeviceLogsHandler, getDetailedTelemetryHandler, sendCommandHandler, requestTelemetryHandler, listCommandsHandler, requestUpdateUploadHandler, downloadUpdateBinaryHandler } from './handlers/telemetry.ts';
 import { PostLogBody, DeviceTelemetrySchema, DeviceLogSchema, HeartbeatSchema } from './types/telemetry.ts';
-import { CreateCommandBody, CommandSchema, RequestUpdateUploadBody, UpdateUploadGrantSchema } from './types/command.ts';
+import { CreateCommandBody, CommandSchema, IssuedCommandSchema, RequestUpdateUploadBody, UpdateUploadGrantSchema } from './types/command.ts';
 import { createTagHandler, listTagsHandler, createLinkLabelHandler, listLinkLabelsHandler } from './handlers/system.ts';
 import { createEventHandler, listEventsHandler, listMyEventsHandler, getEventHandler, deleteEventHandler } from './handlers/events.ts';
 import { voteHandler, getVoteStatusHandler } from './handlers/votes.ts';
@@ -116,6 +116,8 @@ export function createServer(io: AppIO, { adapter, appUrl = 'http://localhost:30
     // Not .decorate(): Elysia deep-merges decorators into every group, and walking the
     // Drizzle/better-auth instances inside io never terminates (heap OOM at startup)
     .derive({ as: 'global' }, () => ({ io }))
+    /** Every request gets the Wake-up connection ready for the next Command, without waiting for it. */
+    .onRequest(() => io.wakeupPublisher.warmUp())
     .onError(({ error, set }) => {
       if (!(error instanceof Error)) return;
       const message = error.message;
@@ -777,11 +779,11 @@ export function createServer(io: AppIO, { adapter, appUrl = 'http://localhost:30
               return await requestTelemetryHandler(request, id, deviceId, io);
             }, {
               params: t.Object({ id: t.String(), deviceId: t.String() }),
-              response: CommandSchema,
+              response: IssuedCommandSchema,
               detail: {
                 tags: ['Device Management'],
                 summary: 'Request detailed Telemetry',
-                description: 'Queues a request_telemetry Command for the Device to pick up.',
+                description: 'Queues a request_telemetry Command for the Device to pick up and sends its Wake-up. The answer carries the outcome in `wakeup`.',
                 security: asUser
               }
             })
@@ -797,11 +799,11 @@ export function createServer(io: AppIO, { adapter, appUrl = 'http://localhost:30
             }, {
               params: t.Object({ id: t.String(), deviceId: t.String() }),
               body: CreateCommandBody,
-              response: CommandSchema,
+              response: IssuedCommandSchema,
               detail: {
                 tags: ['Device Management'],
                 summary: 'Send a Command to a Device',
-                description: 'An update Command requires payload { url, sha256, version? } or, for a binary uploaded through update-uploads, { blobPathname, sha256, version? }; Puppet verifies the digest and architecture before installing. Other types take an optional free-form payload.',
+                description: 'An update Command requires payload { url, sha256, version? } or, for a binary uploaded through update-uploads, { blobPathname, sha256, version? }; Puppet verifies the digest and architecture before installing. Other types take an optional free-form payload. The Command is stored first, then its Wake-up is published to the broker; the answer carries the outcome in `wakeup` (`{ sent: true }` or `{ sent: false, reason }`). A failed Wake-up never fails the request: the Device receives the Command on its next heartbeat (up to 20 s).',
                 security: asUser
               }
             })

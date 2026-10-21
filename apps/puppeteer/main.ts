@@ -18,7 +18,8 @@ await new Promise<void>((resolve) => {
     .listen(env.PORT);
 });
 
-const io = createRealIO();
+/** A local process never pauses, so the Wake-up connection needs no keep-alive. */
+const io = createRealIO({ keepAlive: () => undefined });
 const app = createServer(io, { adapter: node(), appUrl: env.APP_URL });
 app.listen(env.PORT);
 console.log(`🦊 Server is running at http://localhost:${env.PORT}`);

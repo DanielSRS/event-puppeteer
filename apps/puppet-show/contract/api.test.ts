@@ -92,6 +92,7 @@ describe("every field the copy requires is always sent by the API", () => {
     ["Audit entry", Front.AuditEntrySchema, ApiModeration.AuditEntrySchema],
     ["Device", Front.DeviceSchema, ApiDevice.PublicDeviceSchema],
     ["Command", Front.CommandSchema, ApiCommand.CommandSchema],
+    ["Issued Command", Front.IssuedCommandSchema, ApiCommand.IssuedCommandSchema],
   ];
 
   test.each(objects)("%s", (_name, front, api) => {

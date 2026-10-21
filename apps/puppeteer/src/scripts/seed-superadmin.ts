@@ -17,6 +17,9 @@ if (!parsed.success) {
   process.exit(1);
 }
 
+/** The seed is a short-lived script that never pauses, so the Wake-up connection needs no keep-alive. */
+const keepAlive = () => undefined;
+
 const { SUPERADMIN_EMAIL, SUPERADMIN_PASSWORD, SUPERADMIN_FIRST_NAME, SUPERADMIN_LAST_NAME } = parsed.data;
 try {
   const { status, user } = await seedSuperadminHandler({
@@ -24,7 +27,7 @@ try {
     password: SUPERADMIN_PASSWORD,
     firstName: SUPERADMIN_FIRST_NAME,
     lastName: SUPERADMIN_LAST_NAME
-  }, createRealIO());
+  }, createRealIO({ keepAlive }));
 
   const messages = { created: 'criado', promoted: 'promovido a Superadmin', unchanged: 'já era Superadmin' };
   console.log(`✅ ${user.email}: ${messages[status]}`);
