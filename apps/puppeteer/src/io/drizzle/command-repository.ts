@@ -1,4 +1,4 @@
-import { eq, desc } from 'drizzle-orm';
+import { and, eq, desc, inArray } from 'drizzle-orm';
 import type { CommandRepository } from '../index.ts';
 import type { Command } from '../../types/command.ts';
 import { command } from '../../db/schema.ts';
@@ -38,6 +38,13 @@ export class DrizzleCommandRepository implements CommandRepository {
     const rows = await this.db.update(command).set(updates).where(eq(command.id, id)).returning();
     if (rows.length === 0) return null;
     return this.mapToDomain(rows[0]);
+  }
+
+  async hasWaiting(deviceId: string): Promise<boolean> {
+    const rows = await this.db.select({ id: command.id }).from(command)
+      .where(and(eq(command.deviceId, deviceId), inArray(command.status, ['pending', 'sent'])))
+      .limit(1);
+    return rows.length > 0;
   }
 
   private mapToDomain(row: any): Command {

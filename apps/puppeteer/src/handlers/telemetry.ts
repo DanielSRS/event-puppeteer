@@ -21,7 +21,7 @@ export async function heartbeatHandler(request: Request, deviceId: string, statu
     status,
     ...(errors !== undefined ? { errors } : {})
   });
-  return { success: true };
+  return { success: true, commandsWaiting: await io.commandRepo.hasWaiting(deviceId) };
 }
 
 export async function postLogHandler(request: Request, deviceId: string, body: PostLogInput, io: AppIO) {

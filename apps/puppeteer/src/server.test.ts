@@ -56,6 +56,49 @@ test('HTTP layer', async (t) => {
     assert.equal(listed.body[0].status, 'acknowledged');
   });
 
+  await t.test('heartbeat answer reports commandsWaiting while a Command is pending or sent, and only for the calling Device', async () => {
+    const { orgId, adminToken, call } = await setup();
+    const connect = async (identifier: string) => {
+      const connected = await call('POST', '/devices/connect', undefined, { identifier, organizationId: orgId });
+      const { device, token } = connected.body;
+      await call('POST', `/devices/${device.id}/approve`, adminToken, { name: identifier, location: 'L1' });
+      return { id: device.id as string, token: token as string };
+    };
+    const first = await connect('mac-1');
+    const second = await connect('mac-2');
+    const heartbeat = async (device: { id: string; token: string }) => {
+      const res = await call('POST', `/devices/${device.id}/heartbeat`, device.token, { status: 'ok' });
+      assert.equal(res.status, 200);
+      return res.body;
+    };
+    const issue = async (device: { id: string }) => {
+      const res = await call('POST', `/organizations/${orgId}/devices/${device.id}/commands`, adminToken, { type: 'restart' });
+      assert.equal(res.status, 200);
+      return res.body.id as string;
+    };
+
+    assert.deepEqual(await heartbeat(first), { success: true, commandsWaiting: false });
+
+    const pendingId = await issue(first);
+    assert.deepEqual(await heartbeat(first), { success: true, commandsWaiting: true });
+    assert.deepEqual(await heartbeat(second), { success: true, commandsWaiting: false });
+
+    const pulled = await call('GET', `/devices/${first.id}/commands/pending`, first.token);
+    assert.equal(pulled.body[0].status, 'sent');
+    assert.deepEqual(await heartbeat(first), { success: true, commandsWaiting: true });
+
+    await call('POST', `/devices/${first.id}/commands/${pendingId}/ack`, first.token);
+    assert.deepEqual(await heartbeat(first), { success: true, commandsWaiting: false });
+
+    const completedId = await issue(first);
+    await call('POST', `/devices/${first.id}/commands/${completedId}/complete`, first.token, { success: true });
+    assert.deepEqual(await heartbeat(first), { success: true, commandsWaiting: false });
+
+    const failedId = await issue(first);
+    await call('POST', `/devices/${first.id}/commands/${failedId}/complete`, first.token, { success: false });
+    assert.deepEqual(await heartbeat(first), { success: true, commandsWaiting: false });
+  });
+
   await t.test('GET device telemetry answers JSON before and after the device sends any', async () => {
     const { orgId, adminToken, call } = await setup();
     const connected = await call('POST', '/devices/connect', undefined, { identifier: 'mac-telemetry', organizationId: orgId });

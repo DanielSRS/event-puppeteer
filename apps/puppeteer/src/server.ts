@@ -262,8 +262,18 @@ export function createServer(io: AppIO, { adapter, appUrl = 'http://localhost:30
         }, {
           params: t.Object({ deviceId: t.String() }),
           body: t.Object({ status: t.String(), errors: t.Optional(t.Array(t.String())) }),
-          response: t.Object({ success: t.Boolean() }),
-          detail: { tags: ['Device'], summary: 'Send a heartbeat', security: asDevice }
+          response: t.Object({
+            success: t.Boolean(),
+            commandsWaiting: t.Boolean({
+              description: 'True while the Device has at least one Command in `pending` or `sent`, and stays true until the Command is acknowledged (at-least-once delivery). The Puppet fetches its pending Commands when this is true.'
+            })
+          }),
+          detail: {
+            tags: ['Device'],
+            summary: 'Send a heartbeat',
+            description: 'Records the heartbeat. The answer reports whether any Command of the calling Device is waiting (`commandsWaiting`).',
+            security: asDevice
+          }
         })
         .post('/:deviceId/logs', async ({ request, params: { deviceId }, body, io }) => {
           return await postLogHandler(request, deviceId, body, io);
