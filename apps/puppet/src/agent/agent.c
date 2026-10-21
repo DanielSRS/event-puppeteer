@@ -5,6 +5,7 @@
 #include "device-store/device-store.h"
 #include "protocol/protocol.h"
 #include "stats/stats.h"
+#include "wakeup/wakeup.h"
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -36,8 +37,14 @@
  */
 #define AGENT_MAX_SLEEP_SECONDS ((uint64_t)60)
 
-/** Polling for termination without sleeping. */
-#define AGENT_NO_WAIT_SECONDS ((uint64_t)0)
+/** Milliseconds per second, to turn the schedule's waits into `poll` timeouts. */
+#define AGENT_MILLISECONDS_PER_SECOND ((uint64_t)1000)
+
+/**
+ * Longest the loop sleeps while the broker is connected: the library sends
+ * its keep-alive pings from `maintain`, which wants to run about once a second.
+ */
+#define AGENT_BROKER_MAINTENANCE_MILLISECONDS ((uint64_t)1000)
 
 #define AGENT_HTTP_STATUS_SUCCESS_FIRST ((int32_t)200)
 #define AGENT_HTTP_STATUS_SUCCESS_LAST  ((int32_t)299)
@@ -54,7 +61,15 @@ typedef enum {
 
 typedef struct {
   AgentLogLevel level;
-  char          message[AGENT_LOG_MESSAGE_CAPACITY];
+
+  /**
+   * Whether the heartbeat must report `degraded` while the line is queued.
+   * Errors do, except the loss of the Wake-up broker: Commands still arrive
+   * with the heartbeat then, so the Device is not unhealthy.
+   */
+  bool affectsHealth;
+
+  char message[AGENT_LOG_MESSAGE_CAPACITY];
 } AgentLogEntry;
 
 /** Ring buffer of log lines waiting to be shipped to Puppeteer. */
@@ -92,6 +107,15 @@ typedef struct {
   /** Set once an update is installed; the loop then stops. */
   bool restartRequested;
 
+  /** Connection to the Wake-up broker; open exactly while the schedule says so. */
+  WakeupListener wakeup;
+
+  /**
+   * Whether the loss of the broker was already logged. Keeps the logs to one
+   * line per outage and one per recovery, however many attempts it takes.
+   */
+  bool brokerOutageReported;
+
   /**
    * Whether `schedule.phase` was confirmed by Puppeteer or by this process
    * itself. False after resuming stored credentials, until the first status
@@ -126,7 +150,10 @@ static const char *agentLogLevelPrefix(const AgentLogLevel level) {
 }
 
 static void agentQueueLog(
-  AgentLogQueue *queue, const AgentLogLevel level, const char *message
+  AgentLogQueue       *queue,
+  const AgentLogLevel  level,
+  const bool           affectsHealth,
+  const char          *message
 ) {
   if (queue->count == AGENT_LOG_QUEUE_CAPACITY) {
     queue->first = (queue->first + 1) % AGENT_LOG_QUEUE_CAPACITY;
@@ -134,23 +161,45 @@ static void agentQueueLog(
   }
   AgentLogEntry *entry =
     &queue->entries[(queue->first + queue->count) % AGENT_LOG_QUEUE_CAPACITY];
-  entry->level = level;
+  entry->level         = level;
+  entry->affectsHealth = affectsHealth;
   snprintf(entry->message, sizeof(entry->message), "%s", message);
   queue->count++;
 }
 
 /** Log to standard error (journald) and queue the line for Puppeteer. */
+static void agentRecordLog(
+  AgentRuntime       *runtime,
+  const AgentLogLevel level,
+  const bool          affectsHealth,
+  const char         *format,
+  va_list             arguments
+) {
+  char message[AGENT_LOG_MESSAGE_CAPACITY];
+  vsnprintf(message, sizeof(message), format, arguments);
+
+  fprintf(stderr, "%s%s\n", agentLogLevelPrefix(level), message);
+  agentQueueLog(&runtime->logs, level, affectsHealth, message);
+}
+
+/** An error line makes the heartbeat `degraded` until it is shipped. */
 __attribute__((format(printf, 3, 4))) static void agentLog(
   AgentRuntime *runtime, const AgentLogLevel level, const char *format, ...
 ) {
-  char    message[AGENT_LOG_MESSAGE_CAPACITY];
   va_list arguments;
   va_start(arguments, format);
-  vsnprintf(message, sizeof(message), format, arguments);
+  agentRecordLog(runtime, level, level == AGENT_LOG_LEVEL_ERROR, format, arguments);
   va_end(arguments);
+}
 
-  fprintf(stderr, "%s%s\n", agentLogLevelPrefix(level), message);
-  agentQueueLog(&runtime->logs, level, message);
+/** A line about the Wake-up broker: never makes the heartbeat `degraded`. */
+__attribute__((format(printf, 3, 4))) static void agentLogBroker(
+  AgentRuntime *runtime, const AgentLogLevel level, const char *format, ...
+) {
+  va_list arguments;
+  va_start(arguments, format);
+  agentRecordLog(runtime, level, false, format, arguments);
+  va_end(arguments);
 }
 
 static AgentExchangeOutcome agentClassify(const HttpResult *result) {
@@ -521,7 +570,7 @@ static void agentHeartbeat(AgentRuntime *runtime, const uint64_t now) {
   for (uint32_t offset = 0; offset < queue->count; offset++) {
     const AgentLogEntry *entry =
       &queue->entries[(queue->first + offset) % AGENT_LOG_QUEUE_CAPACITY];
-    if (entry->level == AGENT_LOG_LEVEL_ERROR) {
+    if (entry->affectsHealth) {
       errors[errorCount] = entry->message;
       errorCount++;
     }
@@ -552,8 +601,8 @@ static void agentHeartbeat(AgentRuntime *runtime, const uint64_t now) {
     agentRevokeCredentials(runtime, now);
     return;
   }
-  bool                     commandsWaiting = false;
-  const bool               delivered = outcome == AGENT_EXCHANGE_SUCCEEDED;
+  bool       commandsWaiting = false;
+  const bool delivered       = outcome == AGENT_EXCHANGE_SUCCEEDED;
   /** An answer without a boolean flag is never read as "nothing waits": it
    *  fails the heartbeat, and the error reaches Admins through the logs. */
   const ProtocolResultCode decoded =
@@ -898,6 +947,96 @@ static void agentRefreshFeed(AgentRuntime *runtime, const uint64_t now) {
   );
 }
 
+/** The Wake-up topic of this Device in the Organization the schedule names. */
+static ProtocolResultCode
+agentWakeupTopic(const AgentRuntime *runtime, char *topic, const size_t capacity) {
+  return ProtocolI.writeWakeupTopic(
+    runtime->credentials.deviceId, runtime->schedule.organizationId, topic, capacity
+  );
+}
+
+/** Says once per outage that Wake-ups are not heard; Commands still arrive with the heartbeat. */
+static void agentReportBrokerOutage(AgentRuntime *runtime, const char *reason) {
+  if (runtime->brokerOutageReported) {
+    return;
+  }
+  runtime->brokerOutageReported = true;
+  agentLogBroker(
+    runtime,
+    AGENT_LOG_LEVEL_ERROR,
+    "Wake-up broker unavailable (%s); Commands arrive with the heartbeat instead",
+    reason
+  );
+}
+
+static void agentReportBrokerRestored(AgentRuntime *runtime) {
+  if (!runtime->brokerOutageReported) {
+    return;
+  }
+  runtime->brokerOutageReported = false;
+  agentLogBroker(runtime, AGENT_LOG_LEVEL_INFO, "Wake-up broker available again");
+}
+
+static void agentBrokerLost(
+  AgentRuntime *runtime, const char *reason, const uint64_t now
+) {
+  WakeupListenerI.close(&runtime->wakeup);
+  agentReportBrokerOutage(runtime, reason);
+  runtime->schedule =
+    AgentScheduleI.brokerLost(&runtime->schedule, now, LifecycleI.randomValue());
+}
+
+static void agentConnectBroker(AgentRuntime *runtime, const uint64_t now) {
+  char                     topic[PROTOCOL_WAKEUP_TOPIC_CAPACITY];
+  const ProtocolResultCode written =
+    agentWakeupTopic(runtime, topic, sizeof(topic));
+  const WakeupResultCode opened =
+    written == PROTOCOL_RESULT_OK
+      ? WakeupListenerI.open(
+          &runtime->wakeup, runtime->environment->wakeupBroker, topic
+        )
+      : WAKEUP_ERROR_TOPIC;
+  if (opened != WAKEUP_RESULT_OK) {
+    const WakeupEvents failure = WakeupListenerI.takeEvents(&runtime->wakeup);
+    agentReportBrokerOutage(
+      runtime, failure.lost ? failure.lostDescription : "could not start connecting"
+    );
+    runtime->schedule = AgentScheduleI.brokerConnectFinished(
+      &runtime->schedule, false, now, LifecycleI.randomValue()
+    );
+    return;
+  }
+  runtime->schedule = AgentScheduleI.brokerConnectFinished(
+    &runtime->schedule, true, now, LifecycleI.randomValue()
+  );
+}
+
+static void agentSyncBroker(AgentRuntime *runtime, const uint64_t now) {
+  switch (AgentScheduleI.brokerAction(&runtime->schedule, now)) {
+  case AGENT_BROKER_ACTION_NONE:
+    break;
+  case AGENT_BROKER_ACTION_DROP:
+    WakeupListenerI.close(&runtime->wakeup);
+    runtime->schedule = AgentScheduleI.brokerDropped(&runtime->schedule, now);
+    break;
+  case AGENT_BROKER_ACTION_RESUBSCRIBE: {
+    char                     topic[PROTOCOL_WAKEUP_TOPIC_CAPACITY];
+    const ProtocolResultCode written =
+      agentWakeupTopic(runtime, topic, sizeof(topic));
+    if (written == PROTOCOL_RESULT_OK
+        && WakeupListenerI.retarget(&runtime->wakeup, topic) == WAKEUP_RESULT_OK) {
+      runtime->schedule = AgentScheduleI.brokerRetargeted(&runtime->schedule, now);
+    } else {
+      agentBrokerLost(runtime, "could not move the subscription", now);
+    }
+    break;
+  }
+  case AGENT_BROKER_ACTION_TIME_OUT:
+    agentBrokerLost(runtime, "no answer from the broker", now);
+    break;
+  }
+}
+
 static void
 agentPerform(AgentRuntime *runtime, const AgentTask task, const uint64_t now) {
   switch (task) {
@@ -916,6 +1055,12 @@ agentPerform(AgentRuntime *runtime, const AgentTask task, const uint64_t now) {
   case AGENT_TASK_REFRESH_FEED:
     agentRefreshFeed(runtime, now);
     break;
+  case AGENT_TASK_CONNECT_BROKER:
+    agentConnectBroker(runtime, now);
+    break;
+  case AGENT_TASK_SYNC_BROKER:
+    agentSyncBroker(runtime, now);
+    break;
   }
 }
 
@@ -924,17 +1069,77 @@ static AgentTask agentFirstTask(const AgentTaskSet dueTasks) {
   return (AgentTask)(dueTasks & (0U - dueTasks));
 }
 
+/**
+ * Feed what the broker connection did into the schedule: a Wake-up, an
+ * acknowledged subscription, or the loss of the connection.
+ */
+static void agentApplyBrokerEvents(AgentRuntime *runtime, const uint64_t now) {
+  const WakeupEvents events = WakeupListenerI.takeEvents(&runtime->wakeup);
+  if (events.subscribed) {
+    agentReportBrokerRestored(runtime);
+    runtime->schedule = AgentScheduleI.brokerSubscribed(&runtime->schedule, now);
+  }
+  if (events.heard) {
+    runtime->schedule = AgentScheduleI.wakeupHeard(&runtime->schedule, now);
+  }
+  if (events.lost) {
+    agentBrokerLost(runtime, events.lostDescription, now);
+  }
+}
+
+/** Serve the broker socket after a wait, then apply what happened. */
+static void agentServeBroker(
+  AgentRuntime *runtime, const LifecycleActivity activity, const uint64_t now
+) {
+  if (runtime->schedule.brokerState == AGENT_BROKER_DISCONNECTED) {
+    return;
+  }
+  /** Failures are not handled here: the listener reports them as a `lost`
+   *  event, which `agentApplyBrokerEvents` turns into one outage line. */
+  if (activity.readable) {
+    WakeupListenerI.handleReadable(&runtime->wakeup);
+  }
+  if (activity.writable) {
+    WakeupListenerI.handleWritable(&runtime->wakeup);
+  }
+  WakeupListenerI.maintain(&runtime->wakeup);
+  agentApplyBrokerEvents(runtime, now);
+}
+
+/**
+ * Sleep until something needs attention: the next due task, the broker socket,
+ * the broker's housekeeping, or a termination signal.
+ */
+static LifecycleActivity agentWait(
+  const AgentRuntime *runtime, const uint64_t milliseconds
+) {
+  const bool brokerOpen =
+    runtime->schedule.brokerState != AGENT_BROKER_DISCONNECTED;
+  const uint64_t bounded =
+    brokerOpen && milliseconds > AGENT_BROKER_MAINTENANCE_MILLISECONDS
+      ? AGENT_BROKER_MAINTENANCE_MILLISECONDS
+      : milliseconds;
+  return LifecycleI.waitForActivity(
+    runtime->environment->lifecycle,
+    brokerOpen ? WakeupListenerI.descriptor(&runtime->wakeup) : LIFECYCLE_NO_DESCRIPTOR,
+    brokerOpen && WakeupListenerI.wantsWrite(&runtime->wakeup),
+    bounded
+  );
+}
+
 static AgentExitReason agentRun(const AgentEnvironment *environment) {
   AgentRuntime runtime = {
-    .environment         = environment,
-    .hasCredentials      = false,
-    .credentials         = {.deviceId = "", .token = ""},
-    .authorizationHeader = "",
-    .authorization       = {.count = 0},
-    .logs                = {.first = 0, .count = 0},
-    .lastFeedEventCount  = 0,
-    .restartRequested    = false,
-    .phaseConfirmed      = true,
+    .environment          = environment,
+    .hasCredentials       = false,
+    .credentials          = {.deviceId = "", .token = ""},
+    .authorizationHeader  = "",
+    .authorization        = {.count = 0},
+    .logs                 = {.first = 0, .count = 0},
+    .lastFeedEventCount   = 0,
+    .restartRequested     = false,
+    .wakeup               = WakeupListenerI.create(),
+    .brokerOutageReported = false,
+    .phaseConfirmed       = true,
   };
 
   DeviceCredentials stored;
@@ -964,23 +1169,25 @@ static AgentExitReason agentRun(const AgentEnvironment *environment) {
       if (runtime.restartRequested) {
         /** Best effort: lines that do not make it are lost with the process. */
         agentFlushLogs(&runtime);
+        WakeupListenerI.close(&runtime.wakeup);
         return AGENT_EXIT_RESTART_REQUESTED;
       }
-      if (LifecycleI.waitFor(environment->lifecycle, AGENT_NO_WAIT_SECONDS)) {
-        break;
-      }
-      continue;
     }
 
     const uint64_t untilNextTask =
-      AgentScheduleI.secondsUntilNextTask(&runtime.schedule, now);
+      dueTasks != 0 ? 0
+                    : AgentScheduleI.secondsUntilNextTask(&runtime.schedule, now);
     const uint64_t sleepSeconds = untilNextTask < AGENT_MAX_SLEEP_SECONDS
                                   ? untilNextTask
                                   : AGENT_MAX_SLEEP_SECONDS;
-    if (LifecycleI.waitFor(environment->lifecycle, sleepSeconds)) {
+    const LifecycleActivity activity =
+      agentWait(&runtime, sleepSeconds * AGENT_MILLISECONDS_PER_SECOND);
+    if (activity.terminationRequested) {
       break;
     }
+    agentServeBroker(&runtime, activity, LifecycleI.monotonicSeconds());
   }
+  WakeupListenerI.close(&runtime.wakeup);
   fprintf(stderr, AGENT_LOG_INFO_PREFIX "termination requested; shutting down\n");
   return AGENT_EXIT_TERMINATION_REQUESTED;
 }

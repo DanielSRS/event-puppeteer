@@ -51,6 +51,7 @@
 #include "lifecycle/lifecycle.h"
 #include "mmkv/mmkv.h"
 #include "update/self-update.h"
+#include "wakeup/wakeup.h"
 
 /** Everything the agent needs from the outside world. Borrowed, not owned. */
 typedef struct {
@@ -67,6 +68,9 @@ typedef struct {
 
   /** ISO-8601 UTC time at which the process started. */
   const char *puppetStartTime;
+
+  /** The Wake-up broker to listen to once active; compile-time constants. */
+  const WakeupBrokerSettings *wakeupBroker;
 
   /** Where updates are installed, or NULL when unknown (updates then fail). */
   const SelfUpdatePaths *updatePaths;

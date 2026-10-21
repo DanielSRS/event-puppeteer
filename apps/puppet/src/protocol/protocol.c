@@ -244,6 +244,20 @@ static ProtocolResultCode protocolWriteHeartbeatRequest(
   return protocolFinishRequest(&writer, PROTOCOL_ERROR_HEARTBEAT_REQUEST_OVERFLOW);
 }
 
+static ProtocolResultCode protocolWriteWakeupTopic(
+  const char *deviceId,
+  const char *organizationId,
+  char       *destination,
+  const size_t capacity
+) {
+  const int32_t written =
+    snprintf(destination, capacity, "%s/%s", deviceId, organizationId);
+  if (written < 0 || (size_t)written >= capacity) {
+    return PROTOCOL_ERROR_WAKEUP_TOPIC_OVERFLOW;
+  }
+  return PROTOCOL_RESULT_OK;
+}
+
 static ProtocolResultCode protocolWriteLogRequest(
   const char *level, const char *message, const RequestBody body
 ) {
@@ -485,6 +499,7 @@ const struct ProtocolType ProtocolI = {
   .readDeviceState        = protocolReadDeviceState,
   .writeHeartbeatRequest  = protocolWriteHeartbeatRequest,
   .readHeartbeatAnswer    = protocolReadHeartbeatAnswer,
+  .writeWakeupTopic       = protocolWriteWakeupTopic,
   .writeLogRequest        = protocolWriteLogRequest,
   .writeTelemetryRequest  = protocolWriteTelemetryRequest,
   .readCommandBatch       = protocolReadCommandBatch,

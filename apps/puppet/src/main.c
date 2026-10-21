@@ -50,6 +50,9 @@
 #define PUPPET_AGENT_LOCK_IMPLEMENTATION
 #include "agent-lock/agent-lock.h"
 
+#define PUPPET_WAKEUP_IMPLEMENTATION
+#include "wakeup/wakeup.h"
+
 #define PUPPET_AGENT_SCHEDULE_IMPLEMENTATION
 #include "agent/agent-schedule.h"
 
@@ -78,7 +81,23 @@ typedef enum {
   PUPPET_EXIT_INSTALLATION_FAILED     = 10,
   /** The agent did not report the Device pending within 60 seconds. */
   PUPPET_EXIT_AGENT_NOT_PENDING       = 11,
+  /** The kernel refused the descriptor that reports termination signals. */
+  PUPPET_EXIT_LIFECYCLE_UNAVAILABLE   = 12,
+  /** The MQTT library could not be initialized. */
+  PUPPET_EXIT_WAKEUP_LIBRARY_UNAVAILABLE = 13,
 } PuppetExitStatus;
+
+/**
+ * The Wake-up broker, fixed at build time like Puppeteer's URL (the CMake
+ * options `PUPPET_WAKEUP_BROKER_*`): the Puppet reads no environment
+ * variables for it.
+ */
+static const WakeupBrokerSettings WAKEUP_BROKER = {
+  .host             = PUPPET_WAKEUP_BROKER_HOST,
+  .port             = PUPPET_WAKEUP_BROKER_PORT,
+  .useTls           = PUPPET_WAKEUP_BROKER_TLS != 0,
+  .keepAliveSeconds = WAKEUP_KEEP_ALIVE_SECONDS,
+};
 
 static const char *configErrorDescription(const ConfigResultCode code) {
   switch (code) {
@@ -159,6 +178,10 @@ int main(const int argumentCount, char *argumentValues[]) {
 
   /** Block termination signals before anything else (see lifecycle.h). */
   const Lifecycle lifecycle = LifecycleI.create();
+  if (lifecycle.terminationDescriptor < 0) {
+    fprintf(stderr, "[error] cannot watch for termination signals\n");
+    return PUPPET_EXIT_LIFECYCLE_UNAVAILABLE;
+  }
 
   char puppetStartTime[LIFECYCLE_TIMESTAMP_CAPACITY];
   LifecycleI.formatUtcNow(puppetStartTime);
@@ -226,6 +249,15 @@ int main(const int argumentCount, char *argumentValues[]) {
     return PUPPET_EXIT_HTTP_CLIENT_ALLOCATION;
   }
 
+  const WakeupResultCode wakeupLibrary = WakeupListenerI.initializeLibrary();
+  if (wakeupLibrary != WAKEUP_RESULT_OK) {
+    fprintf(stderr, "[error] cannot initialize MQTT (%d)\n", (int32_t)wakeupLibrary);
+    HttpClientI.destroy(httpClient);
+    HttpClientI.cleanup();
+    MmkvI.shutdown();
+    return PUPPET_EXIT_WAKEUP_LIBRARY_UNAVAILABLE;
+  }
+
   const AgentEnvironment environment = {
     .config          = &config,
     .httpClient      = httpClient,
@@ -234,10 +266,12 @@ int main(const int argumentCount, char *argumentValues[]) {
     .auditTrailPath  = CONFIG_AUDIT_TRAIL_PATH,
     .puppetVersion   = PUPPET_VERSION,
     .puppetStartTime = puppetStartTime,
+    .wakeupBroker    = &WAKEUP_BROKER,
     .updatePaths     = &updatePaths,
   };
   const AgentExitReason exitReason = AgentI.run(&environment);
 
+  WakeupListenerI.shutdownLibrary();
   HttpClientI.destroy(httpClient);
   HttpClientI.cleanup();
   MmkvI.shutdown();

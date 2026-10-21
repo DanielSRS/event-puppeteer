@@ -11,6 +11,9 @@
  * arrive while the Puppet is busy stay pending and are noticed at the next
  * wait, so in-flight requests always complete.
  *
+ * `waitForActivity` does the same through a `signalfd`, so one `poll` can
+ * wait for a termination signal and for a network socket at once.
+ *
  * Child processes inherit the blocked mask, so anything spawned must reset it
  * (see `command-executor.h`).
  *
@@ -30,7 +33,28 @@
 typedef struct {
   /** Signals that request a graceful shutdown. */
   sigset_t terminationSignals;
+
+  /**
+   * Descriptor that becomes readable when one of them is pending, so a wait
+   * on other descriptors (see `waitForActivity`) wakes up for termination
+   * too. Negative when the kernel refused to create it: the caller must then
+   * refuse to run.
+   */
+  int32_t terminationDescriptor;
 } Lifecycle;
+
+/** Pass as the descriptor of `waitForActivity` to watch only for termination. */
+#define LIFECYCLE_NO_DESCRIPTOR ((int32_t)-1)
+
+/** What `waitForActivity` found out. */
+typedef struct {
+  /** A termination signal is pending. */
+  bool terminationRequested;
+  /** The watched descriptor has data to read, or has failed or hung up. */
+  bool readable;
+  /** The watched descriptor accepts data to write. */
+  bool writable;
+} LifecycleActivity;
 
 struct LifecycleType {
   /** Block the termination signals and return the lifecycle handle. */
@@ -42,6 +66,21 @@ struct LifecycleType {
    * @return true when termination was requested.
    */
   bool (*const waitFor)(const Lifecycle *lifecycle, uint64_t seconds);
+
+  /**
+   * Sleep for up to `milliseconds`, waking early on termination or on
+   * activity on `descriptor`, so a single thread serves a network connection
+   * and still reacts to signals at once.
+   *
+   * @param descriptor      Descriptor to watch, or a negative value for none.
+   * @param watchWritable   Also report when `descriptor` accepts writes.
+   */
+  LifecycleActivity (*const waitForActivity)(
+    const Lifecycle *lifecycle,
+    int32_t          descriptor,
+    bool             watchWritable,
+    uint64_t         milliseconds
+  );
 
   /** Seconds on a monotonic clock, immune to wall-clock adjustments. */
   uint64_t (*const monotonicSeconds)(void);

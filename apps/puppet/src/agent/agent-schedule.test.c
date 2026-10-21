@@ -27,6 +27,13 @@ static AgentSchedule agentTestActiveSchedule(const uint64_t now) {
   return AgentScheduleI.deviceStateReceived(&created, &active, now);
 }
 
+/** Active, with the Wake-up broker connected and subscribed. */
+static AgentSchedule agentTestSubscribedSchedule(const uint64_t now) {
+  AgentSchedule schedule = agentTestActiveSchedule(now);
+  schedule               = AgentScheduleI.brokerConnectFinished(&schedule, true, now, 0);
+  return AgentScheduleI.brokerSubscribed(&schedule, now);
+}
+
 static void agentScheduleStartsUnenrolledWithoutCredentials(TestContext *context) {
   const AgentSchedule schedule =
     AgentScheduleI.create(false, AGENT_TEST_START_TIME);
@@ -138,7 +145,8 @@ static void agentScheduleStartsWorkWhenApproved(TestContext *context) {
   EXPECT(
     context,
     AgentScheduleI.dueTasks(&schedule, AGENT_TEST_START_TIME)
-      == (AGENT_TASK_HEARTBEAT | AGENT_TASK_FETCH_COMMANDS | AGENT_TASK_REFRESH_FEED)
+      == (AGENT_TASK_HEARTBEAT | AGENT_TASK_FETCH_COMMANDS | AGENT_TASK_REFRESH_FEED
+          | AGENT_TASK_CONNECT_BROKER)
   );
 }
 
@@ -250,6 +258,289 @@ static void agentScheduleIgnoresTheWaitingFlagOutsideTheActivePhase(
   );
 }
 
+static void agentScheduleFetchesCommandsWhenAWakeupIsHeard(TestContext *context) {
+  AgentSchedule schedule = agentTestSubscribedSchedule(AGENT_TEST_START_TIME);
+  schedule = AgentScheduleI.taskFinished(
+    &schedule, AGENT_TASK_FETCH_COMMANDS, true, AGENT_TEST_START_TIME
+  );
+  EXPECT(
+    context,
+    (AgentScheduleI.dueTasks(&schedule, AGENT_TEST_START_TIME + 1)
+     & AGENT_TASK_FETCH_COMMANDS)
+      == 0
+  );
+
+  const AgentSchedule heard =
+    AgentScheduleI.wakeupHeard(&schedule, AGENT_TEST_START_TIME + 1);
+  EXPECT(
+    context,
+    (AgentScheduleI.dueTasks(&heard, AGENT_TEST_START_TIME + 1)
+     & AGENT_TASK_FETCH_COMMANDS)
+      != 0
+  );
+
+  /** A duplicate Wake-up costs one extra fetch, never more. */
+  const AgentSchedule twice =
+    AgentScheduleI.wakeupHeard(&heard, AGENT_TEST_START_TIME + 1);
+  const AgentSchedule fetched = AgentScheduleI.taskFinished(
+    &twice, AGENT_TASK_FETCH_COMMANDS, true, AGENT_TEST_START_TIME + 1
+  );
+  EXPECT(
+    context,
+    (AgentScheduleI.dueTasks(&fetched, AGENT_TEST_START_TIME + 2)
+     & AGENT_TASK_FETCH_COMMANDS)
+      == 0
+  );
+}
+
+static void agentScheduleIgnoresAWakeupOutsideTheActivePhase(TestContext *context) {
+  const AgentSchedule created = AgentScheduleI.create(true, AGENT_TEST_START_TIME);
+  const DeviceState   pending = agentTestDeviceState(DEVICE_STATUS_PENDING, NULL);
+  AgentSchedule       schedule =
+    AgentScheduleI.deviceStateReceived(&created, &pending, AGENT_TEST_START_TIME);
+  schedule = AgentScheduleI.taskFinished(
+    &schedule, AGENT_TASK_FETCH_COMMANDS, true, AGENT_TEST_START_TIME
+  );
+
+  const AgentSchedule heard =
+    AgentScheduleI.wakeupHeard(&schedule, AGENT_TEST_START_TIME + 1);
+  EXPECT(context, heard.nextCommandFetchAt == schedule.nextCommandFetchAt);
+}
+
+static void agentScheduleConnectsTheBrokerOnlyWhenActiveInAnOrganization(
+  TestContext *context
+) {
+  const AgentSchedule created = AgentScheduleI.create(true, AGENT_TEST_START_TIME);
+  EXPECT(
+    context,
+    (AgentScheduleI.dueTasks(&created, AGENT_TEST_START_TIME)
+     & AGENT_TASK_CONNECT_BROKER)
+      == 0
+  );
+
+  const DeviceState   pending = agentTestDeviceState(DEVICE_STATUS_PENDING, NULL);
+  const AgentSchedule waiting =
+    AgentScheduleI.deviceStateReceived(&created, &pending, AGENT_TEST_START_TIME);
+  const DeviceState   rejected = agentTestDeviceState(DEVICE_STATUS_REJECTED, NULL);
+  const AgentSchedule refused =
+    AgentScheduleI.deviceStateReceived(&created, &rejected, AGENT_TEST_START_TIME);
+  const DeviceState   homeless = agentTestDeviceState(DEVICE_STATUS_ACTIVE, NULL);
+  const AgentSchedule orphan =
+    AgentScheduleI.deviceStateReceived(&created, &homeless, AGENT_TEST_START_TIME);
+  const AgentSchedule unenrolled = AgentScheduleI.create(false, AGENT_TEST_START_TIME);
+  const AgentSchedule others[]   = {waiting, refused, orphan, unenrolled};
+  for (uint32_t index = 0; index < sizeof(others) / sizeof(others[0]); index++) {
+    EXPECT(
+      context,
+      (AgentScheduleI.dueTasks(&others[index], AGENT_TEST_START_TIME)
+       & AGENT_TASK_CONNECT_BROKER)
+        == 0
+    );
+  }
+
+  const AgentSchedule active = agentTestActiveSchedule(AGENT_TEST_START_TIME);
+  EXPECT(
+    context,
+    (AgentScheduleI.dueTasks(&active, AGENT_TEST_START_TIME)
+     & AGENT_TASK_CONNECT_BROKER)
+      != 0
+  );
+}
+
+static void agentScheduleFetchesCommandsAfterEverySubscription(TestContext *context) {
+  AgentSchedule schedule = agentTestSubscribedSchedule(AGENT_TEST_START_TIME);
+  schedule = AgentScheduleI.taskFinished(
+    &schedule, AGENT_TASK_FETCH_COMMANDS, true, AGENT_TEST_START_TIME
+  );
+
+  const uint64_t lostAt = AGENT_TEST_START_TIME + 100;
+  schedule              = AgentScheduleI.brokerLost(&schedule, lostAt, 0);
+  EXPECT(
+    context,
+    (AgentScheduleI.dueTasks(&schedule, lostAt) & AGENT_TASK_FETCH_COMMANDS) == 0
+  );
+
+  const uint64_t restoredAt = lostAt + AGENT_BROKER_BACKOFF_BASE_SECONDS;
+  schedule = AgentScheduleI.brokerConnectFinished(&schedule, true, restoredAt, 0);
+  EXPECT(
+    context,
+    (AgentScheduleI.dueTasks(&schedule, restoredAt) & AGENT_TASK_FETCH_COMMANDS) == 0
+  );
+  schedule = AgentScheduleI.brokerSubscribed(&schedule, restoredAt + 1);
+  /** Wake-ups sent while disconnected are caught by this one fetch. */
+  EXPECT(
+    context,
+    (AgentScheduleI.dueTasks(&schedule, restoredAt + 1) & AGENT_TASK_FETCH_COMMANDS)
+      != 0
+  );
+}
+
+static void agentScheduleBacksOffBrokerReconnects(TestContext *context) {
+  AgentSchedule schedule = agentTestSubscribedSchedule(AGENT_TEST_START_TIME);
+  uint64_t      now      = AGENT_TEST_START_TIME;
+
+  schedule = AgentScheduleI.brokerLost(&schedule, now, 0);
+  EXPECT(
+    context,
+    schedule.nextBrokerAttemptAt == now + AGENT_BROKER_BACKOFF_BASE_SECONDS
+  );
+  EXPECT(
+    context,
+    (AgentScheduleI.dueTasks(&schedule, now + AGENT_BROKER_BACKOFF_BASE_SECONDS - 1)
+     & AGENT_TASK_CONNECT_BROKER)
+      == 0
+  );
+
+  uint64_t expectedDelay = AGENT_BROKER_BACKOFF_BASE_SECONDS;
+  for (uint32_t attempt = 0; attempt < 12; attempt++) {
+    now      = schedule.nextBrokerAttemptAt;
+    schedule = AgentScheduleI.brokerConnectFinished(&schedule, false, now, 0);
+    expectedDelay =
+      expectedDelay * 2 < AGENT_BROKER_BACKOFF_MAX_SECONDS
+        ? expectedDelay * 2
+        : AGENT_BROKER_BACKOFF_MAX_SECONDS;
+    EXPECT(context, schedule.nextBrokerAttemptAt == now + expectedDelay);
+  }
+  EXPECT(context, expectedDelay == AGENT_BROKER_BACKOFF_MAX_SECONDS);
+
+  /** A broker that comes back resets the backoff. */
+  now      = schedule.nextBrokerAttemptAt;
+  schedule = AgentScheduleI.brokerConnectFinished(&schedule, true, now, 0);
+  schedule = AgentScheduleI.brokerSubscribed(&schedule, now);
+  schedule = AgentScheduleI.brokerLost(&schedule, now, 0);
+  EXPECT(
+    context,
+    schedule.nextBrokerAttemptAt == now + AGENT_BROKER_BACKOFF_BASE_SECONDS
+  );
+}
+
+static void agentScheduleGivesUpOnAHandshakeThatNeverFinishes(TestContext *context) {
+  AgentSchedule schedule = agentTestActiveSchedule(AGENT_TEST_START_TIME);
+  schedule = AgentScheduleI.brokerConnectFinished(&schedule, true, AGENT_TEST_START_TIME, 0);
+
+  const uint64_t deadline = AGENT_TEST_START_TIME + AGENT_BROKER_HANDSHAKE_TIMEOUT_SECONDS;
+  EXPECT(
+    context,
+    AgentScheduleI.brokerAction(&schedule, deadline - 1) == AGENT_BROKER_ACTION_NONE
+  );
+  EXPECT(
+    context,
+    (AgentScheduleI.dueTasks(&schedule, deadline - 1) & AGENT_TASK_SYNC_BROKER) == 0
+  );
+  EXPECT(
+    context,
+    AgentScheduleI.brokerAction(&schedule, deadline) == AGENT_BROKER_ACTION_TIME_OUT
+  );
+  EXPECT(
+    context,
+    (AgentScheduleI.dueTasks(&schedule, deadline) & AGENT_TASK_SYNC_BROKER) != 0
+  );
+}
+
+static void agentScheduleResubscribesWhenTheOrganizationChanges(TestContext *context) {
+  AgentSchedule schedule = agentTestSubscribedSchedule(AGENT_TEST_START_TIME);
+  EXPECT(
+    context,
+    AgentScheduleI.brokerAction(&schedule, AGENT_TEST_START_TIME)
+      == AGENT_BROKER_ACTION_NONE
+  );
+
+  const DeviceState moved = agentTestDeviceState(DEVICE_STATUS_ACTIVE, "org-2");
+  schedule                = AgentScheduleI.deviceStateReceived(
+    &schedule, &moved, AGENT_TEST_START_TIME + 1
+  );
+  EXPECT(
+    context,
+    AgentScheduleI.brokerAction(&schedule, AGENT_TEST_START_TIME + 1)
+      == AGENT_BROKER_ACTION_RESUBSCRIBE
+  );
+  EXPECT(
+    context,
+    (AgentScheduleI.dueTasks(&schedule, AGENT_TEST_START_TIME + 1)
+     & AGENT_TASK_SYNC_BROKER)
+      != 0
+  );
+
+  schedule = AgentScheduleI.brokerRetargeted(&schedule, AGENT_TEST_START_TIME + 1);
+  EXPECT(context, strcmp(schedule.brokerOrganizationId, "org-2") == 0);
+  EXPECT(
+    context,
+    AgentScheduleI.brokerAction(&schedule, AGENT_TEST_START_TIME + 1)
+      == AGENT_BROKER_ACTION_NONE
+  );
+
+  /** The new topic is confirmed by its own subscription acknowledgement. */
+  schedule = AgentScheduleI.brokerSubscribed(&schedule, AGENT_TEST_START_TIME + 2);
+  EXPECT(
+    context,
+    (AgentScheduleI.dueTasks(&schedule, AGENT_TEST_START_TIME + 2)
+     & AGENT_TASK_FETCH_COMMANDS)
+      != 0
+  );
+}
+
+static void agentScheduleDropsTheBrokerWhenLeavingTheActivePhase(TestContext *context) {
+  const AgentSchedule subscribed = agentTestSubscribedSchedule(AGENT_TEST_START_TIME);
+  const DeviceState   pending    = agentTestDeviceState(DEVICE_STATUS_PENDING, NULL);
+  const DeviceState   rejected   = agentTestDeviceState(DEVICE_STATUS_REJECTED, NULL);
+  const DeviceState   homeless   = agentTestDeviceState(DEVICE_STATUS_ACTIVE, NULL);
+
+  const DeviceState *const states[] = {&pending, &rejected, &homeless};
+  for (uint32_t index = 0; index < sizeof(states) / sizeof(states[0]); index++) {
+    AgentSchedule schedule = AgentScheduleI.deviceStateReceived(
+      &subscribed, states[index], AGENT_TEST_START_TIME + 1
+    );
+    EXPECT(
+      context,
+      AgentScheduleI.brokerAction(&schedule, AGENT_TEST_START_TIME + 1)
+        == AGENT_BROKER_ACTION_DROP
+    );
+    EXPECT(
+      context,
+      (AgentScheduleI.dueTasks(&schedule, AGENT_TEST_START_TIME + 1)
+       & AGENT_TASK_SYNC_BROKER)
+        != 0
+    );
+
+    schedule = AgentScheduleI.brokerDropped(&schedule, AGENT_TEST_START_TIME + 1);
+    EXPECT(
+      context,
+      AgentScheduleI.brokerAction(&schedule, AGENT_TEST_START_TIME + 1)
+        == AGENT_BROKER_ACTION_NONE
+    );
+    EXPECT(
+      context,
+      (AgentScheduleI.dueTasks(&schedule, AGENT_TEST_START_TIME + 1)
+       & (AGENT_TASK_SYNC_BROKER | AGENT_TASK_CONNECT_BROKER))
+        == 0
+    );
+  }
+
+  const AgentSchedule revoked =
+    AgentScheduleI.credentialsRevoked(&subscribed, AGENT_TEST_START_TIME + 1);
+  EXPECT(
+    context,
+    AgentScheduleI.brokerAction(&revoked, AGENT_TEST_START_TIME + 1)
+      == AGENT_BROKER_ACTION_DROP
+  );
+}
+
+static void agentScheduleConnectsAgainRightAfterADeliberateDrop(TestContext *context) {
+  const AgentSchedule subscribed = agentTestSubscribedSchedule(AGENT_TEST_START_TIME);
+  const AgentSchedule dropped =
+    AgentScheduleI.brokerDropped(&subscribed, AGENT_TEST_START_TIME + 5);
+
+  /** Dropping is not an outage: once the Device is active again it connects at once. */
+  EXPECT(context, dropped.brokerFailureCount == 0);
+  EXPECT(context, dropped.nextBrokerAttemptAt <= AGENT_TEST_START_TIME + 5);
+  EXPECT(
+    context,
+    (AgentScheduleI.dueTasks(&dropped, AGENT_TEST_START_TIME + 5)
+     & AGENT_TASK_CONNECT_BROKER)
+      != 0
+  );
+}
+
 static void agentScheduleTreatsOfflineAsActive(TestContext *context) {
   const AgentSchedule active = agentTestActiveSchedule(AGENT_TEST_START_TIME);
   const DeviceState   offline = agentTestDeviceState(DEVICE_STATUS_OFFLINE, "org-9");
@@ -334,7 +625,7 @@ static void agentScheduleReenrollsWhenRevoked(TestContext *context) {
 }
 
 static void agentScheduleSleepsUntilEarliestTask(TestContext *context) {
-  AgentSchedule schedule = agentTestActiveSchedule(AGENT_TEST_START_TIME);
+  AgentSchedule schedule = agentTestSubscribedSchedule(AGENT_TEST_START_TIME);
   schedule = AgentScheduleI.taskFinished(
     &schedule, AGENT_TASK_HEARTBEAT, true, AGENT_TEST_START_TIME
   );
@@ -377,6 +668,24 @@ static const TestCase AGENT_SCHEDULE_TEST_CASES[] = {
    agentScheduleFetchesCommandsWhenTheHeartbeatSaysTheyWait},
   {"ignores the waiting flag outside the active phase",
    agentScheduleIgnoresTheWaitingFlagOutsideTheActivePhase},
+  {"fetches Commands when a Wake-up is heard",
+   agentScheduleFetchesCommandsWhenAWakeupIsHeard},
+  {"ignores a Wake-up outside the active phase",
+   agentScheduleIgnoresAWakeupOutsideTheActivePhase},
+  {"connects the broker only when active in an Organization",
+   agentScheduleConnectsTheBrokerOnlyWhenActiveInAnOrganization},
+  {"fetches Commands after every successful subscription",
+   agentScheduleFetchesCommandsAfterEverySubscription},
+  {"backs off broker reconnects without hammering the broker",
+   agentScheduleBacksOffBrokerReconnects},
+  {"gives up on a broker handshake that never finishes",
+   agentScheduleGivesUpOnAHandshakeThatNeverFinishes},
+  {"resubscribes when the Organization changes",
+   agentScheduleResubscribesWhenTheOrganizationChanges},
+  {"drops the broker when leaving the active phase",
+   agentScheduleDropsTheBrokerWhenLeavingTheActivePhase},
+  {"connects again right after a deliberate drop",
+   agentScheduleConnectsAgainRightAfterADeliberateDrop},
   {"keeps working when Puppeteer reports it offline",
    agentScheduleTreatsOfflineAsActive},
   {"refreshes the feed when moved to another organization",

@@ -167,6 +167,34 @@ static void protocolRejectsMalformedHeartbeatAnswer(TestContext *context) {
   }
 }
 
+static void protocolWritesWakeupTopic(TestContext *context) {
+  char topic[PROTOCOL_WAKEUP_TOPIC_CAPACITY];
+
+  EXPECT(
+    context,
+    ProtocolI.writeWakeupTopic("dev-1", "org-9", topic, sizeof(topic))
+      == PROTOCOL_RESULT_OK
+  );
+  /** The topic Puppeteer publishes to: `<deviceId>/<organizationId>`. */
+  EXPECT(context, strcmp(topic, "dev-1/org-9") == 0);
+}
+
+static void protocolReportsWakeupTopicOverflow(TestContext *context) {
+  /** "dev-1/org-9" needs 11 characters and a terminator. */
+  char topic[12];
+
+  EXPECT(
+    context,
+    ProtocolI.writeWakeupTopic("dev-1", "org-9", topic, sizeof(topic) - 1)
+      == PROTOCOL_ERROR_WAKEUP_TOPIC_OVERFLOW
+  );
+  EXPECT(
+    context,
+    ProtocolI.writeWakeupTopic("dev-1", "org-9", topic, sizeof(topic))
+      == PROTOCOL_RESULT_OK
+  );
+}
+
 static void protocolWritesHeartbeat(TestContext *context) {
   char              buffer[PROTOCOL_TEST_BODY_CAPACITY];
   const RequestBody body     = {.buffer = buffer, .capacity = sizeof(buffer)};
@@ -397,6 +425,9 @@ static const TestCase PROTOCOL_TEST_CASES[] = {
   {"reads a pending device state", protocolReadsPendingDeviceState},
   {"reads an active device state", protocolReadsActiveDeviceState},
   {"rejects unknown device statuses", protocolRejectsUnknownDeviceStatus},
+  {"writes the Wake-up topic from the Device and Organization ids",
+   protocolWritesWakeupTopic},
+  {"reports a Wake-up topic that does not fit", protocolReportsWakeupTopicOverflow},
   {"writes heartbeats with and without errors", protocolWritesHeartbeat},
   {"reads the commands-waiting flag of a heartbeat answer",
    protocolReadsHeartbeatAnswerFlag},

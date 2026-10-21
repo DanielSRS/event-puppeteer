@@ -24,7 +24,8 @@
  * |------------|--------------------------------------------------------|
  * | UNENROLLED | connect (exponential backoff with jitter on failure)  |
  * | PENDING    | status check, heartbeat                                |
- * | ACTIVE     | status check, heartbeat, command fetch, feed refresh  |
+ * | ACTIVE     | status check, heartbeat, command fetch, feed refresh, |
+ * |            | Wake-up broker connection                             |
  * | REJECTED   | infrequent status check                                |
  *
  * ## Fetching Commands
@@ -33,6 +34,16 @@
  * the Device becomes active, and whenever a heartbeat answer says Commands
  * are waiting (`heartbeatAnswered`). So an active Device receives every
  * Command within about one heartbeat, with nothing else involved.
+ *
+ * ## Wake-up broker
+ *
+ * Once active in an Organization the Puppet connects to the Wake-up broker and
+ * subscribes to its topic. A Wake-up makes a Command fetch due at once
+ * (`wakeupHeard`), and so does every acknowledged subscription
+ * (`brokerSubscribed`), which covers Wake-ups sent while disconnected. The
+ * broker is only an accelerator: with it down, the heartbeat flag still
+ * delivers every Command, and the schedule only retries the connection, with
+ * backoff, never marking the Device unhealthy.
  *
  * Waiting in PENDING is a normal, indefinite state (ADR-0002): the Puppet
  * keeps a slow, steady cadence and never floods Puppeteer.
@@ -59,6 +70,18 @@
 
 /** Rejection is final on Puppeteer; an hourly check only detects resets. */
 #define AGENT_REJECTED_STATUS_INTERVAL_SECONDS ((uint64_t)3600)
+
+/** First broker reconnect delay; doubles on every consecutive failure. */
+#define AGENT_BROKER_BACKOFF_BASE_SECONDS ((uint64_t)10)
+
+/** Upper bound of the broker reconnect delay (before jitter). */
+#define AGENT_BROKER_BACKOFF_MAX_SECONDS ((uint64_t)300)
+
+/**
+ * How long a broker connection may take to reach its subscription
+ * acknowledgement. A connection that stays silent is dropped and retried.
+ */
+#define AGENT_BROKER_HANDSHAKE_TIMEOUT_SECONDS ((uint64_t)20)
 
 /**
  * Marks a task that has no timer: it becomes due only through an event (see
@@ -96,7 +119,32 @@ typedef enum {
   AGENT_TASK_HEARTBEAT     = 1 << 2,
   AGENT_TASK_FETCH_COMMANDS = 1 << 3,
   AGENT_TASK_REFRESH_FEED  = 1 << 4,
+  /** Open the connection to the Wake-up broker. */
+  AGENT_TASK_CONNECT_BROKER = 1 << 5,
+  /** Bring the broker connection in line with the schedule (see `AgentBrokerAction`). */
+  AGENT_TASK_SYNC_BROKER = 1 << 6,
 } AgentTask;
+
+/** How far the connection to the Wake-up broker has come. */
+typedef enum {
+  /** No connection, and none being opened. */
+  AGENT_BROKER_DISCONNECTED = 1,
+  /** Connection opened; its subscription is not acknowledged yet. */
+  AGENT_BROKER_CONNECTING,
+  /** Subscribed to the Wake-up topic: Wake-ups are heard. */
+  AGENT_BROKER_SUBSCRIBED,
+} AgentBrokerState;
+
+/** What `AGENT_TASK_SYNC_BROKER` asks the agent to do with the connection. */
+typedef enum {
+  AGENT_BROKER_ACTION_NONE = 1,
+  /** The Device is no longer active in an Organization: close the connection. */
+  AGENT_BROKER_ACTION_DROP,
+  /** The Organization changed: subscribe to the new topic, not the old one. */
+  AGENT_BROKER_ACTION_RESUBSCRIBE,
+  /** The handshake took too long: treat the connection as lost. */
+  AGENT_BROKER_ACTION_TIME_OUT,
+} AgentBrokerAction;
 
 /** A set of `AgentTask` flags. */
 typedef uint32_t AgentTaskSet;
@@ -110,6 +158,18 @@ typedef struct {
   uint64_t nextHeartbeatAt;
   uint64_t nextCommandFetchAt;
   uint64_t nextFeedRefreshAt;
+
+  /**
+   * Wake-up broker connection. While disconnected, `nextBrokerAttemptAt` is
+   * when the next attempt is due; while connecting, it is the handshake
+   * deadline.
+   */
+  AgentBrokerState brokerState;
+  uint64_t         nextBrokerAttemptAt;
+  uint32_t         brokerFailureCount;
+
+  /** Organization whose topic the connection is (being) subscribed to. */
+  char brokerOrganizationId[PROTOCOL_ORGANIZATION_ID_CAPACITY];
 
   /** Consecutive connect failures, driving the backoff. */
   uint32_t connectFailureCount;
@@ -166,6 +226,45 @@ struct AgentScheduleType {
   AgentSchedule (*const heartbeatAnswered)(
     const AgentSchedule *schedule, bool commandsWaiting, uint64_t now
   );
+
+  /** A Wake-up was heard: while active, a Command fetch is due now. */
+  AgentSchedule (*const wakeupHeard)(const AgentSchedule *schedule, uint64_t now);
+
+  /**
+   * The attempt to open the broker connection finished. On success the
+   * subscription is awaited (the handshake deadline starts); on failure the
+   * next attempt backs off exponentially with jitter.
+   */
+  AgentSchedule (*const brokerConnectFinished)(
+    const AgentSchedule *schedule,
+    bool                 succeeded,
+    uint64_t             now,
+    uint32_t             randomValue
+  );
+
+  /**
+   * The broker acknowledged the subscription: Wake-ups are heard from now on,
+   * the backoff resets, and a Command fetch is due now to catch every
+   * Wake-up sent while the Device could not hear them.
+   */
+  AgentSchedule (*const brokerSubscribed)(const AgentSchedule *schedule, uint64_t now);
+
+  /** The connection was lost, or timed out: back off before connecting again. */
+  AgentSchedule (*const brokerLost)(
+    const AgentSchedule *schedule, uint64_t now, uint32_t randomValue
+  );
+
+  /** The agent closed the connection on purpose; not an outage, no backoff. */
+  AgentSchedule (*const brokerDropped)(const AgentSchedule *schedule, uint64_t now);
+
+  /**
+   * The agent moved the subscription to the current Organization's topic;
+   * its acknowledgement is awaited like a first subscription's.
+   */
+  AgentSchedule (*const brokerRetargeted)(const AgentSchedule *schedule, uint64_t now);
+
+  /** What `AGENT_TASK_SYNC_BROKER` is due for at `now`. */
+  AgentBrokerAction (*const brokerAction)(const AgentSchedule *schedule, uint64_t now);
 
   /**
    * A status check, heartbeat, command fetch or feed refresh finished.

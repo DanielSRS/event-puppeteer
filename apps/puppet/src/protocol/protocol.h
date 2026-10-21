@@ -20,6 +20,7 @@
  * | response  | GET  /devices/:id/commands/pending          | `readCommandBatch`        |
  * | request   | POST /devices/:id/commands/:cid/complete    | `writeCommandCompletion`  |
  * | response  | GET  /organizations/:id/feed                | `countFeedEvents`         |
+ * | topic     | Wake-up (MQTT, ADR-0001 of the monorepo)    | `writeWakeupTopic`        |
  * | payload   | `update` Command                            | `readUpdateInstruction`   |
  *
  * ## Errors
@@ -44,6 +45,11 @@
 #define PROTOCOL_DEVICE_TOKEN_CAPACITY ((size_t)128)
 
 #define PROTOCOL_ORGANIZATION_ID_CAPACITY ((size_t)64)
+
+/** `<deviceId>/<organizationId>`: both ids, the separator and a terminator. */
+#define PROTOCOL_WAKEUP_TOPIC_CAPACITY                                         \
+  (PROTOCOL_DEVICE_ID_CAPACITY + 1 + PROTOCOL_ORGANIZATION_ID_CAPACITY)
+
 #define PROTOCOL_DEVICE_NAME_CAPACITY     ((size_t)128)
 #define PROTOCOL_COMMAND_ID_CAPACITY      ((size_t)64)
 
@@ -103,6 +109,8 @@ typedef enum {
   PROTOCOL_ERROR_HEARTBEAT_ANSWER_MALFORMED = 2019,
   /** The heartbeat answer's `commandsWaiting` is absent or not a boolean. */
   PROTOCOL_ERROR_HEARTBEAT_ANSWER_FLAG_INVALID = 2020,
+  /** The Wake-up topic did not fit its buffer. */
+  PROTOCOL_ERROR_WAKEUP_TOPIC_OVERFLOW = 2021,
 } ProtocolResultCode;
 
 /** What a Puppet needs to authenticate as its Device. Persisted locally. */
@@ -243,6 +251,21 @@ struct ProtocolType {
    */
   ProtocolResultCode (*const readHeartbeatAnswer)(
     const char *body, size_t bodyLength, bool *commandsWaiting
+  );
+
+  /**
+   * The MQTT topic Puppeteer publishes a Wake-up to for this Device:
+   * `<deviceId>/<organizationId>`. The Puppet subscribes to it once active.
+   *
+   * @param destination  Receives the null-terminated topic.
+   * @param capacity     Size of `destination`; `PROTOCOL_WAKEUP_TOPIC_CAPACITY`
+   *                     always suffices.
+   */
+  ProtocolResultCode (*const writeWakeupTopic)(
+    const char *deviceId,
+    const char *organizationId,
+    char       *destination,
+    size_t      capacity
   );
 
   /** A single log line shipped to Puppeteer. */

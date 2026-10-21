@@ -13,6 +13,24 @@ if(NOT PUPPET_SERVER_URL MATCHES "^https?://[^ \t\"\\;]+$")
     message(FATAL_ERROR "PUPPET_SERVER_URL must be an http:// or https:// URL, got '${PUPPET_SERVER_URL}'")
 endif()
 
+# The Wake-up broker (docs/adr/0001-wake-up-over-public-mqtt-broker.md in the
+# monorepo) is fixed at build time as well; the Puppet reads no environment
+# variables for it. TLS verifies the broker against the system certificate store.
+set(PUPPET_WAKEUP_BROKER_HOST "broker.hivemq.com" CACHE STRING "Wake-up MQTT broker host")
+set(PUPPET_WAKEUP_BROKER_PORT "8883" CACHE STRING "Wake-up MQTT broker port")
+option(PUPPET_WAKEUP_BROKER_TLS "Encrypt the Wake-up broker connection" ON)
+if(NOT PUPPET_WAKEUP_BROKER_HOST MATCHES "^[A-Za-z0-9.-]+$")
+    message(FATAL_ERROR "PUPPET_WAKEUP_BROKER_HOST must be a host name or address, got '${PUPPET_WAKEUP_BROKER_HOST}'")
+endif()
+if(NOT PUPPET_WAKEUP_BROKER_PORT MATCHES "^[0-9]+$")
+    message(FATAL_ERROR "PUPPET_WAKEUP_BROKER_PORT must be a port number, got '${PUPPET_WAKEUP_BROKER_PORT}'")
+endif()
+if(PUPPET_WAKEUP_BROKER_TLS)
+    set(PUPPET_WAKEUP_BROKER_TLS_VALUE 1)
+else()
+    set(PUPPET_WAKEUP_BROKER_TLS_VALUE 0)
+endif()
+
 # Enforce C++17 for MMKV compilation compatibility
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -37,6 +55,10 @@ find_package(Threads REQUIRED)
 
 # Require libcurl (provides HTTPS transport to Puppeteer)
 find_package(CURL REQUIRED)
+
+# Require libmosquitto (MQTT client for Wake-ups)
+find_path(MOSQUITTO_INCLUDE_DIR mosquitto.h REQUIRED)
+find_library(MOSQUITTO_LIBRARY mosquitto REQUIRED)
 
 # Enable ultra-strict compilation, warnings as errors, and extra validations for our code
 set(PUPPET_STRICT_COMPILE_OPTIONS
@@ -78,10 +100,14 @@ target_compile_options(puppet PRIVATE ${PUPPET_STRICT_COMPILE_OPTIONS})
 target_compile_definitions(puppet PRIVATE
     PUPPET_VERSION="${PROJECT_VERSION}"
     PUPPET_SERVER_URL="${PUPPET_SERVER_URL}"
+    PUPPET_WAKEUP_BROKER_HOST="${PUPPET_WAKEUP_BROKER_HOST}"
+    PUPPET_WAKEUP_BROKER_PORT=${PUPPET_WAKEUP_BROKER_PORT}
+    PUPPET_WAKEUP_BROKER_TLS=${PUPPET_WAKEUP_BROKER_TLS_VALUE}
 )
 
-# Link MMKV Core, Threads, and libcurl to the puppet executable
-target_link_libraries(puppet PRIVATE core Threads::Threads gcc_s stdc++ CURL::libcurl)
+# Link MMKV Core, Threads, libcurl and libmosquitto to the puppet executable
+target_link_libraries(puppet PRIVATE core Threads::Threads gcc_s stdc++ CURL::libcurl ${MOSQUITTO_LIBRARY})
+target_include_directories(puppet PRIVATE ${MOSQUITTO_INCLUDE_DIR})
 
 # Add include paths for our internal modules
 target_include_directories(puppet PRIVATE
