@@ -121,11 +121,11 @@ static void agentScheduleWaitsWhilePending(TestContext *context) {
     schedule.nextStatusCheckAt
       == AGENT_TEST_START_TIME + AGENT_PENDING_STATUS_INTERVAL_SECONDS
   );
-  /** Pending Devices never poll Commands nor fetch a feed. */
+  /** Pending Devices never fetch Commands nor a feed. */
   EXPECT(
     context,
     (AgentScheduleI.dueTasks(&schedule, UINT64_MAX)
-     & (AGENT_TASK_POLL_COMMANDS | AGENT_TASK_REFRESH_FEED))
+     & (AGENT_TASK_FETCH_COMMANDS | AGENT_TASK_REFRESH_FEED))
       == 0
   );
 }
@@ -138,7 +138,115 @@ static void agentScheduleStartsWorkWhenApproved(TestContext *context) {
   EXPECT(
     context,
     AgentScheduleI.dueTasks(&schedule, AGENT_TEST_START_TIME)
-      == (AGENT_TASK_HEARTBEAT | AGENT_TASK_POLL_COMMANDS | AGENT_TASK_REFRESH_FEED)
+      == (AGENT_TASK_HEARTBEAT | AGENT_TASK_FETCH_COMMANDS | AGENT_TASK_REFRESH_FEED)
+  );
+}
+
+/** A year of seconds: far beyond any timer, yet below `AGENT_NEVER_DUE`. */
+#define AGENT_TEST_LONG_WAIT_SECONDS ((uint64_t)365 * 24 * 3600)
+
+static void agentScheduleNeverFetchesCommandsOnATimer(TestContext *context) {
+  const AgentPhase phases[] = {
+    AGENT_PHASE_UNENROLLED,
+    AGENT_PHASE_PENDING,
+    AGENT_PHASE_ACTIVE,
+    AGENT_PHASE_REJECTED,
+  };
+  AgentSchedule active = agentTestActiveSchedule(AGENT_TEST_START_TIME);
+  active = AgentScheduleI.taskFinished(
+    &active, AGENT_TASK_FETCH_COMMANDS, true, AGENT_TEST_START_TIME
+  );
+
+  for (uint32_t index = 0; index < sizeof(phases) / sizeof(phases[0]); index++) {
+    AgentSchedule schedule = active;
+    schedule.phase         = phases[index];
+    EXPECT(
+      context,
+      (AgentScheduleI.dueTasks(
+         &schedule, AGENT_TEST_START_TIME + AGENT_TEST_LONG_WAIT_SECONDS
+       )
+       & AGENT_TASK_FETCH_COMMANDS)
+        == 0
+    );
+  }
+
+  const AgentSchedule failed = AgentScheduleI.taskFinished(
+    &active, AGENT_TASK_FETCH_COMMANDS, false, AGENT_TEST_START_TIME
+  );
+  EXPECT(
+    context,
+    (AgentScheduleI.dueTasks(
+       &failed, AGENT_TEST_START_TIME + AGENT_TEST_LONG_WAIT_SECONDS
+     )
+     & AGENT_TASK_FETCH_COMMANDS)
+      == 0
+  );
+}
+
+static void agentScheduleFetchesCommandsOnBoot(TestContext *context) {
+  const AgentSchedule created = AgentScheduleI.create(true, AGENT_TEST_START_TIME);
+  const DeviceState   active  = agentTestDeviceState(DEVICE_STATUS_ACTIVE, "org-9");
+  const AgentSchedule schedule =
+    AgentScheduleI.deviceStateReceived(&created, &active, AGENT_TEST_START_TIME);
+
+  EXPECT(
+    context,
+    (AgentScheduleI.dueTasks(&schedule, AGENT_TEST_START_TIME)
+     & AGENT_TASK_FETCH_COMMANDS)
+      != 0
+  );
+}
+
+static void agentScheduleFetchesCommandsWhenTheHeartbeatSaysTheyWait(
+  TestContext *context
+) {
+  AgentSchedule schedule = agentTestActiveSchedule(AGENT_TEST_START_TIME);
+  schedule = AgentScheduleI.taskFinished(
+    &schedule, AGENT_TASK_FETCH_COMMANDS, true, AGENT_TEST_START_TIME
+  );
+  const uint64_t later = AGENT_TEST_START_TIME + AGENT_HEARTBEAT_INTERVAL_SECONDS;
+
+  const AgentSchedule idle =
+    AgentScheduleI.heartbeatAnswered(&schedule, false, later);
+  EXPECT(
+    context,
+    (AgentScheduleI.dueTasks(&idle, later) & AGENT_TASK_FETCH_COMMANDS) == 0
+  );
+
+  const AgentSchedule waiting =
+    AgentScheduleI.heartbeatAnswered(&schedule, true, later);
+  EXPECT(
+    context,
+    (AgentScheduleI.dueTasks(&waiting, later) & AGENT_TASK_FETCH_COMMANDS) != 0
+  );
+
+  const AgentSchedule fetched = AgentScheduleI.taskFinished(
+    &waiting, AGENT_TASK_FETCH_COMMANDS, true, later
+  );
+  EXPECT(
+    context,
+    (AgentScheduleI.dueTasks(&fetched, later + 1) & AGENT_TASK_FETCH_COMMANDS)
+      == 0
+  );
+}
+
+static void agentScheduleIgnoresTheWaitingFlagOutsideTheActivePhase(
+  TestContext *context
+) {
+  const AgentSchedule created = AgentScheduleI.create(true, AGENT_TEST_START_TIME);
+  const DeviceState   pending = agentTestDeviceState(DEVICE_STATUS_PENDING, NULL);
+  AgentSchedule       schedule =
+    AgentScheduleI.deviceStateReceived(&created, &pending, AGENT_TEST_START_TIME);
+  schedule = AgentScheduleI.taskFinished(
+    &schedule, AGENT_TASK_FETCH_COMMANDS, true, AGENT_TEST_START_TIME
+  );
+
+  const AgentSchedule answered = AgentScheduleI.heartbeatAnswered(
+    &schedule, true, AGENT_TEST_START_TIME + 1
+  );
+  EXPECT(
+    context,
+    answered.nextCommandFetchAt == schedule.nextCommandFetchAt
   );
 }
 
@@ -231,7 +339,7 @@ static void agentScheduleSleepsUntilEarliestTask(TestContext *context) {
     &schedule, AGENT_TASK_HEARTBEAT, true, AGENT_TEST_START_TIME
   );
   schedule = AgentScheduleI.taskFinished(
-    &schedule, AGENT_TASK_POLL_COMMANDS, true, AGENT_TEST_START_TIME
+    &schedule, AGENT_TASK_FETCH_COMMANDS, true, AGENT_TEST_START_TIME
   );
   schedule = AgentScheduleI.taskFinished(
     &schedule, AGENT_TASK_REFRESH_FEED, true, AGENT_TEST_START_TIME
@@ -240,7 +348,7 @@ static void agentScheduleSleepsUntilEarliestTask(TestContext *context) {
   EXPECT(
     context,
     AgentScheduleI.secondsUntilNextTask(&schedule, AGENT_TEST_START_TIME)
-      == AGENT_COMMAND_POLL_INTERVAL_SECONDS
+      == AGENT_HEARTBEAT_INTERVAL_SECONDS
   );
   EXPECT(
     context,
@@ -260,8 +368,15 @@ static const TestCase AGENT_SCHEDULE_TEST_CASES[] = {
   {"resets the backoff once connected", agentScheduleResetsBackoffOnConnect},
   {"only checks status and heartbeats while pending",
    agentScheduleWaitsWhilePending},
-  {"starts polling and fetching the feed when approved",
+  {"fetches Commands and the feed when approved",
    agentScheduleStartsWorkWhenApproved},
+  {"never fetches Commands on a timer, in any phase",
+   agentScheduleNeverFetchesCommandsOnATimer},
+  {"fetches Commands once on boot", agentScheduleFetchesCommandsOnBoot},
+  {"fetches Commands when a heartbeat says they wait",
+   agentScheduleFetchesCommandsWhenTheHeartbeatSaysTheyWait},
+  {"ignores the waiting flag outside the active phase",
+   agentScheduleIgnoresTheWaitingFlagOutsideTheActivePhase},
   {"keeps working when Puppeteer reports it offline",
    agentScheduleTreatsOfflineAsActive},
   {"refreshes the feed when moved to another organization",

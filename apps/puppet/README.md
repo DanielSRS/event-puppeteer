@@ -6,7 +6,7 @@ The C application running on kiosk Devices. It enrolls itself with Puppeteer, wa
 
 1. **Enrollment** (ADR-0002): on first start it calls `POST /devices/connect` and stores the issued credentials. The Device then appears in the Superadmin's pending queue.
 2. **Pending**: it checks its status every 15 s and sends heartbeats, waiting indefinitely without flooding Puppeteer.
-3. **Active**: once approved, it also polls Commands every 10 s and refreshes the Organization's event feed every 5 minutes, storing the last valid feed in MMKV.
+3. **Active**: once approved, it also fetches Commands, once on boot and whenever a heartbeat answer says some are waiting (the heartbeat is sent every 20 s, so a Command arrives within about one heartbeat), and refreshes the Organization's event feed every 5 minutes, storing the last valid feed in MMKV.
 4. **Rejected**: it goes quiet, checking its status only hourly.
 5. **Revoked credentials** (HTTP 401): it forgets them and enrolls again.
 

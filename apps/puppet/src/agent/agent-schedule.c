@@ -16,7 +16,7 @@ static AgentTaskSet agentSchedulePhaseTasks(const AgentSchedule *schedule) {
     return AGENT_TASK_CHECK_STATUS | AGENT_TASK_HEARTBEAT;
   case AGENT_PHASE_ACTIVE: {
     const AgentTaskSet activeTasks =
-      AGENT_TASK_CHECK_STATUS | AGENT_TASK_HEARTBEAT | AGENT_TASK_POLL_COMMANDS;
+      AGENT_TASK_CHECK_STATUS | AGENT_TASK_HEARTBEAT | AGENT_TASK_FETCH_COMMANDS;
     /** The feed is per Organization; without one there is nothing to fetch. */
     return schedule->hasOrganization ? activeTasks | AGENT_TASK_REFRESH_FEED
                                      : activeTasks;
@@ -37,8 +37,8 @@ static uint64_t agentScheduleTaskDueAt(
     return schedule->nextStatusCheckAt;
   case AGENT_TASK_HEARTBEAT:
     return schedule->nextHeartbeatAt;
-  case AGENT_TASK_POLL_COMMANDS:
-    return schedule->nextCommandPollAt;
+  case AGENT_TASK_FETCH_COMMANDS:
+    return schedule->nextCommandFetchAt;
   case AGENT_TASK_REFRESH_FEED:
     return schedule->nextFeedRefreshAt;
   }
@@ -49,7 +49,7 @@ static const AgentTask AGENT_ALL_TASKS[] = {
   AGENT_TASK_CONNECT,
   AGENT_TASK_CHECK_STATUS,
   AGENT_TASK_HEARTBEAT,
-  AGENT_TASK_POLL_COMMANDS,
+  AGENT_TASK_FETCH_COMMANDS,
   AGENT_TASK_REFRESH_FEED,
 };
 
@@ -74,7 +74,7 @@ static AgentSchedule agentScheduleCreate(
     .nextConnectAt       = now,
     .nextStatusCheckAt   = now,
     .nextHeartbeatAt     = now,
-    .nextCommandPollAt   = now,
+    .nextCommandFetchAt   = now,
     .nextFeedRefreshAt   = now,
     .connectFailureCount = 0,
     .hasOrganization     = false,
@@ -181,10 +181,20 @@ static AgentSchedule agentScheduleDeviceStateReceived(
 
   next.nextStatusCheckAt = now + agentScheduleStatusInterval(next.phase);
   if (becameActive) {
-    next.nextCommandPollAt = now;
+    next.nextCommandFetchAt = now;
   }
   if (becameActive || organizationChanged) {
     next.nextFeedRefreshAt = now;
+  }
+  return next;
+}
+
+static AgentSchedule agentScheduleHeartbeatAnswered(
+  const AgentSchedule *schedule, const bool commandsWaiting, const uint64_t now
+) {
+  AgentSchedule next = *schedule;
+  if (commandsWaiting && schedule->phase == AGENT_PHASE_ACTIVE) {
+    next.nextCommandFetchAt = now;
   }
   return next;
 }
@@ -215,8 +225,8 @@ static AgentSchedule agentScheduleTaskFinished(
   case AGENT_TASK_HEARTBEAT:
     next.nextHeartbeatAt = now + AGENT_HEARTBEAT_INTERVAL_SECONDS;
     break;
-  case AGENT_TASK_POLL_COMMANDS:
-    next.nextCommandPollAt = now + AGENT_COMMAND_POLL_INTERVAL_SECONDS;
+  case AGENT_TASK_FETCH_COMMANDS:
+    next.nextCommandFetchAt = AGENT_NEVER_DUE;
     break;
   case AGENT_TASK_REFRESH_FEED:
     next.nextFeedRefreshAt = now
@@ -238,6 +248,7 @@ const struct AgentScheduleType AgentScheduleI = {
   .connected            = agentScheduleConnected,
   .connectFailed        = agentScheduleConnectFailed,
   .deviceStateReceived  = agentScheduleDeviceStateReceived,
+  .heartbeatAnswered    = agentScheduleHeartbeatAnswered,
   .credentialsRevoked   = agentScheduleCredentialsRevoked,
   .taskFinished         = agentScheduleTaskFinished,
 };

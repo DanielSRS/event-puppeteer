@@ -24,8 +24,15 @@
  * |------------|--------------------------------------------------------|
  * | UNENROLLED | connect (exponential backoff with jitter on failure)  |
  * | PENDING    | status check, heartbeat                                |
- * | ACTIVE     | status check, heartbeat, command poll, feed refresh   |
+ * | ACTIVE     | status check, heartbeat, command fetch, feed refresh  |
  * | REJECTED   | infrequent status check                                |
+ *
+ * ## Fetching Commands
+ *
+ * Commands are never fetched on a timer. A fetch is due once on boot, when
+ * the Device becomes active, and whenever a heartbeat answer says Commands
+ * are waiting (`heartbeatAnswered`). So an active Device receives every
+ * Command within about one heartbeat, with nothing else involved.
  *
  * Waiting in PENDING is a normal, indefinite state (ADR-0002): the Puppet
  * keeps a slow, steady cadence and never floods Puppeteer.
@@ -53,8 +60,11 @@
 /** Rejection is final on Puppeteer; an hourly check only detects resets. */
 #define AGENT_REJECTED_STATUS_INTERVAL_SECONDS ((uint64_t)3600)
 
-/** Command poll period: bounds how long an Admin waits for a reaction. */
-#define AGENT_COMMAND_POLL_INTERVAL_SECONDS ((uint64_t)10)
+/**
+ * Marks a task that has no timer: it becomes due only through an event (see
+ * `heartbeatAnswered`). Never a time the clock can reach.
+ */
+#define AGENT_NEVER_DUE ((uint64_t)UINT64_MAX)
 
 /** Feed refresh period: Events change on a scale of minutes to days. */
 #define AGENT_FEED_REFRESH_INTERVAL_SECONDS ((uint64_t)300)
@@ -84,7 +94,7 @@ typedef enum {
   AGENT_TASK_CONNECT       = 1 << 0,
   AGENT_TASK_CHECK_STATUS  = 1 << 1,
   AGENT_TASK_HEARTBEAT     = 1 << 2,
-  AGENT_TASK_POLL_COMMANDS = 1 << 3,
+  AGENT_TASK_FETCH_COMMANDS = 1 << 3,
   AGENT_TASK_REFRESH_FEED  = 1 << 4,
 } AgentTask;
 
@@ -98,7 +108,7 @@ typedef struct {
   uint64_t nextConnectAt;
   uint64_t nextStatusCheckAt;
   uint64_t nextHeartbeatAt;
-  uint64_t nextCommandPollAt;
+  uint64_t nextCommandFetchAt;
   uint64_t nextFeedRefreshAt;
 
   /** Consecutive connect failures, driving the backoff. */
@@ -148,10 +158,22 @@ struct AgentScheduleType {
   );
 
   /**
-   * A status check, heartbeat, command poll or feed refresh finished.
+   * A heartbeat was answered and its `commandsWaiting` flag decoded. While
+   * active, a true flag makes a Command fetch due now; a false flag changes
+   * nothing. Call it only with a flag that was actually read: a heartbeat
+   * whose answer cannot be decoded is `taskFinished` with `succeeded` false.
+   */
+  AgentSchedule (*const heartbeatAnswered)(
+    const AgentSchedule *schedule, bool commandsWaiting, uint64_t now
+  );
+
+  /**
+   * A status check, heartbeat, command fetch or feed refresh finished.
    *
    * @param task       Exactly one of those tasks.
-   * @param succeeded  Whether it succeeded; only the feed retries sooner.
+   * @param succeeded  Whether it succeeded; only the feed retries sooner. A
+   *                   failed fetch is not retried on a timer: Puppeteer keeps
+   *                   reporting the Commands as waiting in the next heartbeat.
    */
   AgentSchedule (*const taskFinished)(
     const AgentSchedule *schedule, AgentTask task, bool succeeded, uint64_t now

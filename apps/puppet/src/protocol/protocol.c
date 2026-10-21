@@ -193,6 +193,35 @@ static ProtocolResultCode protocolReadDeviceState(
   return PROTOCOL_RESULT_OK;
 }
 
+static ProtocolResultCode protocolReadHeartbeatAnswer(
+  const char *body, const size_t bodyLength, bool *commandsWaiting
+) {
+  JsonToken             tokens[PROTOCOL_OBJECT_TOKEN_CAPACITY];
+  const JsonParseResult parsed =
+    JsonI.parse(body, bodyLength, tokens, PROTOCOL_OBJECT_TOKEN_CAPACITY);
+  if (parsed.code != JSON_RESULT_OK
+      || tokens[PROTOCOL_ROOT_TOKEN].kind != JSON_TOKEN_OBJECT) {
+    return PROTOCOL_ERROR_HEARTBEAT_ANSWER_MALFORMED;
+  }
+
+  const int32_t flagIndex = JsonI.findMember(
+    body, tokens, parsed.tokenCount, PROTOCOL_ROOT_TOKEN, "commandsWaiting"
+  );
+  if (flagIndex == JSON_NOT_FOUND
+      || tokens[flagIndex].kind != JSON_TOKEN_PRIMITIVE) {
+    return PROTOCOL_ERROR_HEARTBEAT_ANSWER_FLAG_INVALID;
+  }
+  if (JsonI.equals(body, tokens, parsed.tokenCount, flagIndex, "true")) {
+    *commandsWaiting = true;
+    return PROTOCOL_RESULT_OK;
+  }
+  if (JsonI.equals(body, tokens, parsed.tokenCount, flagIndex, "false")) {
+    *commandsWaiting = false;
+    return PROTOCOL_RESULT_OK;
+  }
+  return PROTOCOL_ERROR_HEARTBEAT_ANSWER_FLAG_INVALID;
+}
+
 static ProtocolResultCode protocolWriteHeartbeatRequest(
   const char        *status,
   const char *const *errors,
@@ -455,6 +484,7 @@ const struct ProtocolType ProtocolI = {
   .readConnectResponse    = protocolReadConnectResponse,
   .readDeviceState        = protocolReadDeviceState,
   .writeHeartbeatRequest  = protocolWriteHeartbeatRequest,
+  .readHeartbeatAnswer    = protocolReadHeartbeatAnswer,
   .writeLogRequest        = protocolWriteLogRequest,
   .writeTelemetryRequest  = protocolWriteTelemetryRequest,
   .readCommandBatch       = protocolReadCommandBatch,

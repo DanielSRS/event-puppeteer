@@ -552,14 +552,37 @@ static void agentHeartbeat(AgentRuntime *runtime, const uint64_t now) {
     agentRevokeCredentials(runtime, now);
     return;
   }
-  const bool succeeded = outcome == AGENT_EXCHANGE_SUCCEEDED;
-  if (succeeded) {
-    agentFlushLogs(runtime);
-  } else {
+  bool                     commandsWaiting = false;
+  const bool               delivered = outcome == AGENT_EXCHANGE_SUCCEEDED;
+  /** An answer without a boolean flag is never read as "nothing waits": it
+   *  fails the heartbeat, and the error reaches Admins through the logs. */
+  const ProtocolResultCode decoded =
+    delivered ? ProtocolI.readHeartbeatAnswer(
+                  result.body, result.bodyLength, &commandsWaiting
+                )
+              : PROTOCOL_RESULT_OK;
+  const bool answered = delivered && decoded == PROTOCOL_RESULT_OK;
+  if (!delivered) {
     agentLogFailure(runtime, "sending heartbeat", &result);
+  } else if (!answered) {
+    agentLog(
+      runtime,
+      AGENT_LOG_LEVEL_ERROR,
+      "heartbeat answer rejected: protocol error %d",
+      (int32_t)decoded
+    );
+  }
+  if (delivered) {
+    /** The exchange worked even if the answer was unusable, and an unusable
+     *  answer is exactly what Admins must be able to read in the logs. */
+    agentFlushLogs(runtime);
+  }
+  if (answered) {
+    runtime->schedule =
+      AgentScheduleI.heartbeatAnswered(&runtime->schedule, commandsWaiting, now);
   }
   runtime->schedule = AgentScheduleI.taskFinished(
-    &runtime->schedule, AGENT_TASK_HEARTBEAT, succeeded, now
+    &runtime->schedule, AGENT_TASK_HEARTBEAT, answered, now
   );
 }
 
@@ -810,7 +833,7 @@ static void agentRunCommand(AgentRuntime *runtime, const Command *command) {
   );
 }
 
-static void agentPollCommands(AgentRuntime *runtime, const uint64_t now) {
+static void agentFetchCommands(AgentRuntime *runtime, const uint64_t now) {
   char path[AGENT_PATH_CAPACITY];
   snprintf(
     path,
@@ -833,7 +856,7 @@ static void agentPollCommands(AgentRuntime *runtime, const uint64_t now) {
     && ProtocolI.readCommandBatch(result.body, result.bodyLength, &batch)
          == PROTOCOL_RESULT_OK;
   if (!succeeded) {
-    agentLogFailure(runtime, "polling commands", &result);
+    agentLogFailure(runtime, "fetching commands", &result);
   } else {
     /** After an update the rest of the batch is left unacknowledged, so
      *  Puppeteer redelivers it to the new binary. */
@@ -843,7 +866,7 @@ static void agentPollCommands(AgentRuntime *runtime, const uint64_t now) {
     }
   }
   runtime->schedule = AgentScheduleI.taskFinished(
-    &runtime->schedule, AGENT_TASK_POLL_COMMANDS, succeeded, now
+    &runtime->schedule, AGENT_TASK_FETCH_COMMANDS, succeeded, now
   );
 }
 
@@ -887,8 +910,8 @@ agentPerform(AgentRuntime *runtime, const AgentTask task, const uint64_t now) {
   case AGENT_TASK_HEARTBEAT:
     agentHeartbeat(runtime, now);
     break;
-  case AGENT_TASK_POLL_COMMANDS:
-    agentPollCommands(runtime, now);
+  case AGENT_TASK_FETCH_COMMANDS:
+    agentFetchCommands(runtime, now);
     break;
   case AGENT_TASK_REFRESH_FEED:
     agentRefreshFeed(runtime, now);

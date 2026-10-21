@@ -113,6 +113,60 @@ static void protocolRejectsUnknownDeviceStatus(TestContext *context) {
   );
 }
 
+static void protocolReadsHeartbeatAnswerFlag(TestContext *context) {
+  const char *waiting = "{\"success\":true,\"commandsWaiting\":true}";
+  const char *idle    = "{\"success\":true,\"commandsWaiting\":false}";
+  bool        commandsWaiting = false;
+
+  EXPECT(
+    context,
+    ProtocolI.readHeartbeatAnswer(waiting, strlen(waiting), &commandsWaiting)
+      == PROTOCOL_RESULT_OK
+  );
+  EXPECT(context, commandsWaiting);
+
+  EXPECT(
+    context,
+    ProtocolI.readHeartbeatAnswer(idle, strlen(idle), &commandsWaiting)
+      == PROTOCOL_RESULT_OK
+  );
+  EXPECT(context, !commandsWaiting);
+}
+
+static void protocolRejectsHeartbeatAnswerWithoutBooleanFlag(TestContext *context) {
+  const char *const answers[] = {
+    "{\"success\":true}",
+    "{\"success\":true,\"commandsWaiting\":\"true\"}",
+    "{\"success\":true,\"commandsWaiting\":1}",
+    "{\"success\":true,\"commandsWaiting\":null}",
+    "{\"success\":true,\"commandsWaiting\":{}}",
+  };
+  for (uint32_t index = 0; index < sizeof(answers) / sizeof(answers[0]); index++) {
+    bool commandsWaiting = true;
+    EXPECT(
+      context,
+      ProtocolI.readHeartbeatAnswer(
+        answers[index], strlen(answers[index]), &commandsWaiting
+      ) == PROTOCOL_ERROR_HEARTBEAT_ANSWER_FLAG_INVALID
+    );
+    /** The Puppet never assumes a value: the output is left untouched. */
+    EXPECT(context, commandsWaiting);
+  }
+}
+
+static void protocolRejectsMalformedHeartbeatAnswer(TestContext *context) {
+  const char *const answers[] = {"", "not json", "[true]", "true"};
+  for (uint32_t index = 0; index < sizeof(answers) / sizeof(answers[0]); index++) {
+    bool commandsWaiting = false;
+    EXPECT(
+      context,
+      ProtocolI.readHeartbeatAnswer(
+        answers[index], strlen(answers[index]), &commandsWaiting
+      ) == PROTOCOL_ERROR_HEARTBEAT_ANSWER_MALFORMED
+    );
+  }
+}
+
 static void protocolWritesHeartbeat(TestContext *context) {
   char              buffer[PROTOCOL_TEST_BODY_CAPACITY];
   const RequestBody body     = {.buffer = buffer, .capacity = sizeof(buffer)};
@@ -344,6 +398,12 @@ static const TestCase PROTOCOL_TEST_CASES[] = {
   {"reads an active device state", protocolReadsActiveDeviceState},
   {"rejects unknown device statuses", protocolRejectsUnknownDeviceStatus},
   {"writes heartbeats with and without errors", protocolWritesHeartbeat},
+  {"reads the commands-waiting flag of a heartbeat answer",
+   protocolReadsHeartbeatAnswerFlag},
+  {"rejects a heartbeat answer whose flag is missing or not a boolean",
+   protocolRejectsHeartbeatAnswerWithoutBooleanFlag},
+  {"rejects a heartbeat answer that is not a JSON object",
+   protocolRejectsMalformedHeartbeatAnswer},
   {"writes telemetry omitting unknown strings", protocolWritesTelemetry},
   {"reads a command batch", protocolReadsCommandBatch},
   {"reads an empty command batch", protocolReadsEmptyCommandBatch},

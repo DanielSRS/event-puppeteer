@@ -14,6 +14,7 @@
  * | response  | POST /devices/connect                       | `readConnectResponse`     |
  * | response  | GET  /devices/me                            | `readDeviceState`         |
  * | request   | POST /devices/:id/heartbeat                 | `writeHeartbeatRequest`   |
+ * | response  | POST /devices/:id/heartbeat                 | `readHeartbeatAnswer`     |
  * | request   | POST /devices/:id/logs                      | `writeLogRequest`         |
  * | request   | POST /devices/:id/telemetry                 | `writeTelemetryRequest`   |
  * | response  | GET  /devices/:id/commands/pending          | `readCommandBatch`        |
@@ -97,6 +98,11 @@ typedef enum {
   PROTOCOL_ERROR_UPDATE_LOCATION_INVALID = 2017,
   /** The `sha256` is missing or not 64 hexadecimal characters. */
   PROTOCOL_ERROR_UPDATE_DIGEST_INVALID = 2018,
+
+  /** The heartbeat answer is not a valid JSON object. */
+  PROTOCOL_ERROR_HEARTBEAT_ANSWER_MALFORMED = 2019,
+  /** The heartbeat answer's `commandsWaiting` is absent or not a boolean. */
+  PROTOCOL_ERROR_HEARTBEAT_ANSWER_FLAG_INVALID = 2020,
 } ProtocolResultCode;
 
 /** What a Puppet needs to authenticate as its Device. Persisted locally. */
@@ -225,6 +231,18 @@ struct ProtocolType {
     const char *const *errors,
     uint32_t           errorCount,
     RequestBody        body
+  );
+
+  /**
+   * Read the answer to a heartbeat: whether Commands are waiting for this
+   * Device. That flag decides when the Puppet fetches Commands, so it is
+   * never assumed: an answer without a boolean `commandsWaiting` is an error
+   * and `commandsWaiting` is left untouched.
+   *
+   * @param commandsWaiting  Set only when the result is `PROTOCOL_RESULT_OK`.
+   */
+  ProtocolResultCode (*const readHeartbeatAnswer)(
+    const char *body, size_t bodyLength, bool *commandsWaiting
   );
 
   /** A single log line shipped to Puppeteer. */
